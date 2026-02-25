@@ -82,7 +82,7 @@ class SetupWizard:
         self.content_frame = tk.Frame(self.root, bg=C["bg"])
         self.content_frame.pack(fill="both", expand=True, padx=36, pady=10)
 
-        self.button_frame = tk.Frame(self.root, bg=C["bg"], height=60)
+        self.button_frame = tk.Frame(self.root, bg=C["bg"], height=70)
         self.button_frame.pack(fill="x", padx=36, pady=(0, 24))
         self.button_frame.pack_propagate(False)
 
@@ -132,18 +132,39 @@ class SetupWizard:
          self._step_extension, self._step_finish][step]()
 
     def _make_btn(self, parent, text, command, style="primary"):
-        """创建按钮（primary / secondary / success）"""
+        """创建按钮（用 Label 模拟，解决 macOS Aqua 主题忽略 Button 颜色的问题）"""
         styles = {
-            "primary":   {"fg": "#fff", "bg": C["accent"],  "active": C["accent_hover"]},
-            "secondary": {"fg": C["muted"], "bg": C["bg"],  "active": C["surface"]},
-            "success":   {"fg": "#fff", "bg": C["success"], "active": "#00a06a"},
+            "primary":   {"fg": "#ffffff", "bg": C["accent"],  "hover": C["accent_hover"]},
+            "secondary": {"fg": "#ffffff", "bg": "#3a3d44",    "hover": "#4a4d54"},
+            "success":   {"fg": "#ffffff", "bg": C["success"], "hover": "#00a06a"},
         }
         s = styles[style]
-        btn = tk.Button(parent, text=text, font=FONT(13, "bold"),
-                        fg=s["fg"], bg=s["bg"],
-                        activebackground=s["active"], activeforeground=s["fg"],
-                        bd=0, padx=24, pady=8, cursor="hand2", command=command)
-        return btn
+
+        frame = tk.Frame(parent, bg=s["bg"], padx=2, pady=2,
+                         highlightbackground=s["bg"], highlightthickness=1)
+        lbl = tk.Label(frame, text=text, font=FONT(14, "bold"),
+                       fg=s["fg"], bg=s["bg"],
+                       padx=22, pady=10, cursor="hand2")
+        lbl.pack()
+
+        # 悬停效果 + 点击事件
+        def on_enter(e):
+            lbl.configure(bg=s["hover"])
+            frame.configure(bg=s["hover"], highlightbackground=s["hover"])
+
+        def on_leave(e):
+            lbl.configure(bg=s["bg"])
+            frame.configure(bg=s["bg"], highlightbackground=s["bg"])
+
+        def on_click(e):
+            command()
+
+        lbl.bind("<Enter>", on_enter)
+        lbl.bind("<Leave>", on_leave)
+        lbl.bind("<Button-1>", on_click)
+        frame.bind("<Button-1>", on_click)
+
+        return frame
 
     def _make_card(self, parent, **kw):
         """创建暗色卡片容器"""
@@ -227,11 +248,19 @@ class SetupWizard:
                          bd=0)
         entry.pack(side="left", fill="x", expand=True, ipady=8, padx=(0, 10))
 
-        browse = tk.Button(row, text="浏览…", font=FONT(11),
-                           fg=C["accent"], bg=C["surface2"], bd=0,
-                           padx=14, pady=4, cursor="hand2",
-                           command=lambda: self._browse(string_var))
-        browse.pack(side="right")
+        # 浏览按钮（同样用 Label 模拟，确保 macOS 上色彩正确）
+        browse_frame = tk.Frame(row, bg=C["accent"], padx=1, pady=1,
+                                highlightbackground=C["accent"], highlightthickness=1)
+        browse_lbl = tk.Label(browse_frame, text="📂 浏览…", font=FONT(12, "bold"),
+                              fg="#ffffff", bg=C["accent"],
+                              padx=12, pady=4, cursor="hand2")
+        browse_lbl.pack()
+        browse_frame.pack(side="right")
+
+        def _do_browse(e, sv=string_var):
+            self._browse(sv)
+        browse_lbl.bind("<Button-1>", _do_browse)
+        browse_frame.bind("<Button-1>", _do_browse)
 
     def _browse(self, string_var):
         init = string_var.get()
