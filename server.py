@@ -17,25 +17,37 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
-# ─────────────────────────────────────────────
-# 配置文件路径（与扩展共享）
-# ─────────────────────────────────────────────
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
+# ─────────────────────────────────────────────
+# 路径工具（兼容 PyInstaller 打包后的目录结构）
+# ─────────────────────────────────────────────
+def get_app_dir():
+    """获取应用根目录（兼容 PyInstaller 打包后的路径）"""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+APP_DIR = get_app_dir()
+CONFIG_FILE = os.path.join(APP_DIR, "config.json")
+
+HOME = os.path.expanduser("~")
 DEFAULT_CONFIG = {
     "port": 9527,
     "save_paths": [
-        "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/📄 素材库"
+        os.path.join(HOME, "Desktop", "X2MD", "MD")
     ],
     "filename_format": "{summary}_{date}_{author}",
-    "max_filename_length": 60
+    "max_filename_length": 60,
+    "video_save_path": os.path.join(HOME, "Desktop", "X2MD", "Videos"),
+    "setup_completed": False,
 }
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(os.path.join(os.path.dirname(os.path.abspath(__file__)), "x2md.log"), encoding="utf-8"),
+        logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8"),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -171,7 +183,7 @@ tags: []
     lines = []
 
     vid_map = {}
-    save_dir = cfg.get("video_save_path", "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026")
+    save_dir = cfg.get("video_save_path", os.path.join(HOME, "Desktop", "X2MD", "Videos"))
     
     all_videos = list(videos)
     for t in thread_tweets:

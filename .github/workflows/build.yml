@@ -1,0 +1,139 @@
+name: 构建跨平台安装包
+
+on:
+  # 手动触发（推荐：从 GitHub 页面点击 Run workflow）
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 1.0.0）'
+        required: false
+        default: '1.0.0'
+  # 推送 tag 时自动触发（如 git tag v1.0.0 && git push --tags）
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: Mac
+            artifact_name: X2MD_Mac
+            icon_ext: icns
+          - os: windows-latest
+            platform: Windows
+            artifact_name: X2MD_Windows
+            icon_ext: ico
+
+    runs-on: ${{ matrix.os }}
+    name: 打包 ${{ matrix.platform }} 版
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── Mac 图标生成 ──
+      - name: 生成 Mac 图标 (.icns)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir -p assets/icon.iconset
+          python3 -c "
+          from PIL import Image
+          import os
+          src = Image.open('assets/icon.png')
+          sizes = [16, 32, 64, 128, 256, 512, 1024]
+          for s in sizes:
+              src.resize((s, s), Image.LANCZOS).save(f'assets/icon.iconset/icon_{s}x{s}.png')
+              if s <= 512:
+                  src.resize((s*2, s*2), Image.LANCZOS).save(f'assets/icon.iconset/icon_{s}x{s}@2x.png')
+          "
+          iconutil -c icns assets/icon.iconset -o assets/icon.icns
+
+      # ── Windows 图标生成 ──
+      - name: 生成 Windows 图标 (.ico)
+        if: matrix.os == 'windows-latest'
+        run: |
+          python -c "
+          from PIL import Image
+          img = Image.open('assets/icon.png')
+          img.save('assets/icon.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          "
+
+      # ── 打包 ──
+      - name: PyInstaller 打包
+        run: pyinstaller x2md.spec --clean --noconfirm
+
+      # ── Mac: 压缩 .app ──
+      - name: 压缩 Mac .app
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd dist
+          zip -r ../${{ matrix.artifact_name }}.zip X2MD.app
+
+      # ── Windows: 压缩文件夹 ──
+      - name: 压缩 Windows 文件夹
+        if: matrix.os == 'windows-latest'
+        run: |
+          Compress-Archive -Path dist\X2MD\* -DestinationPath ${{ matrix.artifact_name }}.zip
+
+      # ── 上传 Artifact ──
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
+          retention-days: 30
+
+  # ── 创建 Release（仅 tag 推送时） ──
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    name: 创建 Release
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: X2MD ${{ github.ref_name }}
+          body: |
+            ## X2MD ${{ github.ref_name }}
+
+            ### 下载
+            - **Mac 版**：`X2MD_Mac.zip` — 解压后双击 `X2MD.app` 即可运行
+            - **Windows 版**：`X2MD_Windows.zip` — 解压后双击 `X2MD.exe` 即可运行
+
+            ### 首次使用
+            1. 打开应用，按向导设置保存路径
+            2. 根据向导指引安装 Chrome 扩展
+            3. 在 X/Twitter 页面使用书签按钮保存内容
+
+            ### 系统要求
+            - Mac: macOS 12+
+            - Windows: Windows 10+
+            - Chrome 浏览器
+          files: |
+            X2MD_Mac.zip
+            X2MD_Windows.zip
+          draft: false
+          prerelease: false

@@ -1,0 +1,2 @@
+pystray>=0.19
+Pillow>=10.0
