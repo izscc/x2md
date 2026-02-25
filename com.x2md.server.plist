@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.x2md.server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/opt/python@3.13/bin/python3</string>
+    <string>/Users/zscc.in/Desktop/Py_Test/x2md/server.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/zscc.in/Desktop/Py_Test/x2md</string>
+
+  <!-- 加入 PATH 确保子进程能找到依赖 -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/opt/python@3.13/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>/Users/zscc.in</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- macOS Ventura+ 用 KeepAlive dict 形式更稳定 -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/zscc.in/Desktop/Py_Test/x2md/x2md.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/zscc.in/Desktop/Py_Test/x2md/x2md.log</string>
+
+  <!-- 崩溃后5秒重启 -->
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>

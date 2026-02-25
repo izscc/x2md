@@ -1,0 +1,49 @@
+{
+    "manifest_version": 3,
+    "name": "X2MD - 推特书签转Markdown",
+    "version": "1.0.0",
+    "description": "点击推特书签按钮，自动将推文/X Article 保存为 Obsidian Markdown 文件",
+    "permissions": [
+        "storage",
+        "notifications",
+        "cookies",
+        "tabs",
+        "scripting"
+    ],
+    "host_permissions": [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*",
+        "http://127.0.0.1:9527/*",
+        "https://cdn.syndication.twimg.com/*",
+        "https://publish.twitter.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*.twitter.com/*",
+                "*://*.x.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "options_page": "options.html"
+}

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>X2MD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 280px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e7e9ea;
+    }
+    .header {
+      background: linear-gradient(135deg, #1d9bf0 0%, #0d6efd 100%);
+      padding: 14px 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-logo { font-size: 22px; }
+    .header-title { font-size: 16px; font-weight: 700; letter-spacing: .3px; }
+    .header-sub { font-size: 11px; opacity: .8; margin-top: 1px; }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: #1a1f2e;
+      border-bottom: 1px solid #2a2f3e;
+      font-size: 13px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.online { background: #00ba7c; box-shadow: 0 0 6px #00ba7c88; }
+    .dot.offline { background: #f4212e; box-shadow: 0 0 6px #f4212e88; }
+    .status-text { flex: 1; }
+    .status-hint { font-size: 11px; color: #71767b; margin-top: 1px; }
+    .body { padding: 14px 16px; }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #71767b;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 8px;
+    }
+    .path-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+    .path-item {
+      background: #1a1f2e;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 11px;
+      color: #8b98a5;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+    .footer {
+      padding: 10px 16px;
+      border-top: 1px solid #2a2f3e;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      border-radius: 20px;
+      border: 1px solid #2a2f3e;
+      background: transparent;
+      color: #1d9bf0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background .15s;
+    }
+    .btn:hover { background: #1d9bf010; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-logo">🔖</div>
+    <div>
+      <div class="header-title">X2MD</div>
+      <div class="header-sub">推特书签 → Obsidian</div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <div>
+      <div class="status-text" id="status-text">检测中…</div>
+      <div class="status-hint" id="status-hint">localhost:9527</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="section-title">保存路径</div>
+    <div class="path-list" id="path-list">
+      <div class="path-item">加载中…</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a class="btn" href="options.html" target="_blank">⚙️ 打开设置</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
