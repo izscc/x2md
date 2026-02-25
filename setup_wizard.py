@@ -142,9 +142,9 @@ class SetupWizard:
 
         frame = tk.Frame(parent, bg=s["bg"], padx=2, pady=2,
                          highlightbackground=s["bg"], highlightthickness=1)
-        lbl = tk.Label(frame, text=text, font=FONT(14, "bold"),
+        lbl = tk.Label(frame, text=text, font=FONT(16, "bold"),
                        fg=s["fg"], bg=s["bg"],
-                       padx=22, pady=10, cursor="hand2")
+                       padx=32, pady=12, cursor="hand2")
         lbl.pack()
 
         # 悬停效果 + 点击事件
