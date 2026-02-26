@@ -26,6 +26,7 @@ a = Analysis(
         'PIL.Image',
         'PIL.ImageDraw',
         'PIL.ImageFont',
+        'certifi',
     ],
     hookspath=[],
     hooksconfig={},

@@ -9,6 +9,7 @@ x2md 本地服务器
 import json
 import os
 import re
+import ssl
 import sys
 import logging
 import threading
@@ -16,6 +17,19 @@ import urllib.request
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+
+def _build_ssl_context():
+    """构建 SSL 上下文：优先使用 certifi 证书包，否则回退到不验证模式"""
+    try:
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        # certifi 未安装，创建不验证证书的上下文（仅用于下载媒体文件）
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 # ─────────────────────────────────────────────
@@ -104,7 +118,8 @@ def download_video_async(url: str, save_path: str, filename: str):
             out_file = os.path.join(save_path, filename)
             
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response, open(out_file, 'wb') as out_file_handle:
+            ssl_ctx = _build_ssl_context()
+            with urllib.request.urlopen(req, context=ssl_ctx) as response, open(out_file, 'wb') as out_file_handle:
                 while True:
                     chunk = response.read(8192)
                     if not chunk:
