@@ -1,0 +1,70 @@
+<svg width="1200" height="700" viewBox="0 0 1200 700" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1200" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF7"/>
+      <stop offset="1" stop-color="#F7FBFF"/>
+    </linearGradient>
+    <filter id="soft" x="0" y="0" width="1200" height="700" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#A0AEC0" flood-opacity="0.25"/>
+    </filter>
+    <marker id="arr2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 z" fill="#1D4F91"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg2)"/>
+  <text x="48" y="64" fill="#1A365D" font-size="34" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">X2MD 使用场景示意</text>
+  <text x="48" y="98" fill="#3A5B7A" font-size="18" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">把碎片内容沉淀到 Obsidian，形成可检索的个人知识库</text>
+
+  <g filter="url(#soft)">
+    <rect x="430" y="180" width="340" height="180" rx="18" fill="#FFFFFF" stroke="#C8DDF0"/>
+    <text x="450" y="226" fill="#12355B" font-size="24" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">X2MD 核心流程</text>
+    <text x="450" y="262" fill="#355372" font-size="17" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">X/Twitter → Chrome 扩展 → 本地服务</text>
+    <text x="450" y="292" fill="#355372" font-size="17" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">→ Markdown + 图片/视频 → Obsidian</text>
+    <rect x="450" y="312" width="210" height="30" rx="8" fill="#EAF4FF"/>
+    <text x="462" y="333" fill="#1D4F91" font-size="14" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">支持 Tweet / Thread / Note</text>
+  </g>
+
+  <g filter="url(#soft)">
+    <rect x="70" y="420" width="310" height="210" rx="16" fill="#FFFFFF" stroke="#F2C58D"/>
+    <text x="90" y="460" fill="#7A3E00" font-size="22" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">场景 A：资料收藏</text>
+    <text x="90" y="500" fill="#7A4B15" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">把行业观点、技术贴、产品更新</text>
+    <text x="90" y="526" fill="#7A4B15" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">快速归档到 Obsidian 素材库</text>
+    <text x="90" y="566" fill="#B05B00" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">收益：减少链接失效与信息丢失</text>
+  </g>
+
+  <g filter="url(#soft)">
+    <rect x="445" y="420" width="310" height="210" rx="16" fill="#FFFFFF" stroke="#9CD6B8"/>
+    <text x="465" y="460" fill="#14532D" font-size="22" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">场景 B：内容创作</text>
+    <text x="465" y="500" fill="#1F5D37" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">将 Thread 与 Note 转为可编辑 Markdown</text>
+    <text x="465" y="526" fill="#1F5D37" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">方便摘录、重组、二次写作</text>
+    <text x="465" y="566" fill="#0F7A41" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">收益：构建稳定选题与素材管线</text>
+  </g>
+
+  <g filter="url(#soft)">
+    <rect x="820" y="420" width="310" height="210" rx="16" fill="#FFFFFF" stroke="#AFC7F7"/>
+    <text x="840" y="460" fill="#1E3A8A" font-size="22" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">场景 C：个人知识库</text>
+    <text x="840" y="500" fill="#264A9A" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">统一 Front Matter 与文件命名规范</text>
+    <text x="840" y="526" fill="#264A9A" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">长期沉淀为可检索、可关联笔记</text>
+    <text x="840" y="566" fill="#2C5CC5" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">收益：让碎片信息变成结构化资产</text>
+  </g>
+
+  <line x1="430" y1="270" x2="280" y2="420" stroke="#1D4F91" stroke-width="3" marker-end="url(#arr2)"/>
+  <line x1="600" y1="360" x2="600" y2="418" stroke="#1D4F91" stroke-width="3" marker-end="url(#arr2)"/>
+  <line x1="770" y1="270" x2="920" y2="420" stroke="#1D4F91" stroke-width="3" marker-end="url(#arr2)"/>
+
+  <rect x="48" y="120" width="330" height="170" rx="14" fill="#FFFFFF" stroke="#C8DDF0"/>
+  <text x="68" y="160" fill="#12355B" font-size="20" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">输入端（X/Twitter）</text>
+  <text x="68" y="196" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">• 普通推文</text>
+  <text x="68" y="224" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">• Thread 长贴</text>
+  <text x="68" y="252" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">• Note 长文（Article）</text>
+
+  <rect x="822" y="120" width="330" height="170" rx="14" fill="#FFFFFF" stroke="#C8DDF0"/>
+  <text x="842" y="160" fill="#12355B" font-size="20" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">输出端（Obsidian）</text>
+  <text x="842" y="196" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">• Markdown 文件</text>
+  <text x="842" y="224" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">• 图片原图链接</text>
+  <text x="842" y="252" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">• 本地视频嵌入引用</text>
+
+  <line x1="378" y1="205" x2="428" y2="242" stroke="#1D4F91" stroke-width="3" marker-end="url(#arr2)"/>
+  <line x1="772" y1="242" x2="820" y2="205" stroke="#1D4F91" stroke-width="3" marker-end="url(#arr2)"/>
+</svg>

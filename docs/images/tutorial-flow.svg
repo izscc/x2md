@@ -1,0 +1,70 @@
+<svg width="1200" height="520" viewBox="0 0 1200 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FBFF"/>
+      <stop offset="1" stop-color="#EEF6FF"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F8FBFF"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1200" height="520" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#93B7D8" flood-opacity="0.28"/>
+    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 z" fill="#2B6CB0"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="520" fill="url(#bg)"/>
+  <text x="48" y="62" fill="#0F2740" font-size="34" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">X2MD 快速上手流程（3 分钟）</text>
+  <text x="48" y="96" fill="#385A7B" font-size="18" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">从下载客户端到保存第一条推文</text>
+
+  <g filter="url(#shadow)">
+    <rect x="50" y="150" width="205" height="220" rx="16" fill="url(#card)" stroke="#B9D3EB"/>
+    <text x="66" y="190" fill="#0F2740" font-size="20" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">1. 下载客户端</text>
+    <text x="66" y="230" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">从 GitHub Releases</text>
+    <text x="66" y="255" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">下载 Mac/Windows 包</text>
+    <text x="66" y="300" fill="#2B6CB0" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">产物: X2MD.app / X2MD.exe</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="280" y="150" width="205" height="220" rx="16" fill="url(#card)" stroke="#B9D3EB"/>
+    <text x="296" y="190" fill="#0F2740" font-size="20" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">2. 首次配置</text>
+    <text x="296" y="230" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">运行后进入向导</text>
+    <text x="296" y="255" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">设置 Markdown/视频路径</text>
+    <text x="296" y="300" fill="#2B6CB0" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">服务默认端口: 9527</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="510" y="150" width="205" height="220" rx="16" fill="url(#card)" stroke="#B9D3EB"/>
+    <text x="526" y="190" fill="#0F2740" font-size="20" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">3. 安装扩展</text>
+    <text x="526" y="230" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">Chrome 开启开发者模式</text>
+    <text x="526" y="255" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">加载 extension 文件夹</text>
+    <text x="526" y="300" fill="#2B6CB0" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">扩展会自动探测服务状态</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="740" y="150" width="205" height="220" rx="16" fill="url(#card)" stroke="#B9D3EB"/>
+    <text x="756" y="190" fill="#0F2740" font-size="20" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">4. 一键保存</text>
+    <text x="756" y="230" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">在 X/Twitter 页面</text>
+    <text x="756" y="255" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">点击书签按钮保存</text>
+    <text x="756" y="300" fill="#2B6CB0" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">支持 Tweet / Thread / Note</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="970" y="150" width="180" height="220" rx="16" fill="url(#card)" stroke="#B9D3EB"/>
+    <text x="986" y="190" fill="#0F2740" font-size="20" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-weight="700">5. 在 Obsidian</text>
+    <text x="986" y="230" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">自动生成 Markdown</text>
+    <text x="986" y="255" fill="#355372" font-size="16" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">附带图片与视频引用</text>
+    <text x="986" y="300" fill="#2B6CB0" font-size="15" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">便于二次整理与检索</text>
+  </g>
+
+  <line x1="255" y1="260" x2="278" y2="260" stroke="#2B6CB0" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="485" y1="260" x2="508" y2="260" stroke="#2B6CB0" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="715" y1="260" x2="738" y2="260" stroke="#2B6CB0" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="945" y1="260" x2="968" y2="260" stroke="#2B6CB0" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="48" y="420" width="1104" height="62" rx="12" fill="#E8F3FF" stroke="#B9D3EB"/>
+  <text x="68" y="458" fill="#1F4E79" font-size="18" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">提示：首次配置后，X2MD 会常驻托盘；扩展与本地服务通过 http://127.0.0.1:9527 通信。</text>
+</svg>
