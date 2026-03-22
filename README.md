@@ -21,10 +21,11 @@
 ### 第 1 步：下载客户端（基于 GitHub Release）
 
 - 打开 [Releases](https://github.com/izscc/x2md/releases/latest)
-- 当前最新版本（截至 2026-03-22）：[`v1.0.4`](https://github.com/izscc/x2md/releases/tag/v1.0.4)
+- 当前最新版本（截至 2026-03-22）：[`v1.0.5`](https://github.com/izscc/x2md/releases/tag/v1.0.5)
 - 下载对应平台包：
-  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/download/v1.0.4/X2MD_Mac.zip)
-  - Windows: [`X2MD_Windows.zip`](https://github.com/izscc/x2md/releases/download/v1.0.4/X2MD_Windows.zip)
+  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/download/v1.0.5/X2MD_Mac.zip)
+  - Windows: [`X2MD_Windows.zip`](https://github.com/izscc/x2md/releases/download/v1.0.5/X2MD_Windows.zip)
+  - 扩展: [`X2MD_Extension.zip`](https://github.com/izscc/x2md/releases/download/v1.0.5/X2MD_Extension.zip)
 
 ### 第 2 步：首次运行并完成向导
 
@@ -39,7 +40,7 @@
 1. 打开 `chrome://extensions/`
 2. 开启“开发者模式”
 3. 点击“加载已解压的扩展程序”
-4. 选择本项目的 [`extension`](./extension) 目录
+4. 选择解压后的 `X2MD_Extension` 目录，或本项目的 [`extension`](./extension) 目录
 
 ### 第 4 步：保存第一条推文
 

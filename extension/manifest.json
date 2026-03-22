@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "X2MD - 推特书签转Markdown",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "description": "点击推特书签按钮，自动将推文/X Article 保存为 Obsidian Markdown 文件",
     "permissions": [
         "storage",
