@@ -7,7 +7,83 @@
  *   3. DOM 原始数据（content.js 采集到的）— 最后兜底
  */
 
+importScripts("media_helpers.js");
+importScripts("twitter_graphql.js");
+importScripts("twitter_graphql.js");
+
 const SERVER_BASE = "http://127.0.0.1:9527";
+const GRAPHQL_DISCOVERY_CACHE = new Map();
+
+function hasDiscoveredOperationIds(ids) {
+    return Array.isArray(ids?.TweetDetail) && ids.TweetDetail.length > 0 ||
+        Array.isArray(ids?.TweetResultByRestId) && ids.TweetResultByRestId.length > 0;
+}
+
+function mergeDiscoveredOperationIds(primary = {}, secondary = {}) {
+    return {
+        TweetDetail: mergeOperationIds(primary.TweetDetail, secondary.TweetDetail),
+        TweetResultByRestId: mergeOperationIds(primary.TweetResultByRestId, secondary.TweetResultByRestId),
+    };
+}
+
+async function discoverGraphQLOperationIdsFromPage(pageUrl) {
+    if (!pageUrl) return { TweetDetail: [], TweetResultByRestId: [] };
+
+    let cacheKey = pageUrl;
+    try {
+        cacheKey = new URL(pageUrl).origin;
+    } catch (error) { }
+
+    const cached = GRAPHQL_DISCOVERY_CACHE.get(cacheKey);
+    if (cached && hasDiscoveredOperationIds(cached)) {
+        return cached;
+    }
+
+    try {
+        const htmlResp = await fetch(pageUrl, {
+            credentials: "include",
+            headers: {
+                "x-twitter-active-user": "yes",
+                "x-twitter-client-language": "zh-cn",
+            },
+        });
+        if (!htmlResp.ok) {
+            return { TweetDetail: [], TweetResultByRestId: [] };
+        }
+
+        const html = await htmlResp.text();
+        const scriptUrls = extractScriptUrlsFromHtml(html, pageUrl)
+            .filter((url) => url.includes("abs.twimg.com") && url.endsWith(".js"))
+            .sort((left, right) => {
+                const leftMain = left.includes("/main.");
+                const rightMain = right.includes("/main.");
+                if (leftMain === rightMain) return 0;
+                return leftMain ? -1 : 1;
+            });
+
+        let discovered = { TweetDetail: [], TweetResultByRestId: [] };
+
+        for (const scriptUrl of scriptUrls) {
+            const scriptResp = await fetch(scriptUrl);
+            if (!scriptResp.ok) continue;
+
+            const scriptText = await scriptResp.text();
+            discovered = mergeDiscoveredOperationIds(
+                discovered,
+                extractGraphQLOperationIdsFromScriptText(scriptText),
+            );
+
+            if (hasDiscoveredOperationIds(discovered)) {
+                GRAPHQL_DISCOVERY_CACHE.set(cacheKey, discovered);
+                return discovered;
+            }
+        }
+    } catch (error) {
+        console.warn("[x2md] 自动探测 GraphQL operation id 失败：", error);
+    }
+
+    return { TweetDetail: [], TweetResultByRestId: [] };
+}
 
 // ─────────────────────────────────────────────
 // 获取 Twitter Note 文章内容（通过后台 Tab 渲染提取）
@@ -65,76 +141,9 @@ async function fetchNoteContent(articleUrl) {
                                     || document.querySelector('h1');
                                 const title = titleEl ? titleEl.innerText.trim() : document.title.replace(/\s*[-|]\s*X\s*$/, '').trim();
 
-                                // ── 深度遍历 DOM 还原 Markdown 及排版位置 ────────────
-                                function convertToMarkdown(element) {
-                                    if (element.nodeType === 3) return element.textContent; // TEXT_NODE
-                                    if (element.nodeType !== 1) return ""; // ELEMENT_NODE
-
-                                    if (element.closest('[data-testid="twitter-article-title"]')) return "";
-                                    if (element.closest('[data-testid="User-Name"]')) return "";
-
-                                    const tag = element.tagName.toLowerCase();
-                                    if (tag === "video") {
-                                        const poster = element.getAttribute("poster") || "";
-                                        const m = poster.match(/(?:video_thumb|tweet_video_thumb|amplify_video_thumb)\/(\d+)\//);
-                                        if (m) {
-                                            return `\n[[VIDEO_HOLDER_${m[1]}]]\n`;
-                                        }
-                                    }
-                                    if (tag === "img") {
-                                        const src = element.src || "";
-                                        if (element.closest('[data-testid="videoComponent"]') || src.includes("video_thumb")) {
-                                            const m = src.match(/(?:video_thumb|tweet_video_thumb|amplify_video_thumb)\/(\d+)\//);
-                                            if (m) {
-                                                return `\n[[VIDEO_HOLDER_${m[1]}]]\n`;
-                                            }
-                                        }
-                                        if (src.includes("emoji")) return element.alt || "";
-                                        if (src && src.includes("pbs.twimg.com") && !src.includes("profile_images")) {
-                                            try {
-                                                const u = new URL(src);
-                                                u.searchParams.set("name", "orig");
-                                                return `\n![](${u.href})\n`;
-                                            } catch (e) {
-                                                return `\n![](${src})\n`;
-                                            }
-                                        }
-                                        return "";
-                                    }
-                                    if (tag === "svg" || tag === "script" || tag === "style") return "";
-                                    if (tag === "br") return "\n";
-                                    if (tag === "hr") return "\n---\n";
-
-                                    if (tag === "pre") {
-                                        const code = element.innerText || element.textContent || "";
-                                        return `\n\`\`\`\n${code}\n\`\`\`\n`;
-                                    }
-
-                                    let md = "";
-                                    for (const child of element.childNodes) {
-                                        md += convertToMarkdown(child);
-                                    }
-
-                                    let isBlock = ["p", "div", "section", "article", "blockquote", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tag);
-
-                                    if (tag === "h1") md = `\n# ${md.trim()}\n`;
-                                    else if (tag === "h2") md = `\n## ${md.trim()}\n`;
-                                    else if (tag === "h3") md = `\n### ${md.trim()}\n`;
-                                    else if (tag === "h4" || tag === "h5" || tag === "h6") md = `\n#### ${md.trim()}\n`;
-                                    else if (tag === "blockquote") {
-                                        const linesArr = md.trim().split('\n').filter(l => l.trim() !== '');
-                                        md = '\n' + linesArr.map(l => '> ' + l).join('\n') + '\n';
-                                    }
-                                    else if (tag === "li") md = `\n- ${md.trim()}\n`;
-                                    else if (isBlock) md = `\n${md}\n`;
-
-                                    return md;
-                                }
-
                                 let contentStr = "";
                                 try {
-                                    contentStr = convertToMarkdown(container);
-                                    contentStr = contentStr.replace(/\n{3,}/g, '\n\n').trim();
+                                    contentStr = extractArticleMarkdown(container);
                                 } catch (e) {
                                     contentStr = container.innerText || "";
                                 }
@@ -169,7 +178,7 @@ async function fetchNoteContent(articleUrl) {
                                         extractedVideos.push(bestUrl);
                                         return `\n[MEDIA_VIDEO_URL:${bestUrl}]\n`;
                                     }
-                                    return `\n🎞️ [视频/GIF]\n`;
+                                    return `\n[[VIDEO_HOLDER_${mediaId}]]\n`;
                                 });
 
                                 const finalVideos = Array.from(new Set(extractedVideos));
@@ -254,7 +263,7 @@ async function getCookieValue(name) {
 // 策略1：Twitter GraphQL API - TweetDetail
 // 携带浏览器 cookie（需用户已登录 x.com）
 // ─────────────────────────────────────────────
-async function fetchViaGraphQL(tweetId) {
+async function fetchViaGraphQL(tweetId, options = {}) {
     try {
         // 获取 CSRF token（ct0 cookie）
         const csrfToken = await getCookieValue("ct0");
@@ -262,122 +271,73 @@ async function fetchViaGraphQL(tweetId) {
             console.warn("[x2md] 未找到 ct0 cookie，跳过 GraphQL");
             return null;
         }
-
-        const variables = JSON.stringify({
-            focalTweetId: tweetId,
-            referrer: "home",
-            count: 20,
-            includePromotedContent: false,
-            withCommunity: true,
-            withQuickPromoteEligibilityTweetFields: false,
-            withBirdwatchNotes: false,
-            withVoice: false,
-        });
-
-        const features = JSON.stringify({
-            rweb_tipjar_consumption_enabled: true,
-            responsive_web_graphql_exclude_directive_enabled: true,
-            verified_phone_label_enabled: false,
-            creator_subscriptions_tweet_preview_api_enabled: true,
-            responsive_web_graphql_timeline_navigation_enabled: true,
-            responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
-            communities_web_enable_tweet_community_results_fetch: true,
-            c9s_tweet_anatomy_moderator_badge_enabled: true,
-            articles_preview_enabled: true,
-            responsive_web_edit_tweet_api_enabled: true,
-            graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
-            view_counts_everywhere_api_enabled: true,
-            longform_notetweets_consumption_enabled: true,
-            responsive_web_twitter_article_tweet_consumption_enabled: true,
-            tweet_awards_web_tipping_enabled: false,
-            creator_subscriptions_quote_tweet_preview_enabled: false,
-            freedom_of_speech_not_reach_fetch_enabled: true,
-            standardized_nudges_misinfo: true,
-            tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
-            rweb_video_timestamps_enabled: true,
-            longform_notetweets_rich_text_read_enabled: true,
-            longform_notetweets_inline_media_enabled: true,
-            responsive_web_enhance_cards_enabled: false,
-        });
-
-        const url = `https://x.com/i/api/graphql/` +
-            `nBS-WpgA6ZG0CyNHD517JQ/TweetDetail` +
-            `?variables=${encodeURIComponent(variables)}&features=${encodeURIComponent(features)}`;
-
-        const resp = await fetch(url, {
-            credentials: "include",
-            headers: {
-                "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
-                "X-Csrf-Token": csrfToken,
-                "Content-Type": "application/json",
-                "x-twitter-active-user": "yes",
-                "x-twitter-client-language": "zh-cn",
-            }
-        });
-
-        if (!resp.ok) {
-            console.warn(`[x2md] GraphQL 返回 ${resp.status}`);
-            return null;
+        let discoveredOperationIds = options.graphqlOperationIds || {};
+        if (!hasDiscoveredOperationIds(discoveredOperationIds) && options.pageUrl) {
+            discoveredOperationIds = await discoverGraphQLOperationIdsFromPage(options.pageUrl);
         }
 
-        const json = await resp.json();
+        const headers = {
+            "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+            "X-Csrf-Token": csrfToken,
+            "Content-Type": "application/json",
+            "x-twitter-active-user": "yes",
+            "x-twitter-client-language": "zh-cn",
+        };
 
-        // 遍历 timeline entries 找目标推文及其可能包含的长串跟帖(Thread)
-        const instructions = json?.data?.threaded_conversation_with_injections_v2?.instructions || [];
+        const plans = buildGraphQLRequestPlans(tweetId, {
+            discoveredOperationIds,
+        });
 
-        let allTweets = [];
-        for (const instr of instructions) {
-            if (instr.type !== "TimelineAddEntries") continue;
-            for (const entry of (instr.entries || [])) {
-                if (entry.entryId && entry.entryId.startsWith("tweet-")) {
-                    const res = entry?.content?.itemContent?.tweet_results?.result;
-                    if (res) allTweets.push(res);
-                } else if (entry.entryId && entry.entryId.startsWith("conversationthread-")) {
-                    for (const item of (entry.content?.items || [])) {
-                        const res = item?.item?.itemContent?.tweet_results?.result;
-                        if (res) allTweets.push(res);
+        for (const plan of plans) {
+            const url = buildGraphQLUrl(plan);
+            const resp = await fetch(url, {
+                credentials: "include",
+                headers,
+            });
+
+            if (!resp.ok) {
+                console.warn(`[x2md] ${plan.operationName}(${plan.operationId}) 返回 ${resp.status}`);
+                continue;
+            }
+
+            const json = await resp.json();
+            const mainTweet = extractMainTweetResult(json, tweetId);
+            if (!mainTweet) {
+                console.warn(`[x2md] ${plan.operationName}(${plan.operationId}) 未找到目标推文`);
+                continue;
+            }
+
+            const mainParsed = parseLegacyTweet(mainTweet, mainTweet.core?.user_results?.result?.legacy);
+            if (!mainParsed) {
+                continue;
+            }
+
+            const allTweets = extractTimelineTweets(json);
+            const authorRestId = mainTweet.core?.user_results?.result?.rest_id;
+            let threadParsed = [];
+
+            if (authorRestId && allTweets.length > 0) {
+                const sameAuthorTweets = allTweets.filter((result) =>
+                    result.core?.user_results?.result?.rest_id === authorRestId &&
+                    BigInt(result.legacy?.id_str || 0) > BigInt(tweetId)
+                );
+                sameAuthorTweets.sort((left, right) => BigInt(left.legacy?.id_str || 0) < BigInt(right.legacy?.id_str || 0) ? -1 : 1);
+
+                for (const threadTweet of sameAuthorTweets) {
+                    const parsed = parseLegacyTweet(threadTweet, threadTweet.core?.user_results?.result?.legacy);
+                    if (parsed && (parsed.text || parsed.images.length || parsed.videos.length)) {
+                        threadParsed.push(parsed);
                     }
                 }
             }
+
+            mainParsed.thread_tweets = threadParsed;
+            mainParsed._graphql_source = `${plan.operationName}:${plan.operationId}`;
+            return mainParsed;
         }
 
-        let mainTweet = null;
-        for (const res of allTweets) {
-            if ((res.rest_id || res.tweet?.rest_id) === tweetId || (res.legacy && res.legacy.id_str === tweetId)) {
-                mainTweet = res;
-                break;
-            }
-        }
-
-        if (!mainTweet) {
-            console.warn("[x2md] GraphQL 响应中未找到目标推文");
-            return null;
-        }
-
-        const mainParsed = parseLegacyTweet(mainTweet, mainTweet.core?.user_results?.result?.legacy);
-        if (!mainParsed) return null;
-
-        // 提取 Thread 并按 ID 排序（时间顺序，确保是同一作者在这条推文后发的跟帖）
-        const authorRestId = mainTweet.core?.user_results?.result?.rest_id;
-        let threadParsed = [];
-        if (authorRestId) {
-            const sameAuthorTweets = allTweets.filter(res =>
-                res.core?.user_results?.result?.rest_id === authorRestId &&
-                BigInt(res.legacy?.id_str || 0) > BigInt(tweetId)
-            );
-            // 按照推文发布时间(id_str的大小)进行正向升序
-            sameAuthorTweets.sort((a, b) => (BigInt(a.legacy?.id_str || 0) < BigInt(b.legacy?.id_str || 0) ? -1 : 1));
-
-            for (const st of sameAuthorTweets) {
-                const parsed = parseLegacyTweet(st, st.core?.user_results?.result?.legacy);
-                if (parsed && (parsed.text || parsed.images.length || parsed.videos.length)) {
-                    threadParsed.push(parsed);
-                }
-            }
-        }
-
-        mainParsed.thread_tweets = threadParsed;
-        return mainParsed;
+        console.warn("[x2md] 所有 GraphQL 候选请求均失败");
+        return null;
 
     } catch (err) {
         console.error("[x2md] GraphQL API 异常：", err);
@@ -439,25 +399,33 @@ function parseLegacyTweet(result, userLegacy) {
             if (m.media_url_https) {
                 images.push(m.media_url_https + "?name=orig"); // 保存视频的缩略图作为备份或底图
             }
-            if (m.video_info && m.video_info.variants) {
-                // 筛选出真实的 MP4 文件并挑选最高码率（最高清）的独立链接
-                const mp4Variants = m.video_info.variants.filter(v => v.content_type === "video/mp4" && typeof v.bitrate !== "undefined");
-                if (mp4Variants.length > 0) {
-                    mp4Variants.sort((a, b) => b.bitrate - a.bitrate);
-                    videos.push(mp4Variants[0].url);
-                    if (m.video_info.duration_millis) {
-                        videoDurations.push(m.video_info.duration_millis);
-                    }
+            const bestVariant = selectBestMp4Variant(m.video_info?.variants);
+            if (bestVariant?.url) {
+                videos.push(bestVariant.url);
+                if (m.video_info?.duration_millis) {
+                    videoDurations.push(m.video_info.duration_millis);
                 }
             }
         }
     }
 
+    const articleMedia = extractArticleMediaVideos(result);
+    videos.push(...articleMedia.videos);
+    videoDurations.push(...articleMedia.videoDurations);
+
     const author = userLegacy?.name || "";
     const handle = userLegacy?.screen_name ? "@" + userLegacy.screen_name : "";
     const published = legacy.created_at || "";
 
-    return { text, images, videos, videoDurations, author, handle, published };
+    return {
+        text,
+        images: Array.from(new Set(images)),
+        videos: Array.from(new Set(videos)),
+        videoDurations,
+        author,
+        handle,
+        published,
+    };
 }
 
 // ─────────────────────────────────────────────
@@ -500,7 +468,10 @@ async function fetchFullTweetData(tweetData) {
     console.log("[x2md] 开始获取完整推文：", tweetId);
 
     // 策略1：GraphQL API
-    let apiResult = await fetchViaGraphQL(tweetId);
+    let apiResult = await fetchViaGraphQL(tweetId, {
+        graphqlOperationIds: tweetData.graphql_operation_ids,
+        pageUrl: tweetData.url,
+    });
 
     // 策略2：oEmbed（GraphQL 失败时）
     if (!apiResult || !apiResult.text) {
@@ -633,15 +604,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     if (apiData.videos) finalVideos.push(...apiData.videos);
                     if (data.noteResultVideos) finalVideos.push(...data.noteResultVideos);
 
-                    let extractedVideoUrls = [];
-                    contentToFix = contentToFix.replace(/\[\[VIDEO_HOLDER_(\d+)\]\]/g, (match, mediaId) => {
-                        const bestUrl = finalVideos.find(v => v.includes(`/${mediaId}/`));
-                        if (bestUrl) {
-                            extractedVideoUrls.push(bestUrl);
-                            return `\n[MEDIA_VIDEO_URL:${bestUrl}]\n`;
-                        }
-                        return `\n🎞️ [推特媒体：视频/GIF由于隐藏过深提取失败]\n`;
-                    });
+                    const filledContent = fillArticleVideoPlaceholders(contentToFix, finalVideos);
+                    const extractedVideoUrls = Array.from(
+                        filledContent.matchAll(/\[MEDIA_VIDEO_URL:(.+?)\]/g),
+                        (match) => match[1],
+                    );
+                    contentToFix = filledContent;
 
                     if (data.article_content) data.article_content = contentToFix;
                     else data.content = contentToFix;

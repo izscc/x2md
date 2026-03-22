@@ -276,13 +276,11 @@ def main():
             logger.info("设置向导被取消，退出。")
             sys.exit(0)
 
-    # 启动 HTTP Server
-    start_server_thread()
-
     # 尝试启动系统托盘
     try:
         import pystray  # noqa: F401
         from PIL import Image  # noqa: F401
+        start_server_thread()
         run_tray()
     except ImportError:
         run_cli_mode()

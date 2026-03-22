@@ -252,89 +252,9 @@ function detectAndExtractArticle() {
 
     if (!bodyContainer) return null; // 无法定位专有正文容器时直接放弃，让背景去真实页面解析
 
-    // ── 深度遍历 DOM 还原 Markdown 及排版位置 ────────────
-    function convertToMarkdown(element) {
-        if (element.nodeType === 3) return element.textContent; // TEXT_NODE
-        if (element.nodeType !== 1) return ""; // ELEMENT_NODE
-
-        if (element.closest('[data-testid="twitter-article-title"]')) return "";
-        if (element.closest('[data-testid="User-Name"]')) return "";
-
-        const tag = element.tagName.toLowerCase();
-
-        if (tag === "video") {
-            const poster = element.getAttribute("poster") || "";
-            const m = poster.match(/(?:video_thumb|tweet_video_thumb|amplify_video_thumb)\/(\d+)\//);
-            if (m) return `\n[[VIDEO_HOLDER_${m[1]}]]\n`;
-        }
-
-        if (tag === "img") {
-            const src = element.src || "";
-            if (element.closest('[data-testid="videoComponent"]') || src.includes("video_thumb")) {
-                const m = src.match(/(?:video_thumb|tweet_video_thumb|amplify_video_thumb)\/(\d+)\//);
-                if (m) return `\n[[VIDEO_HOLDER_${m[1]}]]\n`;
-            }
-            if (src.includes("emoji")) return element.alt || "";
-            if (src && src.includes("pbs.twimg.com") && !src.includes("profile_images")) {
-                try {
-                    const u = new URL(src);
-                    u.searchParams.set("name", "orig");
-                    return `\n![](${u.href})\n`;
-                } catch (e) {
-                    return `\n![](${src})\n`;
-                }
-            }
-            return "";
-        }
-        if (tag === "svg" || tag === "script" || tag === "style") return "";
-        if (tag === "br") return "\n";
-        if (tag === "hr") return "\n---\n";
-
-        if (tag === "pre") {
-            const code = element.innerText || element.textContent || "";
-            return `\n\`\`\`\n${code}\n\`\`\`\n`;
-        }
-
-        let md = "";
-        for (const child of element.childNodes) {
-            md += convertToMarkdown(child);
-        }
-
-        let isBold = ["b", "strong"].includes(tag);
-        // 推特文章内部通常用 span 加 css 来实现加粗
-        if (!isBold && tag === "span") {
-            try {
-                const fw = window.getComputedStyle(element).fontWeight;
-                if (fw === "bold" || parseInt(fw) >= 700) isBold = true;
-            } catch (e) { }
-        }
-
-        let isBlock = ["p", "div", "section", "article", "blockquote", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tag);
-
-        if (isBold && md.trim()) {
-            md = `**${md.replace(/\*\*/g, '')}**`;
-        }
-
-        if (tag === "h1") md = `\n# ${md.replace(/\*\*/g, '').trim()}\n`;
-        else if (tag === "h2") md = `\n## ${md.replace(/\*\*/g, '').trim()}\n`;
-        else if (tag === "h3") md = `\n### ${md.replace(/\*\*/g, '').trim()}\n`;
-        else if (tag === "h4" || tag === "h5" || tag === "h6") md = `\n#### ${md.replace(/\*\*/g, '').trim()}\n`;
-        else if (tag === "blockquote") {
-            const linesArr = md.trim().split('\n').filter(l => l.trim() !== '');
-            md = '\n' + linesArr.map(l => '> ' + l).join('\n') + '\n';
-        }
-        else if (tag === "li") md = `\n- ${md.trim()}\n`;
-
-        if (isBlock) md = `\n${md}\n`;
-
-        return md;
-    }
-
     let article_content = "";
     try {
-        article_content = convertToMarkdown(bodyContainer);
-        // 收拾多余空行，最多保留两个换行符
-        article_content = article_content.replace(/\n{3,}/g, '\n\n').trim();
+        article_content = extractArticleMarkdown(bodyContainer);
         if (!article_content) {
             article_content = bodyContainer.innerText.trim().slice(0, 5000);
         }
@@ -459,7 +379,8 @@ function detectAndExtractArticle() {
         article_title: articleTitle,
         article_content: article_content,
         images: extractedImages,
-        videos: finalVideos
+        videos: finalVideos,
+        graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
     };
 }
 
@@ -481,6 +402,26 @@ function extractThreadBasic(firstArticle, mainHandle) {
         if (text || images.length) thread.push({ text, images });
     }
     return thread;
+}
+
+function extractDiscoveredGraphQLOperationIds() {
+    const urls = [];
+
+    try {
+        for (const entry of performance.getEntriesByType("resource") || []) {
+            if (entry && typeof entry.name === "string") {
+                urls.push(entry.name);
+            }
+        }
+    } catch (error) { }
+
+    try {
+        const html = document.documentElement?.innerHTML || "";
+        const matches = html.match(/https?:\/\/x\.com\/i\/api\/graphql\/[A-Za-z0-9_-]+\/(?:TweetDetail|TweetResultByRestId)[^"'\\\s<]*/g) || [];
+        urls.push(...matches);
+    } catch (error) { }
+
+    return extractGraphQLOperationIdsFromUrls(urls);
 }
 
 // ─────────────────────────────────────────────
@@ -563,6 +504,7 @@ function captureAndSend(btn) {
                     handle: inlineArticle.handle || handle,
                     published: inlineArticle.published || published,
                     images: inlineArticle.images, // 透传已经过去重的剩余外部图
+                    graphql_operation_ids: inlineArticle.graphql_operation_ids || extractDiscoveredGraphQLOperationIds(),
                 });
                 return;
             }
@@ -580,6 +522,7 @@ function captureAndSend(btn) {
             author, handle, published, images,
             text: extractTweetTextBasic(article),
             thread_tweets: [],
+            graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
         });
         return;
     }
@@ -589,7 +532,17 @@ function captureAndSend(btn) {
     const thread_tweets = extractThreadBasic(article, handle);
 
     console.log("[x2md] 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40) });
-    sendToBackground({ author, handle, text, published, url: tweetUrl, images, thread_tweets, type: "tweet" });
+    sendToBackground({
+        author,
+        handle,
+        text,
+        published,
+        url: tweetUrl,
+        images,
+        thread_tweets,
+        type: "tweet",
+        graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
+    });
 }
 
 function sendToBackground(data) {

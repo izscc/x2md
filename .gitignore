@@ -1,5 +1,6 @@
 # Python
 venv/
+.build-venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -9,6 +10,7 @@ __pycache__/
 build/
 dist/
 *.spec.bak
+*.pkg
 
 # 日志和运行时文件
 x2md.log
