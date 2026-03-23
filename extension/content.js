@@ -490,7 +490,7 @@ async function scrollAndCollectFeishuBlocks() {
         return null;
     }
 
-    const seen = new Map(); // blockId -> DOM element (clone)
+    const seen = new Map();
     const originalScrollTop = container.scrollTop;
 
     function collect() {
@@ -498,38 +498,44 @@ async function scrollAndCollectFeishuBlocks() {
         for (const block of blocks) {
             const id = block.getAttribute("data-block-id");
             if (!id || seen.has(id)) continue;
-            // 克隆节点以保留 DOM 状态（虚拟渲染会回收原节点）
             seen.set(id, block.cloneNode(true));
         }
     }
 
-    const step = Math.max(container.clientHeight * 0.7, 300);
-    const maxPos = container.scrollHeight;
+    const step = Math.max(container.clientHeight * 0.6, 400);
 
-    // 向下滚动收集
+    // 向下滚动收集 — 动态跟踪 scrollHeight，直到确认到底
     collect();
-    for (let pos = 0; pos <= maxPos + step; pos += step) {
+    let pos = 0;
+    let stuckCount = 0;
+    while (stuckCount < 3) {
+        pos += step;
         container.scrollTop = pos;
-        await new Promise((r) => setTimeout(r, 80));
+        await new Promise((r) => setTimeout(r, 100));
         collect();
+        // 检查是否真的滚到了（scrollHeight 可能在增长）
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        if (container.scrollTop >= maxScroll - 10) {
+            stuckCount++;
+            // scrollHeight 可能因为新渲染而增长，给它一点时间
+            await new Promise((r) => setTimeout(r, 150));
+            // 更新 pos 到当前实际位置，防止 scrollHeight 增长后漏掉
+            pos = container.scrollTop;
+        } else {
+            stuckCount = 0;
+        }
     }
-    container.scrollTop = maxPos;
-    await new Promise((r) => setTimeout(r, 200));
-    collect();
 
-    // 回滚收集（确保首屏区域的 block 也被收集）
-    for (let pos = maxPos; pos >= 0; pos -= step) {
-        container.scrollTop = pos;
+    // 回滚收集（补漏首屏区域 block）
+    for (let p = container.scrollHeight; p >= 0; p -= step) {
+        container.scrollTop = p;
         await new Promise((r) => setTimeout(r, 60));
         collect();
     }
 
-    // 恢复原始滚动位置
     container.scrollTop = originalScrollTop;
-
     console.log(`[x2md] 飞书滚动收集完成：${seen.size} unique blocks`);
 
-    // 按 blockId 排序返回（blockId 在飞书中通常是递增的）
     const sorted = Array.from(seen.entries())
         .sort((a, b) => {
             const na = parseInt(a[0], 10);
