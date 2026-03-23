@@ -36,7 +36,12 @@ def _build_ssl_context():
 # 路径工具（兼容 PyInstaller 打包后的目录结构）
 # ─────────────────────────────────────────────
 def get_app_dir():
-    """获取应用根目录（兼容 PyInstaller 打包后的路径）"""
+    """获取应用根目录（兼容 PyInstaller 打包后的路径）
+    Mac 上使用 ~/Library/Application Support/X2MD 确保升级不丢配置"""
+    if sys.platform == "darwin":
+        support_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
+        os.makedirs(support_dir, exist_ok=True)
+        return support_dir
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))

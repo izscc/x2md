@@ -17,9 +17,14 @@ import urllib.request
 # 路径工具
 # ─────────────────────────────────────────────
 def get_app_dir():
-    """获取应用根目录（用户可写目录：config、日志存放于此）"""
+    """获取应用根目录（用户可写目录：config、日志存放于此）
+    优先使用 ~/Library/Application Support/X2MD（升级不丢配置），
+    回退到可执行文件旁边的目录。"""
+    support_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
+    if sys.platform == "darwin":
+        os.makedirs(support_dir, exist_ok=True)
+        return support_dir
     if getattr(sys, 'frozen', False):
-        # 打包环境：Mac .app 的 MacOS 同级目录，或 Windows 的 exe 所在目录
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
@@ -258,9 +263,21 @@ def ensure_extension_accessible():
 
 
 def ensure_config_accessible():
-    """确保 config.json 在 APP_DIR（可写位置），打包后首次运行时从资源目录复制"""
+    """确保 config.json 在 APP_DIR（可写位置），打包后首次运行时从资源目录复制。
+    同时迁移旧版本遗留在 app 包内的配置。"""
     if os.path.exists(CONFIG_FILE):
         return
+
+    # 优先迁移旧版遗留在 MacOS/ 目录内的配置（用户升级场景）
+    if getattr(sys, 'frozen', False):
+        old_config = os.path.join(os.path.dirname(sys.executable), "config.json")
+        if os.path.isfile(old_config):
+            import shutil
+            shutil.copy2(old_config, CONFIG_FILE)
+            logger.info(f"已迁移旧版配置: {old_config} -> {CONFIG_FILE}")
+            return
+
+    # 从打包资源中复制默认配置
     src = os.path.join(RESOURCE_DIR, "config.json")
     if os.path.isfile(src):
         import shutil
