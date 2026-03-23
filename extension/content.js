@@ -841,6 +841,11 @@ function ensureFloatingSaveButton() {
         return;
     }
 
+    // 按钮已存在且 siteKey 未变 → 跳过更新，避免 MutationObserver 死循环
+    if (btn && btn.dataset.siteKey === siteKey) {
+        return;
+    }
+
     if (!btn) {
         btn = document.createElement("button");
         btn.id = SITE_FLOATING_SAVE_BUTTON_ID;
@@ -887,6 +892,15 @@ function bindAll() {
     ensureFloatingSaveButton();
 }
 
+let _bindAllTimer = null;
+function bindAllDebounced() {
+    if (_bindAllTimer) return;
+    _bindAllTimer = setTimeout(() => {
+        _bindAllTimer = null;
+        bindAll();
+    }, 200);
+}
+
 document.addEventListener("click", (event) => {
     if (!isLinuxDoTopicPage()) return;
     const btn = event.target?.closest?.(LINUX_DO_LIKE_SELECTOR);
@@ -894,7 +908,7 @@ document.addEventListener("click", (event) => {
     setTimeout(() => captureLinuxDoPost(btn), 250);
 }, true);
 
-const observer = new MutationObserver(bindAll);
+const observer = new MutationObserver(bindAllDebounced);
 observer.observe(document.body, { childList: true, subtree: true });
 requestRuntimeConfig();
 bindAll();
