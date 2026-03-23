@@ -33,12 +33,9 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         # 排除不需要的重量级模块以减小包体积
-        'tkinter',          # pystray 在 macOS 用 AppKit 不需要 Tk
         'unittest',
         'pydoc',
         'doctest',
-        'xml.etree',
-        'PIL.ImageTk',      # 不需要 Tk 画布支持
         'PIL.IcnsImagePlugin',
         'PIL.FpxImagePlugin',
         'PIL.McIdasImagePlugin',

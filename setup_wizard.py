@@ -67,6 +67,12 @@ class SetupWizard:
         y = (self.root.winfo_screenheight() - 580) // 2
         self.root.geometry(f"720x580+{x}+{y}")
 
+        # 确保窗口置顶可见（解决 LSUIElement app 窗口被遮挡的问题）
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self.root.after(300, lambda: self.root.attributes("-topmost", False))
+        self.root.focus_force()
+
         # 用户配置数据
         self.md_path = tk.StringVar(value=DEFAULT_MD_PATH)
         self.video_path = tk.StringVar(value=DEFAULT_VIDEO_PATH)

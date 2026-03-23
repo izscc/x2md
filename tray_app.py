@@ -257,6 +257,17 @@ def ensure_extension_accessible():
         EXT_DIR = target
 
 
+def ensure_config_accessible():
+    """确保 config.json 在 APP_DIR（可写位置），打包后首次运行时从资源目录复制"""
+    if os.path.exists(CONFIG_FILE):
+        return
+    src = os.path.join(RESOURCE_DIR, "config.json")
+    if os.path.isfile(src):
+        import shutil
+        shutil.copy2(src, CONFIG_FILE)
+        logger.info(f"已将默认配置复制到: {CONFIG_FILE}")
+
+
 def main():
     os.chdir(APP_DIR)
 
@@ -265,7 +276,8 @@ def main():
         run_setup_wizard()
         return
 
-    # 确保 extension 在用户可访问的位置
+    # 确保 config 和 extension 在用户可访问的位置
+    ensure_config_accessible()
     ensure_extension_accessible()
 
     # 首次运行：弹出设置向导
