@@ -18,14 +18,19 @@ from tkinter import filedialog
 # ─────────────────────────────────────────────
 def get_app_dir():
     """获取应用根目录（兼容 PyInstaller 打包后的路径）
-    Mac 上使用 ~/Library/Application Support/X2MD 确保升级不丢配置"""
+    Mac: ~/Library/Application Support/X2MD
+    Windows: %APPDATA%/X2MD
+    这样升级 app 不丢配置。"""
     if sys.platform == "darwin":
-        support_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
-        os.makedirs(support_dir, exist_ok=True)
-        return support_dir
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
+        d = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
+    elif sys.platform == "win32":
+        d = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "X2MD")
+    else:
+        if getattr(sys, 'frozen', False):
+            return os.path.dirname(sys.executable)
+        return os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 APP_DIR = get_app_dir()

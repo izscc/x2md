@@ -18,15 +18,19 @@ import urllib.request
 # ─────────────────────────────────────────────
 def get_app_dir():
     """获取应用根目录（用户可写目录：config、日志存放于此）
-    优先使用 ~/Library/Application Support/X2MD（升级不丢配置），
-    回退到可执行文件旁边的目录。"""
-    support_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
+    Mac: ~/Library/Application Support/X2MD
+    Windows: %APPDATA%/X2MD
+    这样升级 app 不丢配置。"""
     if sys.platform == "darwin":
-        os.makedirs(support_dir, exist_ok=True)
-        return support_dir
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
+        d = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
+    elif sys.platform == "win32":
+        d = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "X2MD")
+    else:
+        if getattr(sys, 'frozen', False):
+            return os.path.dirname(sys.executable)
+        return os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def get_resource_dir():
