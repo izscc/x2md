@@ -127,3 +127,38 @@ test("extractArticleMarkdown preserves inline mention layout", () => {
         "Follow me on X → [@rubenhassid](https://x.com/@rubenhassid)",
     );
 });
+
+test("extractArticleMarkdown folds a standalone language label into the following code fence", () => {
+    const tree = elementNode("div", {
+        children: [
+            elementNode("div", {
+                className: "public-DraftStyleDefault-block public-DraftStyleDefault-ltr",
+                style: { display: "block" },
+                children: [textNode("json")],
+            }),
+            elementNode("pre", {
+                children: [textNode('{\n  "hooks": {\n    "PostToolUse": []\n  }\n}')],
+            }),
+        ],
+    });
+
+    assert.equal(
+        extractArticleMarkdown(tree, { getComputedStyle }),
+        '```json\n{\n  "hooks": {\n    "PostToolUse": []\n  }\n}\n```',
+    );
+});
+
+test("extractArticleMarkdown keeps unlabeled code fences in the default format", () => {
+    const tree = elementNode("div", {
+        children: [
+            elementNode("pre", {
+                children: [textNode("/context\n/clear\n/compact")],
+            }),
+        ],
+    });
+
+    assert.equal(
+        extractArticleMarkdown(tree, { getComputedStyle }),
+        "```\n/context\n/clear\n/compact\n```",
+    );
+});

@@ -21,11 +21,11 @@
 ### 第 1 步：下载客户端（基于 GitHub Release）
 
 - 打开 [Releases](https://github.com/izscc/x2md/releases/latest)
-- 当前最新版本（截至 2026-03-22）：[`v1.0.5`](https://github.com/izscc/x2md/releases/tag/v1.0.5)
+- 当前最新版本（截至 2026-03-23）：[`v1.0.6`](https://github.com/izscc/x2md/releases/tag/v1.0.6)
 - 下载对应平台包：
-  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/download/v1.0.5/X2MD_Mac.zip)
-  - Windows: [`X2MD_Windows.zip`](https://github.com/izscc/x2md/releases/download/v1.0.5/X2MD_Windows.zip)
-  - 扩展: [`X2MD_Extension.zip`](https://github.com/izscc/x2md/releases/download/v1.0.5/X2MD_Extension.zip)
+  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/download/v1.0.6/X2MD_Mac.zip)
+  - Windows: [`X2MD_Windows.zip`](https://github.com/izscc/x2md/releases/download/v1.0.6/X2MD_Windows.zip)
+  - 扩展: [`X2MD_Extension.zip`](https://github.com/izscc/x2md/releases/download/v1.0.6/X2MD_Extension.zip)
 
 ### 第 2 步：首次运行并完成向导
 

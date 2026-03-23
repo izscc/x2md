@@ -1,6 +1,16 @@
 (function (globalScope) {
     const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
     const ALWAYS_BLOCK_TAGS = new Set(["section", "article", "blockquote", "ul", "ol", "li", "hr", "pre"]);
+    const CODE_LANGUAGE_PATTERN = /^[a-z0-9][a-z0-9+._#-]{0,29}$/;
+    const CODE_LANGUAGE_LABELS = new Set([
+        "base", "bash", "bat", "batch", "c", "c#", "c++", "cfg", "clojure", "conf", "cpp",
+        "css", "csv", "diff", "dockerfile", "elixir", "fish", "f#", "go", "graphql", "haskell",
+        "html", "ini", "java", "javascript", "json", "json5", "jsx", "kotlin", "less", "lua",
+        "makefile", "markdown", "md", "mermaid", "objc", "objective-c", "patch", "perl", "php",
+        "plaintext", "powershell", "ps1", "py", "python", "rb", "ruby", "rs", "rust", "scss",
+        "sh", "shell", "sql", "svg", "swift", "toml", "ts", "tsx", "typescript", "txt", "xml",
+        "yaml", "yml", "zsh",
+    ]);
 
     function getTagName(element) {
         return String(element?.tagName || "").toLowerCase();
@@ -71,6 +81,81 @@
             safeClosest(element, '[data-testid="User-Name"]');
     }
 
+    function getNodeText(node) {
+        if (!node) return "";
+        if (node.nodeType === 3) return node.textContent || "";
+        if (node.nodeType !== 1) return "";
+        return node.innerText || node.textContent || "";
+    }
+
+    function formatCodeFence(code, language = "") {
+        const infoString = String(language || "").trim();
+        return `\n\`\`\`${infoString}\n${code}\n\`\`\`\n`;
+    }
+
+    function normalizeCodeLanguageLabel(node) {
+        const text = getNodeText(node).replace(/\s+/g, " ").trim().toLowerCase();
+        if (!text || !CODE_LANGUAGE_PATTERN.test(text)) return "";
+        if (!CODE_LANGUAGE_LABELS.has(text)) return "";
+        return text;
+    }
+
+    function findNextSignificantChildIndex(children, startIndex) {
+        for (let index = startIndex; index < children.length; index++) {
+            const child = children[index];
+            if (!child) continue;
+            if (child.nodeType === 3 && !(child.textContent || "").trim()) continue;
+            if (child.nodeType !== 1 && child.nodeType !== 3) continue;
+            return index;
+        }
+        return -1;
+    }
+
+    function extractCodeBlockInfo(node) {
+        if (!node) return null;
+        if (node.nodeType === 1 && getTagName(node) === "pre") {
+            return {
+                code: node.innerText || node.textContent || "",
+            };
+        }
+        if (node.nodeType !== 1) return null;
+
+        const significantChildren = [];
+        for (const child of node.childNodes || []) {
+            if (!child) continue;
+            if (child.nodeType === 3 && !(child.textContent || "").trim()) continue;
+            if (child.nodeType !== 1 && child.nodeType !== 3) continue;
+            significantChildren.push(child);
+        }
+
+        if (significantChildren.length !== 1) return null;
+        return extractCodeBlockInfo(significantChildren[0]);
+    }
+
+    function convertChildNodesToMarkdown(element, options = {}) {
+        const children = Array.from(element.childNodes || []);
+        let markdown = "";
+
+        for (let index = 0; index < children.length; index++) {
+            const child = children[index];
+            const language = normalizeCodeLanguageLabel(child);
+
+            if (language) {
+                const nextIndex = findNextSignificantChildIndex(children, index + 1);
+                const nextCodeBlock = nextIndex >= 0 ? extractCodeBlockInfo(children[nextIndex]) : null;
+                if (nextCodeBlock) {
+                    markdown += formatCodeFence(nextCodeBlock.code, language);
+                    index = nextIndex;
+                    continue;
+                }
+            }
+
+            markdown += convertArticleElementToMarkdown(child, options);
+        }
+
+        return markdown;
+    }
+
     function convertArticleElementToMarkdown(element, options = {}) {
         if (!element) return "";
         if (element.nodeType === 3) return element.textContent || "";
@@ -110,13 +195,10 @@
 
         if (tag === "pre") {
             const code = element.innerText || element.textContent || "";
-            return `\n\`\`\`\n${code}\n\`\`\`\n`;
+            return formatCodeFence(code);
         }
 
-        let markdown = "";
-        for (const child of element.childNodes || []) {
-            markdown += convertArticleElementToMarkdown(child, options);
-        }
+        let markdown = convertChildNodesToMarkdown(element, options);
 
         if (tag === "a") {
             const href = safeGetAttribute(element, "href") || "";
