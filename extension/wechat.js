@@ -1,32 +1,4 @@
 (function (globalScope) {
-    function getTagName(element) {
-        return String(element?.tagName || "").toLowerCase();
-    }
-
-    function getClassList(element) {
-        return String(element?.className || "").split(/\s+/).filter(Boolean);
-    }
-
-    function safeGetAttribute(element, name) {
-        try {
-            if (element && typeof element.getAttribute === "function") {
-                return element.getAttribute(name);
-            }
-        } catch (error) { }
-        return null;
-    }
-
-    function getNodeText(node) {
-        if (!node) return "";
-        if (node.nodeType === 3) return node.textContent || "";
-        if (node.nodeType !== 1) return "";
-        return node.innerText || node.textContent || "";
-    }
-
-    function cleanZeroWidth(text) {
-        return String(text || "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
-    }
-
     function isWechatArticlePage(locationLike = globalScope.location) {
         const hostname = String(locationLike?.hostname || "").toLowerCase();
         const pathname = String(locationLike?.pathname || "");

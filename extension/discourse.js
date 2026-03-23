@@ -4,39 +4,6 @@
     const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
     const BLOCK_TAGS = new Set(["p", "div", "section", "article", "blockquote", "ul", "ol", "li", "pre"]);
 
-    function getTagName(element) {
-        return String(element?.tagName || "").toLowerCase();
-    }
-
-    function getClassList(element) {
-        return String(element?.className || "").split(/\s+/).filter(Boolean);
-    }
-
-    function getNodeText(node) {
-        if (!node) return "";
-        if (node.nodeType === 3) return node.textContent || "";
-        if (node.nodeType !== 1) return "";
-        return node.innerText || node.textContent || "";
-    }
-
-    function safeGetAttribute(element, name) {
-        try {
-            if (element && typeof element.getAttribute === "function") {
-                return element.getAttribute(name);
-            }
-        } catch (error) { }
-        return null;
-    }
-
-    function safeClosest(element, selector) {
-        try {
-            if (element && typeof element.closest === "function") {
-                return element.closest(selector);
-            }
-        } catch (error) { }
-        return null;
-    }
-
     function resolveLinuxDoUrl(url, pageUrl = "") {
         const raw = String(url || "").trim();
         if (!raw) return "";

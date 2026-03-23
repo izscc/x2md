@@ -12,28 +12,6 @@
         "yaml", "yml", "zsh",
     ]);
 
-    function getTagName(element) {
-        return String(element?.tagName || "").toLowerCase();
-    }
-
-    function safeClosest(element, selector) {
-        try {
-            if (element && typeof element.closest === "function") {
-                return element.closest(selector);
-            }
-        } catch (error) { }
-        return null;
-    }
-
-    function safeGetAttribute(element, name) {
-        try {
-            if (element && typeof element.getAttribute === "function") {
-                return element.getAttribute(name);
-            }
-        } catch (error) { }
-        return null;
-    }
-
     function safeGetComputedStyle(element, options = {}) {
         try {
             if (typeof options.getComputedStyle === "function") {
@@ -79,13 +57,6 @@
     function shouldSkipElement(element) {
         return safeClosest(element, '[data-testid="twitter-article-title"]') ||
             safeClosest(element, '[data-testid="User-Name"]');
-    }
-
-    function getNodeText(node) {
-        if (!node) return "";
-        if (node.nodeType === 3) return node.textContent || "";
-        if (node.nodeType !== 1) return "";
-        return node.innerText || node.textContent || "";
     }
 
     function formatCodeFence(code, language = "") {

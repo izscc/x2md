@@ -31,7 +31,19 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # 排除不需要的重量级模块以减小包体积
+        'tkinter',          # pystray 在 macOS 用 AppKit 不需要 Tk
+        'unittest',
+        'pydoc',
+        'doctest',
+        'xml.etree',
+        'PIL.ImageTk',      # 不需要 Tk 画布支持
+        'PIL.IcnsImagePlugin',
+        'PIL.FpxImagePlugin',
+        'PIL.McIdasImagePlugin',
+        'PIL.MicImagePlugin',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -64,7 +76,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     name='X2MD',
@@ -80,7 +92,7 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'X2MD',
             'CFBundleDisplayName': 'X2MD',
-            'CFBundleShortVersionString': '1.0.6',
+            'CFBundleShortVersionString': '1.0.8',
             'LSUIElement': True,  # 无 Dock 图标，仅菜单栏显示
         },
     )

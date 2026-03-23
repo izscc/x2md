@@ -12,8 +12,8 @@ import re
 import ssl
 import sys
 import logging
-import threading
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
@@ -68,28 +68,39 @@ logging.basicConfig(
 )
 logger = logging.getLogger("x2md")
 
+# 全局配置缓存和视频下载线程池
+_config_cache: dict | None = None
+_video_executor = ThreadPoolExecutor(max_workers=3)
+
 
 def load_config() -> dict:
-    """加载配置文件，不存在则写入默认配置"""
+    """加载配置文件，优先返回缓存，不存在则从磁盘读取"""
+    global _config_cache
+    if _config_cache is not None:
+        return _config_cache
+
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-                # 补全缺失字段
                 for k, v in DEFAULT_CONFIG.items():
                     if k not in cfg:
                         cfg[k] = v
+                _config_cache = cfg
                 return cfg
         except Exception as e:
             logger.warning(f"配置文件读取失败，使用默认配置：{e}")
-    save_config(DEFAULT_CONFIG)
-    return DEFAULT_CONFIG.copy()
+    _config_cache = DEFAULT_CONFIG.copy()
+    save_config(_config_cache)
+    return _config_cache
 
 
 def save_config(cfg: dict):
-    """保存配置到文件"""
+    """保存配置到文件并刷新缓存"""
+    global _config_cache
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+    _config_cache = cfg
 
 
 def normalize_image_url(url: str) -> str:
@@ -111,13 +122,13 @@ def sanitize_filename(name: str, max_len: int = 60) -> str:
 
 
 def download_video_async(url: str, save_path: str, filename: str):
-    """开启后台线程静默下载视频，避免阻塞 HTTP 响应"""
+    """提交视频下载任务到线程池（限并发 3），避免阻塞 HTTP 响应"""
     def _download():
         try:
             logger.info(f"开启长视频下载通道: {url} -> {save_path}/{filename}")
             os.makedirs(save_path, exist_ok=True)
             out_file = os.path.join(save_path, filename)
-            
+
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             ssl_ctx = _build_ssl_context()
             with urllib.request.urlopen(req, context=ssl_ctx) as response, open(out_file, 'wb') as out_file_handle:
@@ -126,14 +137,12 @@ def download_video_async(url: str, save_path: str, filename: str):
                     if not chunk:
                         break
                     out_file_handle.write(chunk)
-            
+
             logger.info(f"✅ 视频文件下载成功: {out_file}")
         except Exception as e:
             logger.error(f"❌ 视频流下载失败: {e}")
-    
-    t = threading.Thread(target=_download)
-    t.daemon = True
-    t.start()
+
+    _video_executor.submit(_download)
 
 
 def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
@@ -317,7 +326,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.0.7"})
+            self._respond(200, {"status": "ok", "version": "1.0.8"})
 
         elif path == "/config":
             # 返回当前配置
@@ -334,7 +343,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         try:
             data = json.loads(body.decode("utf-8"))
-            logger.info(f"接收到的完整数据: {json.dumps(data, ensure_ascii=False)}")
+            logger.info(f"接收到请求: type={data.get('type','?')} platform={data.get('platform','?')} url={data.get('url','')[:80]}")
         except json.JSONDecodeError:
             self._respond(400, {"error": "Invalid JSON"})
             return

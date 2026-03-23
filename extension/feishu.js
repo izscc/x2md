@@ -1,41 +1,4 @@
 (function (globalScope) {
-    function getTagName(element) {
-        return String(element?.tagName || "").toLowerCase();
-    }
-
-    function getClassList(element) {
-        return String(element?.className || "").split(/\s+/).filter(Boolean);
-    }
-
-    function safeGetAttribute(element, name) {
-        try {
-            if (element && typeof element.getAttribute === "function") {
-                return element.getAttribute(name);
-            }
-        } catch (error) { }
-        return null;
-    }
-
-    function safeClosest(element, selector) {
-        try {
-            if (element && typeof element.closest === "function") {
-                return element.closest(selector);
-            }
-        } catch (error) { }
-        return null;
-    }
-
-    function getNodeText(node) {
-        if (!node) return "";
-        if (node.nodeType === 3) return node.textContent || "";
-        if (node.nodeType !== 1) return "";
-        return node.innerText || node.textContent || "";
-    }
-
-    function cleanZeroWidth(text) {
-        return String(text || "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
-    }
-
     function cleanFeishuUrl(url) {
         if (!url) return "";
         try {
@@ -161,7 +124,7 @@
         const type = safeGetAttribute(block, "data-block-type") || "";
         const classList = getClassList(block);
 
-        if (type === "ai-summary" || type === "page" || type === "grid" || type === "grid_column" || type === "callout" || type === "quote_container") {
+        if (type === "ai-summary" || type === "page" || type === "grid" || type === "grid_column" || type === "callout" || type === "quote_container" || type === "synced_source") {
             return "";
         }
 
@@ -192,6 +155,55 @@
         }
 
         if (type === "divider") return "---";
+
+        if (type === "iframe") {
+            const iframe = block.querySelector?.("iframe");
+            const src = iframe?.src || safeGetAttribute(iframe, "src") || "";
+            if (!src) return "";
+            // 清理嵌入参数，保留核心 URL
+            const cleanSrc = cleanFeishuUrl(src);
+            return `[嵌入内容](${cleanSrc})`;
+        }
+
+        if (type === "table") {
+            const cells = block.querySelectorAll?.(".block[data-block-type='table_cell']") || [];
+            if (!cells.length) return "";
+            // 推断列数：取第一行的列数（飞书表格 grid 结构）
+            const gridStyle = block.querySelector?.(".table-block-wrapper, table, .docx-table-block")?.style;
+            let cols = 0;
+            if (gridStyle?.gridTemplateColumns) {
+                cols = gridStyle.gridTemplateColumns.split(/\s+/).filter(Boolean).length;
+            }
+            if (!cols) {
+                // 尝试从第一行 tr 中计算
+                const firstRow = block.querySelector?.("tr");
+                cols = firstRow ? firstRow.children?.length || 0 : 0;
+            }
+            if (!cols) cols = Math.ceil(Math.sqrt(cells.length)) || 1;
+
+            const rows = [];
+            for (let i = 0; i < cells.length; i += cols) {
+                const row = [];
+                for (let j = 0; j < cols && (i + j) < cells.length; j++) {
+                    row.push(extractBlockText(cells[i + j], options).replace(/\|/g, "\\|").replace(/\n/g, " "));
+                }
+                rows.push(row);
+            }
+            if (!rows.length) return "";
+            const header = "| " + rows[0].join(" | ") + " |";
+            const separator = "| " + rows[0].map(() => "---").join(" | ") + " |";
+            const body = rows.slice(1).map((r) => "| " + r.join(" | ") + " |").join("\n");
+            return [header, separator, body].filter(Boolean).join("\n");
+        }
+
+        if (type === "table_cell") return "";
+
+        if (type === "base_refer") {
+            const link = block.querySelector?.("a");
+            const href = safeGetAttribute(link, "href") || "";
+            const text = cleanZeroWidth(getNodeText(link)).trim() || "多维表格";
+            return href ? `[${text}](${resolveFeishuUrl(href, options.pageUrl)})` : text;
+        }
 
         if (type === "code") {
             const code = cleanZeroWidth(block.querySelector?.("code, pre")?.innerText || block.innerText || "").trim();
@@ -283,10 +295,13 @@
 
     const exported = {
         cleanFeishuUrl,
+        extractFeishuAuthor,
         extractFeishuBlockMarkdown,
         extractFeishuDocumentData,
         extractFeishuInlineMarkdown,
         extractFeishuMarkdownFromBlocks,
+        extractFeishuTitle,
+        extractFeishuUpdated,
         isFeishuWikiOrDocxPage,
     };
 

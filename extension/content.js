@@ -126,7 +126,7 @@ function findTweetUrl(btn) {
 //   /username/article/xxx
 // ─────────────────────────────────────────────
 function isNotePageUrl(pathname) {
-    pathway = pathname || location.pathname;
+    const pathway = pathname || location.pathname;
     return pathway.startsWith("/i/article") ||
         /^\/[^/]+\/article\//.test(pathway);
 }
@@ -477,16 +477,116 @@ function findCurrentLinuxDoPost() {
     return document.querySelector("article[data-post-id]");
 }
 
-function captureFeishuDocument() {
-    const data = extractFeishuDocumentData(document, { pageUrl: location.href });
-    if (!data || !data.article_content.trim()) {
-        showToast("飞书文档提取失败", "error", 4000);
-        return;
+/**
+ * 飞书虚拟渲染应对：滚动收集所有 block 元素。
+ * 飞书用 IntersectionObserver 按需渲染，视口外的 block 会被替换为 placeholder。
+ * 我们通过滚动 .bear-web-x-container 逐步让每个区域进入视口，
+ * 对每个出现的 block 按 data-block-id 去重收集，最终返回完整的 block 数组。
+ */
+async function scrollAndCollectFeishuBlocks() {
+    const container = document.querySelector(".bear-web-x-container");
+    if (!container) {
+        console.log("[x2md] 未找到 .bear-web-x-container，跳过滚动收集");
+        return null;
     }
 
-    console.log("[x2md] Feishu 文档：", { url: data.url, author: data.author, title: data.article_title });
-    showToast("正在保存飞书文档…", "loading", null);
-    sendToBackground(data);
+    const seen = new Map(); // blockId -> DOM element (clone)
+    const originalScrollTop = container.scrollTop;
+
+    function collect() {
+        const blocks = document.querySelectorAll("#docx .block[data-block-type]");
+        for (const block of blocks) {
+            const id = block.getAttribute("data-block-id");
+            if (!id || seen.has(id)) continue;
+            // 克隆节点以保留 DOM 状态（虚拟渲染会回收原节点）
+            seen.set(id, block.cloneNode(true));
+        }
+    }
+
+    const step = Math.max(container.clientHeight * 0.7, 300);
+    const maxPos = container.scrollHeight;
+
+    // 向下滚动收集
+    collect();
+    for (let pos = 0; pos <= maxPos + step; pos += step) {
+        container.scrollTop = pos;
+        await new Promise((r) => setTimeout(r, 80));
+        collect();
+    }
+    container.scrollTop = maxPos;
+    await new Promise((r) => setTimeout(r, 200));
+    collect();
+
+    // 回滚收集（确保首屏区域的 block 也被收集）
+    for (let pos = maxPos; pos >= 0; pos -= step) {
+        container.scrollTop = pos;
+        await new Promise((r) => setTimeout(r, 60));
+        collect();
+    }
+
+    // 恢复原始滚动位置
+    container.scrollTop = originalScrollTop;
+
+    console.log(`[x2md] 飞书滚动收集完成：${seen.size} unique blocks`);
+
+    // 按 blockId 排序返回（blockId 在飞书中通常是递增的）
+    const sorted = Array.from(seen.entries())
+        .sort((a, b) => {
+            const na = parseInt(a[0], 10);
+            const nb = parseInt(b[0], 10);
+            if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+            return a[0].localeCompare(b[0]);
+        })
+        .map((entry) => entry[1]);
+
+    return sorted;
+}
+
+function captureFeishuDocument() {
+    showToast("正在滚动页面加载全部内容…", "loading", null);
+
+    scrollAndCollectFeishuBlocks().then((collectedBlocks) => {
+        const pageUrl = location.href;
+        const options = { pageUrl };
+
+        let articleContent;
+        if (collectedBlocks && collectedBlocks.length > 0) {
+            articleContent = extractFeishuMarkdownFromBlocks(collectedBlocks, options);
+        }
+
+        // 如果滚动收集失败或结果不佳，回退到直接提取
+        if (!articleContent || articleContent.length < 50) {
+            const data = extractFeishuDocumentData(document, options);
+            if (!data || !data.article_content.trim()) {
+                showToast("飞书文档提取失败", "error", 4000);
+                return;
+            }
+            console.log("[x2md] Feishu 文档（直接提取）：", { url: data.url, title: data.article_title });
+            showToast("正在保存飞书文档…", "loading", null);
+            sendToBackground(data);
+            return;
+        }
+
+        const title = extractFeishuTitle(document);
+        const author = extractFeishuAuthor(document);
+        const data = {
+            type: "article",
+            url: cleanFeishuUrl(pageUrl),
+            author,
+            handle: "",
+            author_url: "",
+            published: extractFeishuUpdated(document),
+            article_title: title,
+            article_content: articleContent,
+            images: [],
+            videos: [],
+            platform: "Feishu",
+        };
+
+        console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks）：", { url: data.url, title });
+        showToast("正在保存飞书文档…", "loading", null);
+        sendToBackground(data);
+    });
 }
 
 function captureWechatArticle() {
