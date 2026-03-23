@@ -1,6 +1,6 @@
 # X2MD
 
-把 X/Twitter 内容一键保存为 Obsidian 可用的 Markdown（支持 Tweet、Thread、Note/Article、图片和视频）。
+把 X/Twitter、LINUX DO、飞书、微信公众号内容一键保存为 Obsidian 可用的 Markdown。
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-izscc%2Fx2md-181717?logo=github)](https://github.com/izscc/x2md)
 [![Latest Release](https://img.shields.io/github/v/release/izscc/x2md)](https://github.com/izscc/x2md/releases/latest)
@@ -15,17 +15,29 @@
 - 你会在 X/Twitter 上收藏大量信息，但链接回看效率低。
 - 你希望把素材沉淀进 Obsidian，而不是散落在浏览器书签里。
 - 你需要把 Thread / Note 长文转成可编辑 Markdown，用于二次创作。
+- 你在 LINUX DO 论坛中看到值得收藏的帖子。
+- 你在飞书知识库阅读团队文档，想要本地留档。
+- 你在微信公众号看到好文章，想保存完整 Markdown 副本。
+
+## 支持平台
+
+| 平台 | 触发方式 | 说明 |
+|------|----------|------|
+| X / Twitter | 点击书签按钮 | 支持 Tweet、Thread、Note/Article、图片和视频 |
+| LINUX DO | 点赞 / 悬浮保存按钮 | 支持话题帖子内容 |
+| 飞书 | 悬浮保存按钮 | 支持 wiki 知识库和 docx 云文档 |
+| 微信公众号 | 悬浮保存按钮 | 支持公众号文章（含图片、代码块、引用等） |
 
 ## 3 分钟快速上手（推荐）
 
 ### 第 1 步：下载客户端（基于 GitHub Release）
 
 - 打开 [Releases](https://github.com/izscc/x2md/releases/latest)
-- 当前最新版本（截至 2026-03-23）：[`v1.0.6`](https://github.com/izscc/x2md/releases/tag/v1.0.6)
+- 当前最新版本（截至 2026-03-24）：[`v1.0.7`](https://github.com/izscc/x2md/releases/tag/v1.0.7)
 - 下载对应平台包：
-  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/download/v1.0.6/X2MD_Mac.zip)
-  - Windows: [`X2MD_Windows.zip`](https://github.com/izscc/x2md/releases/download/v1.0.6/X2MD_Windows.zip)
-  - 扩展: [`X2MD_Extension.zip`](https://github.com/izscc/x2md/releases/download/v1.0.6/X2MD_Extension.zip)
+  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/download/v1.0.7/X2MD_Mac.zip)
+  - Windows: [`X2MD_Windows.zip`](https://github.com/izscc/x2md/releases/download/v1.0.7/X2MD_Windows.zip)
+  - 扩展: [`X2MD_Extension.zip`](https://github.com/izscc/x2md/releases/download/v1.0.7/X2MD_Extension.zip)
 
 ### 第 2 步：首次运行并完成向导
 
@@ -42,12 +54,14 @@
 3. 点击“加载已解压的扩展程序”
 4. 选择解压后的 `X2MD_Extension` 目录，或本项目的 [`extension`](./extension) 目录
 
-### 第 4 步：保存第一条推文
+### 第 4 步：保存第一条内容
 
-1. 打开任意 X/Twitter 推文页。
-2. 点击推文操作区的书签按钮。
-3. 扩展会将内容发送到本地服务并生成 Markdown。
-4. 到你设置的目录查看 `.md` 文件。
+1. **X / Twitter**：打开任意推文页，点击推文操作区的书签按钮。
+2. **LINUX DO**：打开话题页，点赞帖子或点击右上角悬浮 MD 按钮。
+3. **飞书**：打开 wiki 或 docx 页面，点击右上角悬浮 MD 按钮。
+4. **微信公众号**：打开公众号文章页，点击右上角悬浮 MD 按钮。
+5. 扩展会将内容发送到本地服务并生成 Markdown。
+6. 到你设置的目录查看 `.md` 文件。
 
 ### 第 5 步：在 Obsidian 中查看结果
 
@@ -65,6 +79,7 @@
 - `video_save_path`: 视频保存路径
 - `enable_video_download`: 是否下载视频
 - `video_duration_threshold`: 超长视频二次确认阈值（分钟）
+- `show_site_save_icon`: 是否在支持的站点显示悬浮保存按钮
 
 推荐模板示例：
 

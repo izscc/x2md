@@ -54,6 +54,7 @@ DEFAULT_CONFIG = {
     "filename_format": "{summary}_{date}_{author}",
     "max_filename_length": 60,
     "video_save_path": os.path.join(HOME, "Desktop", "X2MD", "Videos"),
+    "show_site_save_icon": True,
     "setup_completed": False,
 }
 
@@ -152,6 +153,7 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
     article_content = data.get("article_content", "")  # X Article 正文
     article_title = data.get("article_title", "")
     thread_tweets = data.get("thread_tweets", [])  # 线程推文列表
+    platform = data.get("platform", "Twitter/X")
 
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
@@ -177,7 +179,9 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
     title = title[:80] + ("…" if len(title) > 80 else "")
     title = title.replace('"', "'")
 
-    author_url = f"https://x.com/{handle.lstrip('@')}" if handle else ""
+    author_url = data.get("author_url")
+    if author_url is None:
+        author_url = f"https://x.com/{handle.lstrip('@')}" if handle else ""
 
     front_matter = f"""---
 title: "{title}"
@@ -186,7 +190,7 @@ tags: []
 作者主页: "{author_url}"
 创建时间: "{datetime_str}"
 发布时间: "{published}"
-平台: "Twitter/X"
+平台: "{platform}"
 类别: "[[剪报]]"
 阅读状态: false
 整理: false
@@ -313,7 +317,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.0.6"})
+            self._respond(200, {"status": "ok", "version": "1.0.7"})
 
         elif path == "/config":
             # 返回当前配置

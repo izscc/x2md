@@ -424,6 +424,97 @@ function extractDiscoveredGraphQLOperationIds() {
     return extractGraphQLOperationIdsFromUrls(urls);
 }
 
+let runtimeConfig = null;
+
+function requestRuntimeConfig() {
+    if (runtimeConfig) {
+        ensureFloatingSaveButton();
+        return;
+    }
+
+    chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
+        runtimeConfig = resp?.success ? (resp.config || {}) : {};
+        ensureFloatingSaveButton();
+    });
+}
+
+function captureLinuxDoPostElement(post) {
+    if (!post) {
+        showToast("未找到对应帖子内容", "error", 3500);
+        return;
+    }
+
+    const topicTitle =
+        document.querySelector("h1 a")?.innerText?.trim() ||
+        document.querySelector("h1")?.innerText?.trim() ||
+        document.title.replace(/\s*-\s*LINUX DO.*$/, "").trim();
+
+    const data = extractLinuxDoPostData(post, {
+        pageUrl: location.href,
+        topicTitle,
+    });
+
+    if (!data || !data.article_content.trim()) {
+        showToast("帖子内容提取失败", "error", 4000);
+        return;
+    }
+
+    console.log("[x2md] LINUX DO 帖子：", { url: data.url, author: data.author, title: data.article_title });
+    showToast("正在保存 LINUX DO 帖子…", "loading", null);
+    sendToBackground(data);
+}
+
+function captureLinuxDoPost(btn) {
+    captureLinuxDoPostElement(btn.closest?.("article[data-post-id]"));
+}
+
+function findCurrentLinuxDoPost() {
+    const match = location.pathname.match(/^\/t\/[^/]+\/\d+\/(\d+)\/?$/);
+    if (match) {
+        const exactPost = document.getElementById(`post_${match[1]}`);
+        if (exactPost) return exactPost;
+    }
+    return document.querySelector("article[data-post-id]");
+}
+
+function captureFeishuDocument() {
+    const data = extractFeishuDocumentData(document, { pageUrl: location.href });
+    if (!data || !data.article_content.trim()) {
+        showToast("飞书文档提取失败", "error", 4000);
+        return;
+    }
+
+    console.log("[x2md] Feishu 文档：", { url: data.url, author: data.author, title: data.article_title });
+    showToast("正在保存飞书文档…", "loading", null);
+    sendToBackground(data);
+}
+
+function captureWechatArticle() {
+    const data = extractWechatDocumentData(document, { pageUrl: location.href });
+    if (!data || !data.article_content.trim()) {
+        showToast("微信公众号文章提取失败", "error", 4000);
+        return;
+    }
+
+    console.log("[x2md] WeChat 文章：", { url: data.url, author: data.author, title: data.article_title });
+    showToast("正在保存微信公众号文章…", "loading", null);
+    sendToBackground(data);
+}
+
+function handleFloatingSave(siteKey) {
+    if (siteKey === "linux_do") {
+        captureLinuxDoPostElement(findCurrentLinuxDoPost());
+        return;
+    }
+    if (siteKey === "feishu") {
+        captureFeishuDocument();
+        return;
+    }
+    if (siteKey === "wechat") {
+        captureWechatArticle();
+    }
+}
+
 // ─────────────────────────────────────────────
 // 书签按钮监听
 // ─────────────────────────────────────────────
@@ -634,15 +725,78 @@ function showToast(message, type = "loading", duration = null) {
     }
 }
 
+function ensureFloatingSaveButton() {
+    const siteKey = detectFloatingSaveSite();
+    const enabled = isFloatingSaveIconEnabled(runtimeConfig || {});
+    let btn = document.getElementById(SITE_FLOATING_SAVE_BUTTON_ID);
+
+    if (!siteKey || !enabled) {
+        btn?.remove();
+        return;
+    }
+
+    const siteConfig = getFloatingSaveSiteConfig(siteKey);
+    if (!siteConfig) {
+        btn?.remove();
+        return;
+    }
+
+    if (!btn) {
+        btn = document.createElement("button");
+        btn.id = SITE_FLOATING_SAVE_BUTTON_ID;
+        btn.type = "button";
+        Object.assign(btn.style, {
+            position: "fixed",
+            top: "96px",
+            right: "24px",
+            width: "42px",
+            height: "42px",
+            border: "none",
+            borderRadius: "999px",
+            color: "#fff",
+            fontSize: "12px",
+            fontWeight: "700",
+            letterSpacing: ".04em",
+            cursor: "pointer",
+            zIndex: "2147483646",
+            boxShadow: "0 10px 24px rgba(0,0,0,.18)",
+            transition: "transform .15s ease, opacity .15s ease",
+        });
+        btn.addEventListener("mouseenter", () => {
+            btn.style.transform = "translateY(-1px)";
+        });
+        btn.addEventListener("mouseleave", () => {
+            btn.style.transform = "translateY(0)";
+        });
+        btn.addEventListener("click", () => handleFloatingSave(btn.dataset.siteKey));
+        document.body.appendChild(btn);
+    }
+
+    btn.dataset.siteKey = siteKey;
+    btn.textContent = siteConfig.label;
+    btn.title = siteConfig.title;
+    btn.style.background = siteConfig.background;
+    btn.style.boxShadow = `0 10px 24px ${siteConfig.shadow}`;
+}
+
 // ─────────────────────────────────────────────
 // MutationObserver：监听动态加载的推文
 // ─────────────────────────────────────────────
 function bindAll() {
     document.querySelectorAll(BOOKMARK_SELECTORS).forEach(attachBookmarkListener);
+    ensureFloatingSaveButton();
 }
+
+document.addEventListener("click", (event) => {
+    if (!isLinuxDoTopicPage()) return;
+    const btn = event.target?.closest?.(LINUX_DO_LIKE_SELECTOR);
+    if (!btn) return;
+    setTimeout(() => captureLinuxDoPost(btn), 250);
+}, true);
 
 const observer = new MutationObserver(bindAll);
 observer.observe(document.body, { childList: true, subtree: true });
+requestRuntimeConfig();
 bindAll();
 
 console.log("[x2md] 内容脚本已加载 v1.3");

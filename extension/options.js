@@ -40,6 +40,7 @@ function applyConfigToUI(cfg) {
     document.getElementById("enableVideoDownload").checked = cfg.enable_video_download !== false;
     document.getElementById("videoSavePath").value = cfg.video_save_path || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
     document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
+    document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
 
     renderPaths(cfg.save_paths || []);
 }
@@ -126,6 +127,7 @@ function saveConfig() {
     const enableVideoDownload = document.getElementById("enableVideoDownload").checked;
     const videoSavePath = document.getElementById("videoSavePath").value.trim() || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
     const videoDurationThreshold = parseFloat(document.getElementById("videoDurationThreshold").value) || 5;
+    const showSiteSaveIcon = document.getElementById("showSiteSaveIcon").checked;
 
     if (!savePaths.length) {
         showToast("请至少添加一个保存路径", true);
@@ -139,7 +141,8 @@ function saveConfig() {
         save_paths: savePaths,
         enable_video_download: enableVideoDownload,
         video_save_path: videoSavePath,
-        video_duration_threshold: videoDurationThreshold
+        video_duration_threshold: videoDurationThreshold,
+        show_site_save_icon: showSiteSaveIcon,
     };
 
     document.getElementById("portLabel").textContent = port;

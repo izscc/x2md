@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "X2MD - 推特书签转Markdown",
-    "version": "1.0.6",
-    "description": "点击推特书签按钮，自动将推文/X Article 保存为 Obsidian Markdown 文件",
+    "name": "X2MD - 网页内容转Markdown",
+    "version": "1.0.7",
+    "description": "支持 X、LINUX DO、飞书知识库、飞书云文档、微信公众号的一键保存 Markdown",
     "permissions": [
         "storage",
         "notifications",
@@ -13,6 +13,10 @@
     "host_permissions": [
         "*://*.twitter.com/*",
         "*://*.x.com/*",
+        "https://linux.do/*",
+        "https://*.feishu.cn/wiki/*",
+        "https://*.feishu.cn/docx/*",
+        "https://mp.weixin.qq.com/*",
         "http://127.0.0.1:9527/*",
         "https://cdn.syndication.twimg.com/*",
         "https://publish.twitter.com/*"
@@ -24,10 +28,18 @@
         {
             "matches": [
                 "*://*.twitter.com/*",
-                "*://*.x.com/*"
+                "*://*.x.com/*",
+                "https://linux.do/*",
+                "https://*.feishu.cn/wiki/*",
+                "https://*.feishu.cn/docx/*",
+                "https://mp.weixin.qq.com/*"
             ],
             "js": [
                 "article_markdown.js",
+                "discourse.js",
+                "feishu.js",
+                "wechat.js",
+                "site_actions.js",
                 "twitter_graphql.js",
                 "content.js"
             ],
