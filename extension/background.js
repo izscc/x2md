@@ -546,6 +546,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             article_title: noteResult.title || enrichedData.text?.slice(0, 50) || "Note",
                             article_content: noteResult.content,
                             images: mergedImages,
+                            videos: [...(enrichedData.videos || []), ...(noteResult.videos || [])],
                             url: enrichedData.url,  // 保留 /status/ 链接作为源
                         };
                     } else {
@@ -596,6 +597,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 article_title: noteResult.title || (data.text ? data.text.trim().split('\n')[0].replace(/https?:\/\/\S+/g, '').replace(/[\n\t]/g, '').slice(0, 50).trim() : "Untitled"),
                                 article_content: prefix + noteResult.content,
                                 images: mergedImages,
+                                videos: [...(data.videos || []), ...(noteResult.videos || [])],
                             };
                         } else {
                             data.text = data.text + `\n\n📔 完整长文：${articleUrl}`;
@@ -615,7 +617,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                     let finalVideos = data.videos || [];
                     if (apiData.videos) finalVideos.push(...apiData.videos);
-                    if (data.noteResultVideos) finalVideos.push(...data.noteResultVideos);
+                    // noteResult.videos 已在上方合并到 data.videos，无需额外处理
 
                     const filledContent = fillArticleVideoPlaceholders(contentToFix, finalVideos);
                     const extractedVideoUrls = Array.from(

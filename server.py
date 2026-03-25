@@ -175,7 +175,7 @@ def find_existing_file_by_source_url(directory: str, source_url: str) -> str | N
                             existing_url = line.split(':', 1)[1].strip().strip('"').strip("'")
                             if existing_url == source_url:
                                 return fpath
-                        if i > 15:
+                        if i > 30:
                             break
             except Exception:
                 continue

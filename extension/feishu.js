@@ -401,14 +401,16 @@
             case 8: case 9: case 10: case 11: // heading6-9 → h6
                 return text ? `###### ${text}` : "";
             case 12: { // bullet
-                const content = text || convertChildren(depth + 1);
+                const children = convertChildren(depth + 1);
                 const indent = "  ".repeat(depth);
-                return content ? `${indent}- ${content}` : "";
+                const line = text ? `${indent}- ${text}` : "";
+                return [line, children].filter(Boolean).join("\n");
             }
             case 13: { // ordered
-                const content = text || convertChildren(depth + 1);
+                const children = convertChildren(depth + 1);
                 const indent = "  ".repeat(depth);
-                return content ? `${indent}1. ${content}` : "";
+                const line = text ? `${indent}1. ${text}` : "";
+                return [line, children].filter(Boolean).join("\n");
             }
             case 14: { // code
                 const codeElements = block.code?.text?.elements || textElements;
@@ -534,7 +536,7 @@
                 }
                 run();
             })();`;
-            globalScope.document.head.appendChild(script);
+            (globalScope.document.head || globalScope.document.documentElement).appendChild(script);
             script.remove();
         });
     }

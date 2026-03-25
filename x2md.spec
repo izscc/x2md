@@ -95,7 +95,7 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'X2MD',
             'CFBundleDisplayName': 'X2MD',
-            'CFBundleShortVersionString': '1.1.0',
+            'CFBundleShortVersionString': '1.2.1',
             'LSUIElement': True,  # 无 Dock 图标，仅菜单栏显示
         },
     )

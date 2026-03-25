@@ -570,13 +570,11 @@ function captureFeishuDocument() {
 
     // 策略1：通过飞书内部 JSON API 直接读取（无需滚动）
     fetchFeishuDocViaApi(pageUrl).then((apiData) => {
-        let articleContent = null;
-
         if (apiData) {
-            articleContent = convertFeishuApiDataToMarkdown(apiData);
-            if (articleContent && articleContent.length >= 50) {
-                console.log("[x2md] Feishu 文档（JSON API 读取成功，长度=" + articleContent.length + "）");
-                return finishFeishuCapture(articleContent);
+            const apiContent = convertFeishuApiDataToMarkdown(apiData);
+            if (apiContent && apiContent.length >= 50) {
+                console.log("[x2md] Feishu 文档（JSON API 读取成功，长度=" + apiContent.length + "）");
+                return finishFeishuCapture(apiContent);
             }
             console.log("[x2md] Feishu JSON API 返回内容太短，尝试 DOM 提取");
         } else {
@@ -593,17 +591,24 @@ function captureFeishuDocument() {
         // 策略3：滚动收集（最后兜底）
         showToast("正在滚动页面加载全部内容…", "loading", null);
         scrollAndCollectFeishuBlocks().then((collectedBlocks) => {
+            let scrollContent = null;
             if (collectedBlocks && collectedBlocks.length > 0) {
-                articleContent = extractFeishuMarkdownFromBlocks(collectedBlocks, options);
+                scrollContent = extractFeishuMarkdownFromBlocks(collectedBlocks, options);
             }
 
-            if (articleContent && articleContent.length >= 50) {
+            if (scrollContent && scrollContent.length >= 50) {
                 console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks）");
-                return finishFeishuCapture(articleContent);
+                return finishFeishuCapture(scrollContent);
             }
 
             showToast("飞书文档提取失败", "error", 4000);
+        }).catch((err) => {
+            console.error("[x2md] Feishu 滚动收集出错：", err);
+            showToast("飞书文档提取失败", "error", 4000);
         });
+    }).catch((err) => {
+        console.error("[x2md] Feishu API 读取出错：", err);
+        showToast("飞书文档提取失败", "error", 4000);
     });
 
     function finishFeishuCapture(articleContent) {
