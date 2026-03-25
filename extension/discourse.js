@@ -184,7 +184,7 @@
             const href = resolveLinuxDoUrl(safeGetAttribute(node, "href") || "", options.pageUrl);
             const text = markdown.trim();
             if (!href || !text) return markdown;
-            if (text.includes("![](")) return markdown;
+            if (/!\[[^\]]*]\(/.test(text)) return markdown;
             return `[${text}](${href})`;
         }
 

@@ -198,7 +198,7 @@ test("extractLinuxDoMarkdown keeps discourse originals with site-specific rules"
             "",
             "详情见 [Iberxilong](https://linux.do/u/iberxilong)",
             "",
-            "![](https://cdn3.linux.do/original/4X/8/8/e/example.png)",
+            "![example](https://cdn3.linux.do/original/4X/8/8/e/example.png)",
             "",
             "```js",
             "console.log('linux.do');",
