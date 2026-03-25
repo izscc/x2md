@@ -188,7 +188,9 @@
         if (tag === "h1") markdown = `\n# ${markdown.replace(/\*\*/g, "").trim()}\n`;
         else if (tag === "h2") markdown = `\n## ${markdown.replace(/\*\*/g, "").trim()}\n`;
         else if (tag === "h3") markdown = `\n### ${markdown.replace(/\*\*/g, "").trim()}\n`;
-        else if (tag === "h4" || tag === "h5" || tag === "h6") markdown = `\n#### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        else if (tag === "h4") markdown = `\n#### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        else if (tag === "h5") markdown = `\n##### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        else if (tag === "h6") markdown = `\n###### ${markdown.replace(/\*\*/g, "").trim()}\n`;
         else if (tag === "blockquote") {
             const lines = markdown.trim().split("\n").filter((line) => line.trim() !== "");
             markdown = "\n" + lines.map((line) => "> " + line).join("\n") + "\n";

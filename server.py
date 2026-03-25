@@ -130,10 +130,13 @@ def normalize_image_url(url: str) -> str:
 
 
 def sanitize_filename(name: str, max_len: int = 60) -> str:
-    """清理文件名中的非法字符"""
+    """清理文件名中的非法字符（兼容 Windows）"""
     name = re.sub(r'[\\/:*?"<>|]', "_", name)
     name = re.sub(r'\s+', " ", name.strip())
-    return name[:max_len]
+    name = name[:max_len]
+    # Windows 不允许文件名以 . 或空格结尾
+    name = name.rstrip(". ")
+    return name or "untitled"
 
 
 def download_video_async(url: str, save_path: str, filename: str):
@@ -193,8 +196,9 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
         .replace("{date}", date_str)
         .replace("{author}", author_clean)
         .replace("{summary}", summary_short))
-    # 去除文件名里可能产生的多余下划线
+    # 去除文件名里可能产生的多余下划线，并限制最终长度（Windows 255 字符限制）
     filename = re.sub(r'_+', '_', filename).strip('_')
+    filename = sanitize_filename(filename, max_len)
 
     # ── Front Matter ──────────────────────────
     title_src = article_title if article_title else text
@@ -244,11 +248,24 @@ tags: []
         else:
             vid_map[vid_url] = f"🎞️ [推特媒体：点击播放视频]({vid_url})"
 
-    def append_unused_videos(lines_list, content_text, video_list=None):
+    # 记录已在正文中内联使用的视频 URL（在占位符被替换前记录）
+    _inlined_videos = set()
+
+    def replace_video_placeholders(text_content):
+        """替换 [MEDIA_VIDEO_URL:xxx] 占位符为实际视频引用，并记录已内联的视频"""
+        result = text_content
+        for v_url, md_ref in vid_map.items():
+            target = f"[MEDIA_VIDEO_URL:{v_url}]"
+            if target in result:
+                result = result.replace(target, md_ref)
+                _inlined_videos.add(v_url)
+        return result
+
+    def append_unused_videos(lines_list, video_list=None):
         """追加未在正文中内联的视频，video_list 默认为主推文 videos"""
         vids = video_list if video_list is not None else videos
         if not vids: return
-        unused_vids = [v for v in vids if v in vid_map and f"[MEDIA_VIDEO_URL:{v}]" not in (content_text or "")]
+        unused_vids = [v for v in vids if v in vid_map and v not in _inlined_videos]
         if unused_vids:
             lines_list.append("")
             for v in unused_vids:
@@ -266,22 +283,15 @@ tags: []
                 lines.append(f"![{i+1}]({orig_url})")
             lines.append("")
 
-        append_unused_videos(lines, article_content)
-
         # X Article：直接输出正文（已由 content.js 转换为 Markdown 段落）
         if article_content:
-            text_result = article_content.strip()
-            for v_url, md_ref in vid_map.items():
-                target = f"[MEDIA_VIDEO_URL:{v_url}]"
-                text_result = text_result.replace(target, md_ref)
+            text_result = replace_video_placeholders(article_content.strip())
             lines.append(text_result)
+
+        append_unused_videos(lines)
     else:
         # 普通推文：只输出推文原文
-        text_result = text.strip()
-        for v_url, md_ref in vid_map.items():
-            target = f"[MEDIA_VIDEO_URL:{v_url}]"
-            if target in text_result:
-                text_result = text_result.replace(target, md_ref)
+        text_result = replace_video_placeholders(text.strip())
         lines.append(text_result)
 
         # ── 图片嵌入（首条推文的图片）
@@ -290,8 +300,8 @@ tags: []
             for i, img_url in enumerate(images):
                 orig_url = normalize_image_url(img_url)
                 lines.append(f"![{i+1}]({orig_url})")
-        
-        append_unused_videos(lines, text_result)
+
+        append_unused_videos(lines)
 
         # ── 线程推文（长推文）───────────────────────────
         for idx, tw in enumerate(thread_tweets):
@@ -316,6 +326,7 @@ tags: []
                 for v_url in tw_videos:
                     if v_url in vid_map:
                         lines.append(vid_map[v_url])
+                        _inlined_videos.add(v_url)
 
     body = "\n".join(lines)
     return filename, front_matter + "\n" + body

@@ -145,8 +145,9 @@
             const text = markdown.trim();
             if (!href || !text || href.startsWith("javascript:")) return markdown;
             if (text.includes("![](")) return text;
-            // 微信内部跳转链接也保留
-            return `[${text}](${href})`;
+            // 微信内部跳转链接转为绝对路径
+            const absHref = href.startsWith("/") ? `https://mp.weixin.qq.com${href}` : href;
+            return `[${text}](${absHref})`;
         }
 
         // 加粗
@@ -198,8 +199,33 @@
             }
         }
 
+        // 表格处理：转换为 GFM pipe table
+        if (tag === "table") {
+            const rows = [];
+            for (const tr of node.querySelectorAll?.("tr") || []) {
+                const cells = [];
+                for (const cell of tr.querySelectorAll?.("td, th") || []) {
+                    cells.push(convertWechatNodeToMarkdown(cell, options).replace(/\n/g, " ").trim());
+                }
+                if (cells.length) rows.push(cells);
+            }
+            if (rows.length) {
+                const colCount = Math.max(...rows.map(r => r.length));
+                const lines = [];
+                rows.forEach((row, i) => {
+                    while (row.length < colCount) row.push("");
+                    lines.push("| " + row.join(" | ") + " |");
+                    if (i === 0) lines.push("| " + Array(colCount).fill("---").join(" | ") + " |");
+                });
+                return "\n" + lines.join("\n") + "\n";
+            }
+        }
+        if (tag === "tr" || tag === "td" || tag === "th" || tag === "thead" || tag === "tbody") {
+            return markdown;
+        }
+
         // 块级元素换行
-        const blockTags = new Set(["p", "div", "section", "article", "ul", "ol", "figure", "figcaption", "table"]);
+        const blockTags = new Set(["p", "div", "section", "article", "ul", "ol", "figure", "figcaption"]);
         if (blockTags.has(tag)) {
             return `\n${markdown}\n`;
         }

@@ -83,7 +83,8 @@
             const lightboxHref = safeGetAttribute(safeClosest(node, "a.lightbox[href]"), "href") || "";
             const src = lightboxHref || node.currentSrc || node.src || safeGetAttribute(node, "src") || "";
             const resolved = resolveLinuxDoUrl(src, options.pageUrl);
-            return resolved ? `\n![](${resolved})\n` : "";
+            const alt = (node.alt || "").replace(/[\[\]]/g, "");
+            return resolved ? `\n![${alt}](${resolved})\n` : "";
         }
 
         if (tag === "br") return "\n";
@@ -119,10 +120,20 @@
             markdown = `**${markdown.replace(/\*\*/g, "")}**`;
         }
 
+        if ((tag === "em" || tag === "i") && markdown.trim()) {
+            markdown = `*${markdown.trim()}*`;
+        }
+
+        if ((tag === "del" || tag === "s") && markdown.trim()) {
+            markdown = `~~${markdown.trim()}~~`;
+        }
+
         if (tag === "h1") return `\n# ${markdown.replace(/\*\*/g, "").trim()}\n`;
         if (tag === "h2") return `\n## ${markdown.replace(/\*\*/g, "").trim()}\n`;
         if (tag === "h3") return `\n### ${markdown.replace(/\*\*/g, "").trim()}\n`;
-        if (tag === "h4" || tag === "h5" || tag === "h6") return `\n#### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        if (tag === "h4") return `\n#### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        if (tag === "h5") return `\n##### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        if (tag === "h6") return `\n###### ${markdown.replace(/\*\*/g, "").trim()}\n`;
 
         if (tag === "blockquote") {
             const lines = markdown.trim().split("\n").filter((line) => line.trim() !== "");
@@ -130,9 +141,9 @@
         }
 
         if (tag === "li") {
-            const parentTag = getTagName(element.parentElement);
+            const parentTag = getTagName(node.parentElement);
             if (parentTag === "ol") {
-                const idx = Array.from(element.parentElement.children).indexOf(element) + 1;
+                const idx = Array.from(node.parentElement.children).indexOf(node) + 1;
                 return `\n${idx}. ${markdown.trim()}\n`;
             }
             return `\n- ${markdown.trim()}\n`;
