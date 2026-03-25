@@ -10,7 +10,12 @@
 importScripts("media_helpers.js");
 importScripts("twitter_graphql.js");
 
-const SERVER_BASE = "http://127.0.0.1:9527";
+let SERVER_BASE = "http://127.0.0.1:9527";
+
+// 从本地存储恢复用户自定义端口
+chrome.storage.local.get("x2md_port", (data) => {
+    if (data.x2md_port) SERVER_BASE = `http://127.0.0.1:${data.x2md_port}`;
+});
 const GRAPHQL_DISCOVERY_CACHE = new Map();
 
 function hasDiscoveredOperationIds(ids) {
@@ -712,6 +717,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try {
                 const resp = await fetch(`${SERVER_BASE}/config`);
                 const cfg = await resp.json();
+                // 如果开启了同步，用 sync 中的扩展配置覆盖（save_paths 等本地专属字段不同步）
+                const syncData = await chrome.storage.sync.get("x2md_sync").catch(() => ({}));
+                if (syncData.x2md_sync && syncData.x2md_sync.sync_enabled) {
+                    const synced = syncData.x2md_sync;
+                    const SYNC_FIELDS = ["filename_format", "max_filename_length",
+                        "enable_video_download", "video_duration_threshold", "show_site_save_icon"];
+                    for (const k of SYNC_FIELDS) {
+                        if (synced[k] !== undefined) cfg[k] = synced[k];
+                    }
+                    cfg.sync_enabled = true;
+                }
+                // 缓存端口到 local storage，下次启动时无需先请求服务即可使用正确端口
+                if (cfg.port && cfg.port !== 9527) {
+                    chrome.storage.local.set({ x2md_port: cfg.port });
+                    SERVER_BASE = `http://127.0.0.1:${cfg.port}`;
+                }
                 sendResponse({ success: true, config: cfg });
             } catch (err) {
                 sendResponse({ success: false, error: err.message });
@@ -729,9 +750,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     body: JSON.stringify(message.config)
                 });
                 const json = await resp.json();
+                // 如果开启了同步，将可同步字段写入 chrome.storage.sync
+                if (message.config.sync_enabled) {
+                    const SYNC_FIELDS = ["filename_format", "max_filename_length",
+                        "enable_video_download", "video_duration_threshold", "show_site_save_icon"];
+                    const toSync = { sync_enabled: true };
+                    for (const k of SYNC_FIELDS) {
+                        if (message.config[k] !== undefined) toSync[k] = message.config[k];
+                    }
+                    await chrome.storage.sync.set({ x2md_sync: toSync }).catch(() => {});
+                } else if (message.config.sync_enabled === false) {
+                    await chrome.storage.sync.remove("x2md_sync").catch(() => {});
+                }
+                // 更新端口缓存
+                if (message.config.port) {
+                    chrome.storage.local.set({ x2md_port: message.config.port });
+                    SERVER_BASE = `http://127.0.0.1:${message.config.port}`;
+                }
                 sendResponse({ success: json.success !== false, config: json.config });
             } catch (err) {
                 sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
+    if (message.action === "get_sync_status") {
+        (async () => {
+            try {
+                const data = await chrome.storage.sync.get("x2md_sync");
+                sendResponse({ enabled: !!(data.x2md_sync && data.x2md_sync.sync_enabled) });
+            } catch {
+                sendResponse({ enabled: false });
             }
         })();
         return true;

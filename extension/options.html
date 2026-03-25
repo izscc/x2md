@@ -513,6 +513,32 @@
             </div>
         </div>
 
+        <!-- 账号同步 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🔄</div>
+                <div>
+                    <h2>跨设备同步</h2>
+                    <p>开启后，文件命名、视频下载等偏好设置通过 Chrome 账号自动同步到其他设备</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">开启同步</div>
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <input type="checkbox" id="syncEnabled" style="width:16px; height:16px; cursor:pointer;" />
+                        <label for="syncEnabled"
+                            style="margin-left: 8px; font-size:13px; cursor:pointer;">同步偏好设置到其他已登录同一 Chrome 账号的设备</label>
+                    </div>
+                </div>
+                <div class="form-hint" style="margin-top:8px;">
+                    同步范围：文件命名格式、文件名限长、视频下载设置、站点图标开关。<br>
+                    不同步：保存路径、视频保存路径、服务端口（这些因设备而异）。
+                </div>
+                <div id="syncStatus" style="margin-top:8px; font-size:12px; color:var(--text-muted);"></div>
+            </div>
+        </div>
+
         <!-- 保存按钮 -->
         <button class="btn-save" id="btnSave">
             <span>💾</span> 保存设置

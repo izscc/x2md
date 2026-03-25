@@ -21,7 +21,7 @@ a = Analysis(
         'server',
         'setup_wizard',
         'pystray',
-        'pystray._darwin' if sys.platform == 'darwin' else 'pystray._win32',
+        'pystray._darwin' if sys.platform == 'darwin' else ('pystray._win32' if sys.platform == 'win32' else 'pystray._xorg'),
         'PIL',
         'PIL.Image',
         'PIL.ImageDraw',
@@ -95,7 +95,7 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'X2MD',
             'CFBundleDisplayName': 'X2MD',
-            'CFBundleShortVersionString': '1.0.8',
+            'CFBundleShortVersionString': '1.1.0',
             'LSUIElement': True,  # 无 Dock 图标，仅菜单栏显示
         },
     )

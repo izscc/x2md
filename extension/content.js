@@ -834,7 +834,12 @@ function showToast(message, type = "loading", duration = null) {
     const icons = { loading: "⏳", success: "✅", error: "❌" };
     t.style.background = c.bg;
     t.style.boxShadow = `0 8px 24px ${c.shadow}`;
-    t.innerHTML = `<span style="margin-right:8px">${icons[type]}</span>${message}`;
+    t.textContent = "";
+    const icon = document.createElement("span");
+    icon.style.marginRight = "8px";
+    icon.textContent = icons[type] || "";
+    t.appendChild(icon);
+    t.appendChild(document.createTextNode(message));
     t.style.opacity = "1";
     t.style.transform = "translateY(0)";
     clearTimeout(t.__timer);
@@ -922,11 +927,13 @@ function bindAllDebounced() {
     }, 200);
 }
 
+let _likeSaveTimer = null;
 document.addEventListener("click", (event) => {
     if (!isLinuxDoTopicPage()) return;
     const btn = event.target?.closest?.(LINUX_DO_LIKE_SELECTOR);
     if (!btn) return;
-    setTimeout(() => captureLinuxDoPost(btn), 250);
+    clearTimeout(_likeSaveTimer);
+    _likeSaveTimer = setTimeout(() => captureLinuxDoPost(btn), 500);
 }, true);
 
 const observer = new MutationObserver(bindAllDebounced);

@@ -1,5 +1,6 @@
 // popup.js
 chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
+    if (chrome.runtime.lastError) { /* 扩展上下文失效，忽略 */ return; }
     const dot = document.getElementById("dot");
     const txt = document.getElementById("status-text");
     const online = resp && resp.online;
@@ -8,6 +9,7 @@ chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
 });
 
 chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
+    if (chrome.runtime.lastError) { return; }
     const list = document.getElementById("path-list");
     if (!resp || !resp.success) {
         list.innerHTML = '<div class="path-item" style="color:#f4212e">无法读取配置</div>';

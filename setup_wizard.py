@@ -24,7 +24,7 @@ def get_app_dir():
     if sys.platform == "darwin":
         d = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
     elif sys.platform == "win32":
-        d = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "X2MD")
+        d = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "X2MD")
     else:
         if getattr(sys, 'frozen', False):
             return os.path.dirname(sys.executable)

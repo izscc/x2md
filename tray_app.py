@@ -24,7 +24,7 @@ def get_app_dir():
     if sys.platform == "darwin":
         d = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
     elif sys.platform == "win32":
-        d = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "X2MD")
+        d = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "X2MD")
     else:
         if getattr(sys, 'frozen', False):
             return os.path.dirname(sys.executable)
@@ -49,12 +49,14 @@ EXT_DIR = os.path.join(APP_DIR, "extension")
 if not os.path.isdir(EXT_DIR):
     EXT_DIR = os.path.join(RESOURCE_DIR, "extension")
 
+_stream_out = (open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False)
+               if sys.platform == "win32" else sys.stdout)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(_stream_out),
     ]
 )
 logger = logging.getLogger("x2md_tray")
@@ -166,12 +168,14 @@ def create_tray_icon_image():
 
     # 白色 "X" 字样
     try:
-        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 36)
-    except Exception:
-        try:
+        if sys.platform == "darwin":
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 36)
+        elif sys.platform == "win32":
+            font = ImageFont.truetype(os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arial.ttf"), 36)
+        else:
             font = ImageFont.truetype("arial.ttf", 36)
-        except Exception:
-            font = ImageFont.load_default()
+    except Exception:
+        font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), "X", font=font)
     tw = bbox[2] - bbox[0]

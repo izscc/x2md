@@ -43,7 +43,7 @@ def get_app_dir():
     if sys.platform == "darwin":
         d = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "X2MD")
     elif sys.platform == "win32":
-        d = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "X2MD")
+        d = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "X2MD")
     else:
         if getattr(sys, 'frozen', False):
             return os.path.dirname(sys.executable)
@@ -73,7 +73,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler(open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False)
+                                if sys.platform == "win32" else sys.stdout)
     ]
 )
 logger = logging.getLogger("x2md")
@@ -356,7 +357,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.0.8"})
+            self._respond(200, {"status": "ok", "version": "1.1.0"})
 
         elif path == "/config":
             # 返回当前配置

@@ -20,6 +20,10 @@ document.addEventListener("DOMContentLoaded", () => {
 // ─────────────────────────────────────────────
 function loadConfig() {
     chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
+        if (chrome.runtime.lastError) {
+            showToast("扩展通信失败，请刷新页面重试", true);
+            return;
+        }
         if (resp && resp.success && resp.config) {
             currentConfig = resp.config;
             applyConfigToUI(resp.config);
@@ -42,7 +46,22 @@ function applyConfigToUI(cfg) {
     document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
     document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
 
+    // 同步开关回显
+    document.getElementById("syncEnabled").checked = !!cfg.sync_enabled;
+    updateSyncStatus(!!cfg.sync_enabled);
+
     renderPaths(cfg.save_paths || []);
+}
+
+function updateSyncStatus(enabled) {
+    const el = document.getElementById("syncStatus");
+    if (enabled) {
+        el.textContent = "同步已开启 — 偏好设置将通过 Chrome 账号同步到其他设备";
+        el.style.color = "var(--success)";
+    } else {
+        el.textContent = "同步未开启 — 设置仅保存在本机";
+        el.style.color = "var(--text-muted)";
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -106,6 +125,7 @@ function checkStatus() {
     txt.textContent = "检测中…";
 
     chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
+        if (chrome.runtime.lastError) { return; }
         const online = resp && resp.online;
         dot.className = "status-indicator " + (online ? "online" : "offline");
         txt.textContent = online ? "本地服务运行中 ✓" : "服务未启动，请运行 start_server.sh";
@@ -128,6 +148,7 @@ function saveConfig() {
     const videoSavePath = document.getElementById("videoSavePath").value.trim();
     const videoDurationThreshold = parseFloat(document.getElementById("videoDurationThreshold").value) || 5;
     const showSiteSaveIcon = document.getElementById("showSiteSaveIcon").checked;
+    const syncEnabled = document.getElementById("syncEnabled").checked;
 
     if (!savePaths.length) {
         showToast("请至少添加一个保存路径", true);
@@ -143,6 +164,7 @@ function saveConfig() {
         video_save_path: videoSavePath,
         video_duration_threshold: videoDurationThreshold,
         show_site_save_icon: showSiteSaveIcon,
+        sync_enabled: syncEnabled,
     };
 
     document.getElementById("portLabel").textContent = port;
@@ -150,6 +172,7 @@ function saveConfig() {
     chrome.runtime.sendMessage({ action: "update_config", config: newConfig }, (resp) => {
         if (resp && resp.success) {
             currentConfig = newConfig;
+            updateSyncStatus(syncEnabled);
             showToast("✅ 设置已保存");
         } else {
             showToast("❌ 保存失败，服务是否在线？", true);
