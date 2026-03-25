@@ -15,7 +15,8 @@ import logging
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 
@@ -98,37 +99,45 @@ logger = logging.getLogger("x2md")
 
 # 全局配置缓存和媒体下载线程池
 _config_cache: dict | None = None
+_config_lock = threading.Lock()
+_save_lock = threading.Lock()           # 保护文件写入，防止并发写冲突
 _media_executor = ThreadPoolExecutor(max_workers=5)
 
 
 def load_config() -> dict:
-    """加载配置文件，优先返回缓存，不存在则从磁盘读取"""
+    """加载配置文件，优先返回缓存，不存在则从磁盘读取（线程安全）"""
     global _config_cache
     if _config_cache is not None:
         return _config_cache
 
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-                for k, v in DEFAULT_CONFIG.items():
-                    if k not in cfg:
-                        cfg[k] = v
-                _config_cache = cfg
-                return cfg
-        except Exception as e:
-            logger.warning(f"配置文件读取失败，使用默认配置：{e}")
-    _config_cache = DEFAULT_CONFIG.copy()
-    save_config(_config_cache)
-    return _config_cache
+    with _config_lock:
+        # double-check after acquiring lock
+        if _config_cache is not None:
+            return _config_cache
+
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    for k, v in DEFAULT_CONFIG.items():
+                        if k not in cfg:
+                            cfg[k] = v
+                    _config_cache = cfg
+                    return cfg
+            except Exception as e:
+                logger.warning(f"配置文件读取失败，使用默认配置：{e}")
+        _config_cache = DEFAULT_CONFIG.copy()
+        save_config(_config_cache)
+        return _config_cache
 
 
 def save_config(cfg: dict):
-    """保存配置到文件并刷新缓存"""
+    """保存配置到文件并刷新缓存（线程安全）"""
     global _config_cache
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
-    _config_cache = cfg
+    with _config_lock:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        _config_cache = cfg
 
 
 def normalize_image_url(url: str) -> str:
@@ -554,27 +563,28 @@ class X2MDHandler(BaseHTTPRequestHandler):
                     final_dir = os.path.join(save_path, folder_name)
 
                 os.makedirs(final_dir, exist_ok=True)
-                filepath = os.path.join(final_dir, filename + ".md")
-                overwrite = cfg.get("overwrite_existing", False)
-                source_url = data.get("url", "")
 
-                if overwrite and source_url:
-                    # 覆盖模式：先按 URL 查找已有文件
-                    existing = find_existing_file_by_source_url(final_dir, source_url)
-                    if existing:
-                        filepath = existing
-                        logger.info(f"🔁 覆盖已有文件：{filepath}")
-                    # URL 未匹配但同名文件存在，也直接覆盖
-                elif os.path.exists(filepath):
-                    # 非覆盖模式：添加时间戳后缀避免覆盖
-                    ts = datetime.now().strftime("%H%M%S")
-                    filepath = os.path.join(final_dir, f"{filename}_{ts}.md")
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(content)
+                # 加锁保护文件查找+写入的原子性，防止并发请求写同一文件
+                with _save_lock:
+                    filepath = os.path.join(final_dir, filename + ".md")
+                    overwrite = cfg.get("overwrite_existing", False)
+                    source_url = data.get("url", "")
+
+                    if overwrite and source_url:
+                        existing = find_existing_file_by_source_url(final_dir, source_url)
+                        if existing:
+                            filepath = existing
+                            logger.info(f"🔁 覆盖已有文件：{filepath}")
+                    elif os.path.exists(filepath):
+                        ts = datetime.now().strftime("%H%M%S")
+                        filepath = os.path.join(final_dir, f"{filename}_{ts}.md")
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(content)
+
                 logger.info(f"✅ 已保存：{filepath}")
                 saved_files.append(filepath)
 
-                # ── 图片下载到本地 ──────────────────
+                # ── 图片下载到本地（异步，不需要锁）──
                 if image_tasks:
                     for img_url, subfolder, local_name in image_tasks:
                         img_dir = os.path.join(final_dir, subfolder)
@@ -628,7 +638,8 @@ class X2MDHandler(BaseHTTPRequestHandler):
 def main():
     cfg = load_config()
     port = cfg.get("port", 9527)
-    server = HTTPServer(("127.0.0.1", port), X2MDHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), X2MDHandler)
+    server.daemon_threads = True  # 随主线程退出，不阻塞关闭
     logger.info(f"🚀 x2md 服务已启动，监听 http://127.0.0.1:{port}")
     logger.info(f"📁 保存路径：{cfg.get('save_paths', [])}")
     try:
