@@ -103,6 +103,78 @@
             return formatCodeFence(code, normalizeCodeLanguage(codeNode));
         }
 
+        const classList = getClassList(node);
+
+        // Discourse <details> 折叠/剧透块
+        if (tag === "details") {
+            const summary = node.querySelector?.("summary");
+            const summaryText = summary ? (getNodeText(summary).trim() || "详情") : "详情";
+            let inner = "";
+            for (const child of node.childNodes || []) {
+                if (child === summary) continue;
+                inner += convertLinuxDoNodeToMarkdown(child, options);
+            }
+            const content = inner.trim();
+            if (!content) return "";
+            return `\n<details>\n<summary>${summaryText}</summary>\n\n${content}\n\n</details>\n`;
+        }
+        if (tag === "summary") return "";  // 已在 details 中处理
+
+        // Discourse onebox 引用（aside.quote / aside.onebox）
+        if (tag === "aside" && (classList.includes("quote") || classList.includes("onebox"))) {
+            const title = node.querySelector?.(".title, header");
+            const titleText = title ? getNodeText(title).trim() : "";
+            let inner = "";
+            for (const child of node.childNodes || []) {
+                if (child === title || (child.nodeType === 1 && (getClassList(child).includes("title") || getTagName(child) === "header"))) continue;
+                inner += convertLinuxDoNodeToMarkdown(child, options);
+            }
+            const lines = inner.trim().split("\n").filter((l) => l.trim() !== "");
+            if (titleText) lines.unshift(titleText);
+            if (!lines.length) return "";
+            return "\n" + lines.map((l) => `> ${l}`).join("\n") + "\n";
+        }
+
+        // Discourse 表格
+        if (tag === "table") {
+            const rows = [];
+            for (const tr of node.querySelectorAll?.("tr") || []) {
+                const cells = [];
+                for (const cell of tr.querySelectorAll?.("td, th") || []) {
+                    cells.push(convertLinuxDoNodeToMarkdown(cell, options).replace(/\n/g, " ").trim());
+                }
+                if (cells.length) rows.push(cells);
+            }
+            if (rows.length) {
+                const colCount = Math.max(...rows.map(r => r.length));
+                const tableLines = [];
+                rows.forEach((row, i) => {
+                    while (row.length < colCount) row.push("");
+                    tableLines.push("| " + row.join(" | ") + " |");
+                    if (i === 0) tableLines.push("| " + Array(colCount).fill("---").join(" | ") + " |");
+                });
+                return "\n" + tableLines.join("\n") + "\n";
+            }
+        }
+        if (tag === "tr" || tag === "td" || tag === "th" || tag === "thead" || tag === "tbody") {
+            // 被 table handler 调用时单独处理
+            let md = "";
+            for (const child of node.childNodes || []) {
+                md += convertLinuxDoNodeToMarkdown(child, options);
+            }
+            return md;
+        }
+
+        // Discourse 投票（poll widget）—— 简化为文本列表
+        if (classList.includes("poll")) {
+            const titleEl = node.querySelector?.(".poll-title");
+            const title = titleEl ? getNodeText(titleEl).trim() : "投票";
+            const optionEls = node.querySelectorAll?.(".poll-option .option-text, li[data-poll-option-id]") || [];
+            const optionTexts = Array.from(optionEls).map(el => getNodeText(el).trim()).filter(Boolean);
+            if (!optionTexts.length) return "";
+            return `\n> **${title}**\n${optionTexts.map(o => `> - ${o}`).join("\n")}\n`;
+        }
+
         let markdown = "";
         for (const child of node.childNodes || []) {
             markdown += convertLinuxDoNodeToMarkdown(child, options);

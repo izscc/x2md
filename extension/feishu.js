@@ -99,6 +99,21 @@
             return `**${markdown.replace(/\*\*/g, "")}**`;
         }
 
+        // 斜体
+        if ((tag === "em" || tag === "i") && markdown.trim()) {
+            return `*${markdown.trim()}*`;
+        }
+
+        // 删除线
+        if ((tag === "del" || tag === "s") && markdown.trim()) {
+            return `~~${markdown.trim()}~~`;
+        }
+
+        // 行内代码
+        if (tag === "code" && markdown.trim() && !markdown.includes("\n")) {
+            return `\`${markdown.trim()}\``;
+        }
+
         return markdown;
     }
 
@@ -136,6 +151,16 @@
         if (type === "heading2") return `## ${extractBlockText(block, options)}`.trim();
         if (type === "heading3") return `### ${extractBlockText(block, options)}`.trim();
         if (type === "heading4") return `#### ${extractBlockText(block, options)}`.trim();
+        if (type === "heading5") return `##### ${extractBlockText(block, options)}`.trim();
+        if (type === "heading6" || type === "heading7" || type === "heading8" || type === "heading9") return `###### ${extractBlockText(block, options)}`.trim();
+
+        // Todo / Checkbox 块
+        if (type === "todo") {
+            const checkbox = block.querySelector?.("input[type='checkbox'], .checkbox, .todo-checkbox");
+            const checked = checkbox?.checked || getClassList(checkbox).includes("checked") || safeGetAttribute(checkbox, "data-checked") === "true";
+            const content = extractBlockText(block.querySelector?.(".list-content, .todo-content") || block, options);
+            return content ? `- [${checked ? "x" : " "}] ${content}` : "";
+        }
 
         if (type === "ordered") {
             const order = (block.querySelector?.(".order")?.innerText || "1.").trim();

@@ -46,6 +46,20 @@ function applyConfigToUI(cfg) {
     document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
     document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
 
+    // 平台分类文件夹（V1.2）
+    document.getElementById("enablePlatformFolders").checked = cfg.enable_platform_folders !== false;
+    const folderNames = cfg.platform_folder_names || {};
+    document.querySelectorAll(".platform-folder-input").forEach((input) => {
+        const platform = input.dataset.platform;
+        if (platform && folderNames[platform]) {
+            input.value = folderNames[platform];
+        }
+    });
+
+    // 图片本地下载（V1.2）
+    document.getElementById("downloadImages").checked = cfg.download_images !== false;
+    document.getElementById("imageSubfolder").value = cfg.image_subfolder || "assets";
+
     // 同步开关回显
     document.getElementById("syncEnabled").checked = !!cfg.sync_enabled;
     updateSyncStatus(!!cfg.sync_enabled);
@@ -150,6 +164,20 @@ function saveConfig() {
     const showSiteSaveIcon = document.getElementById("showSiteSaveIcon").checked;
     const syncEnabled = document.getElementById("syncEnabled").checked;
 
+    // 平台分类文件夹（V1.2）
+    const enablePlatformFolders = document.getElementById("enablePlatformFolders").checked;
+    const platformFolderNames = {};
+    document.querySelectorAll(".platform-folder-input").forEach((input) => {
+        const platform = input.dataset.platform;
+        if (platform) {
+            platformFolderNames[platform] = input.value.trim() || platform;
+        }
+    });
+
+    // 图片本地下载（V1.2）
+    const downloadImages = document.getElementById("downloadImages").checked;
+    const imageSubfolder = document.getElementById("imageSubfolder").value.trim() || "assets";
+
     if (!savePaths.length) {
         showToast("请至少添加一个保存路径", true);
         return;
@@ -165,6 +193,10 @@ function saveConfig() {
         video_duration_threshold: videoDurationThreshold,
         show_site_save_icon: showSiteSaveIcon,
         sync_enabled: syncEnabled,
+        enable_platform_folders: enablePlatformFolders,
+        platform_folder_names: platformFolderNames,
+        download_images: downloadImages,
+        image_subfolder: imageSubfolder,
     };
 
     document.getElementById("portLabel").textContent = port;

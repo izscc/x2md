@@ -88,6 +88,19 @@
         if (shouldSkipWechatNode(node)) return "";
 
         const tag = getTagName(node);
+        const classList = getClassList(node);
+
+        // 视频占位
+        if (tag === "mpvoice" || classList.includes("voice_player_inner")) {
+            return "\n> [语音消息]\n";
+        }
+        if (classList.includes("video_iframe") || tag === "iframe" && String(node.src || "").includes("v.qq.com")) {
+            return "\n> [视频]\n";
+        }
+        if (classList.includes("weapp_display_element") || classList.includes("weapp_text_link")) {
+            const title = safeGetAttribute(node, "data-title") || getNodeText(node).trim() || "小程序";
+            return `\n> [小程序: ${title}]\n`;
+        }
 
         // 图片：微信用 data-src 做懒加载
         if (tag === "img") {
@@ -120,11 +133,21 @@
         }
 
         // 微信常用 code_snippet_box 样式的代码块
-        if (getClassList(node).includes("code_snippet_box") || getClassList(node).includes("code-snippet__fix")) {
+        if (classList.includes("code_snippet_box") || classList.includes("code-snippet__fix")) {
             const codeNode = node.querySelector?.("code, pre") || node;
             const code = cleanZeroWidth(codeNode.innerText || codeNode.textContent || "").trim();
             if (!code) return "";
             return `\n\`\`\`\n${code}\n\`\`\`\n`;
+        }
+
+        // 列表容器：传递嵌套深度给子节点
+        if (tag === "ul" || tag === "ol") {
+            const parentDepth = options._listDepth || 0;
+            let listMd = "";
+            for (const child of node.childNodes || []) {
+                listMd += convertWechatNodeToMarkdown(child, { ...options, _listDepth: parentDepth + 1 });
+            }
+            return `\n${listMd}\n`;
         }
 
         // 递归子节点
@@ -168,7 +191,9 @@
         if (tag === "h1") return `\n# ${markdown.replace(/\*\*/g, "").trim()}\n`;
         if (tag === "h2") return `\n## ${markdown.replace(/\*\*/g, "").trim()}\n`;
         if (tag === "h3") return `\n### ${markdown.replace(/\*\*/g, "").trim()}\n`;
-        if (tag === "h4" || tag === "h5" || tag === "h6") return `\n#### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        if (tag === "h4") return `\n#### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        if (tag === "h5") return `\n##### ${markdown.replace(/\*\*/g, "").trim()}\n`;
+        if (tag === "h6") return `\n###### ${markdown.replace(/\*\*/g, "").trim()}\n`;
 
         // 引用
         if (tag === "blockquote") {
@@ -181,12 +206,14 @@
         if (tag === "li") {
             const parent = node.parentElement;
             const parentTag = getTagName(parent);
+            const depth = Math.max(0, (options._listDepth || 1) - 1);
+            const indent = "  ".repeat(depth);
             if (parentTag === "ol") {
                 const siblings = Array.from(parent?.children || []);
                 const index = siblings.indexOf(node) + 1;
-                return `\n${index}. ${markdown.trim()}\n`;
+                return `\n${indent}${index}. ${markdown.trim()}\n`;
             }
-            return `\n- ${markdown.trim()}\n`;
+            return `\n${indent}- ${markdown.trim()}\n`;
         }
 
         // section 中用内联样式模拟标题的情况
@@ -225,7 +252,7 @@
         }
 
         // 块级元素换行
-        const blockTags = new Set(["p", "div", "section", "article", "ul", "ol", "figure", "figcaption"]);
+        const blockTags = new Set(["p", "div", "section", "article", "figure", "figcaption"]);
         if (blockTags.has(tag)) {
             return `\n${markdown}\n`;
         }

@@ -490,6 +490,79 @@
             </div>
         </div>
 
+        <!-- 平台分类文件夹（V1.2 新增）-->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">📂</div>
+                <div>
+                    <h2>平台分类文件夹</h2>
+                    <p>按来源平台自动将文件保存到不同子文件夹，便于 Obsidian 管理</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">启用分类</div>
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <input type="checkbox" id="enablePlatformFolders"
+                            style="width:16px; height:16px; cursor:pointer;" checked />
+                        <label for="enablePlatformFolders"
+                            style="margin-left: 8px; font-size:13px; cursor:pointer;">按平台自动归类到子文件夹（如 Twitter/、WeChat/、LinuxDo/）</label>
+                    </div>
+                </div>
+                <div class="form-hint" style="margin-top:8px;">
+                    开启后，保存的 Markdown 文件将自动放入对应平台子文件夹中。<br>
+                    例如：<code>保存路径/Twitter/文件名.md</code>
+                </div>
+                <div class="section-divider"></div>
+                <div class="form-row">
+                    <div class="form-label">文件夹命名</div>
+                    <div style="flex:1;">
+                        <div style="display:grid; grid-template-columns:120px 1fr; gap:6px; align-items:center;">
+                            <span style="font-size:12px; color:var(--text-muted);">Twitter/X:</span>
+                            <input class="form-input platform-folder-input" data-platform="Twitter/X" value="Twitter" style="padding:6px 10px;" />
+                            <span style="font-size:12px; color:var(--text-muted);">LinuxDo:</span>
+                            <input class="form-input platform-folder-input" data-platform="LinuxDo" value="LinuxDo" style="padding:6px 10px;" />
+                            <span style="font-size:12px; color:var(--text-muted);">飞书 Feishu:</span>
+                            <input class="form-input platform-folder-input" data-platform="Feishu" value="Feishu" style="padding:6px 10px;" />
+                            <span style="font-size:12px; color:var(--text-muted);">微信公众号:</span>
+                            <input class="form-input platform-folder-input" data-platform="WeChat" value="WeChat" style="padding:6px 10px;" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图片本地化（V1.2 新增）-->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🖼️</div>
+                <div>
+                    <h2>图片本地下载</h2>
+                    <p>将远程图片下载到本地，避免 CDN 链接过期导致 Obsidian 中图片失效</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">启用下载</div>
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <input type="checkbox" id="downloadImages"
+                            style="width:16px; height:16px; cursor:pointer;" checked />
+                        <label for="downloadImages"
+                            style="margin-left: 8px; font-size:13px; cursor:pointer;">自动下载图片到本地（推荐开启）</label>
+                    </div>
+                </div>
+                <div class="form-row" style="margin-top:8px;">
+                    <div class="form-label">子文件夹名</div>
+                    <input class="form-input" type="text" id="imageSubfolder" value="assets"
+                        style="max-width: 200px;" />
+                </div>
+                <div class="form-hint">
+                    图片和视频将下载到 Markdown 文件同级的此子文件夹中。<br>
+                    例如：<code>保存路径/assets/文件名_img_1.jpg</code>
+                </div>
+            </div>
+        </div>
+
         <!-- 站点快捷保存 -->
         <div class="card">
             <div class="card-header">

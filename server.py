@@ -66,6 +66,17 @@ DEFAULT_CONFIG = {
     "video_save_path": os.path.join(HOME, "Desktop", "X2MD", "Videos"),
     "show_site_save_icon": True,
     "setup_completed": False,
+    # 按平台分类子文件夹（V1.2 新增）
+    "enable_platform_folders": True,
+    "platform_folder_names": {
+        "Twitter/X": "Twitter",
+        "LinuxDo": "LinuxDo",
+        "Feishu": "Feishu",
+        "WeChat": "WeChat",
+    },
+    # 图片下载到本地（V1.2 新增）
+    "download_images": True,
+    "image_subfolder": "assets",
 }
 
 _log_handlers = [logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8")]
@@ -83,9 +94,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("x2md")
 
-# 全局配置缓存和视频下载线程池
+# 全局配置缓存和媒体下载线程池
 _config_cache: dict | None = None
-_video_executor = ThreadPoolExecutor(max_workers=3)
+_media_executor = ThreadPoolExecutor(max_workers=5)
 
 
 def load_config() -> dict:
@@ -139,34 +150,68 @@ def sanitize_filename(name: str, max_len: int = 60) -> str:
     return name or "untitled"
 
 
+def _download_file(url: str, out_file: str, label: str = "文件"):
+    """通用文件下载（阻塞），供线程池任务调用"""
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        ssl_ctx = _build_ssl_context()
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=60) as response, \
+                open(out_file, 'wb') as fh:
+            while True:
+                chunk = response.read(8192)
+                if not chunk:
+                    break
+                fh.write(chunk)
+        return True
+    except Exception as e:
+        logger.error(f"❌ {label}下载失败 [{url[:80]}]: {e}")
+        return False
+
+
 def download_video_async(url: str, save_path: str, filename: str):
-    """提交视频下载任务到线程池（限并发 3），避免阻塞 HTTP 响应"""
+    """提交视频下载任务到线程池，避免阻塞 HTTP 响应"""
     def _download():
-        try:
-            logger.info(f"开启长视频下载通道: {url} -> {save_path}/{filename}")
-            os.makedirs(save_path, exist_ok=True)
-            out_file = os.path.join(save_path, filename)
+        logger.info(f"开启视频下载: {url[:80]} -> {save_path}/{filename}")
+        os.makedirs(save_path, exist_ok=True)
+        out_file = os.path.join(save_path, filename)
+        if _download_file(url, out_file, "视频"):
+            logger.info(f"✅ 视频下载成功: {out_file}")
 
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            ssl_ctx = _build_ssl_context()
-            with urllib.request.urlopen(req, context=ssl_ctx) as response, open(out_file, 'wb') as out_file_handle:
-                while True:
-                    chunk = response.read(8192)
-                    if not chunk:
-                        break
-                    out_file_handle.write(chunk)
-
-            logger.info(f"✅ 视频文件下载成功: {out_file}")
-        except Exception as e:
-            logger.error(f"❌ 视频流下载失败: {e}")
-
-    _video_executor.submit(_download)
+    _media_executor.submit(_download)
 
 
-def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
+def download_image_async(url: str, save_dir: str, filename: str):
+    """提交图片下载任务到线程池"""
+    def _download():
+        os.makedirs(save_dir, exist_ok=True)
+        out_file = os.path.join(save_dir, filename)
+        if os.path.exists(out_file):
+            return  # 已存在则跳过
+        if _download_file(url, out_file, "图片"):
+            logger.info(f"✅ 图片下载成功: {out_file}")
+
+    _media_executor.submit(_download)
+
+
+def _guess_image_ext(url: str) -> str:
+    """从 URL 中猜测图片扩展名"""
+    parsed = urlparse(url)
+    path = parsed.path.lower()
+    for ext in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'):
+        if ext in path:
+            return ext
+    # 检查 format 参数（微信/推特常用）
+    params = parse_qs(parsed.query)
+    fmt = params.get('wx_fmt', params.get('format', ['']))[0].lower()
+    ext_map = {'jpeg': '.jpg', 'jpg': '.jpg', 'png': '.png', 'gif': '.gif', 'webp': '.webp'}
+    return ext_map.get(fmt, '.jpg')
+
+
+def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     """
     将接收到的推文/文章数据构建为 Markdown 字符串。
-    返回 (文件名不含后缀, markdown内容)
+    返回 (文件名不含后缀, markdown内容, 图片下载任务列表)
+    图片下载任务: [(url, save_dir, filename), ...]
     """
     author = data.get("author", "unknown")
     handle = data.get("handle", "")
@@ -228,25 +273,27 @@ tags: []
     # ── 正文构建 ────────────────────────────────────
     # 原则：仅保留原文内容，不包含作者名和时间（那些已在 Front Matter 里）
     lines = []
+    image_subfolder = cfg.get("image_subfolder", "assets")
 
     vid_map = {}
-    save_dir = cfg.get("video_save_path", os.path.join(HOME, "Desktop", "X2MD", "Videos"))
-    
+    video_tasks = []  # (url, subfolder, filename) — 与图片同结构，在 _handle_save 中处理
+
     all_videos = list(videos)
     for t in thread_tweets:
         all_videos.extend(t.get("videos", []))
-        
+
     video_idx = 1
     for vid_url in all_videos:
         if vid_url in vid_map:
             continue
         if download_video:
             vid_filename = f"{filename}_video_{video_idx}.mp4"
-            download_video_async(vid_url, save_dir, vid_filename)
-            vid_map[vid_url] = f"![[{vid_filename}]]"
+            video_tasks.append((vid_url, image_subfolder, vid_filename))
+            # 使用相对路径引用，与图片一致，Obsidian 可直接识别
+            vid_map[vid_url] = f"![video_{video_idx}]({image_subfolder}/{vid_filename})"
             video_idx += 1
         else:
-            vid_map[vid_url] = f"🎞️ [推特媒体：点击播放视频]({vid_url})"
+            vid_map[vid_url] = f"[视频：点击播放]({vid_url})"
 
     # 记录已在正文中内联使用的视频 URL（在占位符被替换前记录）
     _inlined_videos = set()
@@ -275,17 +322,44 @@ tags: []
     if download_video and videos:
         images = [img for img in images if "video_thumb" not in img]
 
+    # ── 图片本地化处理 ────────────────────────────
+    do_download_images = cfg.get("download_images", False)
+    image_tasks = []  # (url, save_dir_placeholder, local_filename)
+    _img_counter = [0]  # 用列表做闭包可变计数器
+
+    def make_image_ref(img_url: str, alt: str = "") -> str:
+        """生成图片引用：本地模式返回相对路径，否则返回远程 URL"""
+        orig_url = normalize_image_url(img_url)
+        if not do_download_images:
+            return f"![{alt}]({orig_url})"
+        _img_counter[0] += 1
+        ext = _guess_image_ext(orig_url)
+        local_name = f"{filename}_img_{_img_counter[0]}{ext}"
+        image_tasks.append((orig_url, image_subfolder, local_name))
+        return f"![{alt}]({image_subfolder}/{local_name})"
+
+    # ── 处理 article_content 中已内嵌的远程图片链接 ──
+    def localize_article_images(md_text: str) -> str:
+        """将 article_content 中的 ![xxx](remote_url) 替换为本地路径"""
+        if not do_download_images:
+            return md_text
+        def _repl(m):
+            alt_text = m.group(1)
+            img_url = m.group(2)
+            return make_image_ref(img_url, alt_text)
+        return re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', _repl, md_text)
+
     if content_type == "article":
         # X Article 图片嵌入（作为封面或母贴遗留的前导图放在顶端）
         if images:
             for i, img_url in enumerate(images):
-                orig_url = normalize_image_url(img_url)
-                lines.append(f"![{i+1}]({orig_url})")
+                lines.append(make_image_ref(img_url, str(i + 1)))
             lines.append("")
 
         # X Article：直接输出正文（已由 content.js 转换为 Markdown 段落）
         if article_content:
             text_result = replace_video_placeholders(article_content.strip())
+            text_result = localize_article_images(text_result)
             lines.append(text_result)
 
         append_unused_videos(lines)
@@ -298,8 +372,7 @@ tags: []
         if images:
             lines.append("")
             for i, img_url in enumerate(images):
-                orig_url = normalize_image_url(img_url)
-                lines.append(f"![{i+1}]({orig_url})")
+                lines.append(make_image_ref(img_url, str(i + 1)))
 
         append_unused_videos(lines)
 
@@ -308,19 +381,18 @@ tags: []
             tw_text = tw.get("text", "").strip()
             tw_images = tw.get("images", [])
             tw_videos = tw.get("videos", [])
-            
+
             if not tw_text and not tw_images and not tw_videos:
                 continue
             lines.append("\n---\n")
             if tw_text:
                 lines.append(tw_text)
-            
+
             if tw_images:
                 lines.append("")
                 for i, img_url in enumerate(tw_images):
-                    orig_url = normalize_image_url(img_url)
-                    lines.append(f"![{idx+2}-{i+1}]({orig_url})")
-                    
+                    lines.append(make_image_ref(img_url, f"{idx+2}-{i+1}"))
+
             if tw_videos:
                 lines.append("")
                 for v_url in tw_videos:
@@ -329,7 +401,8 @@ tags: []
                         _inlined_videos.add(v_url)
 
     body = "\n".join(lines)
-    return filename, front_matter + "\n" + body
+    all_media_tasks = image_tasks + video_tasks
+    return filename, front_matter + "\n" + body, all_media_tasks
 
 
 class X2MDHandler(BaseHTTPRequestHandler):
@@ -372,7 +445,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.0"})
+            self._respond(200, {"status": "ok", "version": "1.2.0"})
 
         elif path == "/config":
             # 返回当前配置
@@ -416,26 +489,45 @@ class X2MDHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            filename, content = build_markdown(data, cfg)
+            filename, content, image_tasks = build_markdown(data, cfg)
         except Exception as e:
             logger.error(f"Markdown 构建失败：{e}")
             self._respond(500, {"error": str(e)})
             return
 
+        # ── 平台子文件夹 ──────────────────────────
+        platform = data.get("platform", "Twitter/X")
+        enable_platform_folders = cfg.get("enable_platform_folders", False)
+        platform_folder_names = cfg.get("platform_folder_names", {})
+
         saved_files = []
         errors = []
         for save_path in save_paths:
             try:
-                os.makedirs(save_path, exist_ok=True)
-                filepath = os.path.join(save_path, filename + ".md")
+                # 计算最终保存目录
+                final_dir = save_path
+                if enable_platform_folders:
+                    folder_name = platform_folder_names.get(platform, platform.replace("/", "_"))
+                    folder_name = sanitize_filename(folder_name, 50)
+                    final_dir = os.path.join(save_path, folder_name)
+
+                os.makedirs(final_dir, exist_ok=True)
+                filepath = os.path.join(final_dir, filename + ".md")
                 # 避免同名文件覆盖
                 if os.path.exists(filepath):
                     ts = datetime.now().strftime("%H%M%S")
-                    filepath = os.path.join(save_path, f"{filename}_{ts}.md")
+                    filepath = os.path.join(final_dir, f"{filename}_{ts}.md")
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(content)
                 logger.info(f"✅ 已保存：{filepath}")
                 saved_files.append(filepath)
+
+                # ── 图片下载到本地 ──────────────────
+                if image_tasks:
+                    for img_url, subfolder, local_name in image_tasks:
+                        img_dir = os.path.join(final_dir, subfolder)
+                        download_image_async(img_url, img_dir, local_name)
+
             except Exception as e:
                 logger.error(f"写入失败 [{save_path}]：{e}")
                 errors.append(str(e))
@@ -454,6 +546,8 @@ class X2MDHandler(BaseHTTPRequestHandler):
         "port", "save_paths", "filename_format", "max_filename_length",
         "video_save_path", "enable_video_download", "video_duration_threshold",
         "show_site_save_icon", "setup_completed",
+        "enable_platform_folders", "platform_folder_names",
+        "download_images", "image_subfolder",
     }
 
     def _handle_config_update(self, data: dict):
