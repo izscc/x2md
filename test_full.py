@@ -458,6 +458,282 @@ test_thread_tweets()
 
 
 # ═══════════════════════════════════════════════
+# 10. 评论/回复功能测试
+# ═══════════════════════════════════════════════
+print("\n=== 10. 评论/回复功能测试 ===")
+
+COMMENTS_CFG = {**BASE_CFG, "enable_comments": True, "comments_display": "details", "max_comments": 200, "comment_floor_range": ""}
+SAMPLE_COMMENTS = [
+    {"floor": 2, "author": "user_a", "content": "回复内容A", "published": "2026-03-25T10:00:00+08:00"},
+    {"floor": 3, "author": "user_b", "content": "回复内容B", "published": "2026-03-25T11:00:00+08:00"},
+    {"floor": 4, "author": "user_c", "content": "回复内容C", "published": ""},
+]
+
+
+@test("parse_floor_range: 空字符串返回 None")
+def test_floor_range_empty():
+    assert server.parse_floor_range("") is None
+    assert server.parse_floor_range("  ") is None
+    assert server.parse_floor_range(None) is None
+test_floor_range_empty()
+
+
+@test("parse_floor_range: 指定楼层")
+def test_floor_range_specific():
+    result = server.parse_floor_range("2,5,8")
+    assert result == {2, 5, 8}
+test_floor_range_specific()
+
+
+@test("parse_floor_range: 范围")
+def test_floor_range_range():
+    result = server.parse_floor_range("1-10")
+    assert result == set(range(1, 11))
+test_floor_range_range()
+
+
+@test("parse_floor_range: 混合")
+def test_floor_range_mixed():
+    result = server.parse_floor_range("1-3,7,10")
+    assert result == {1, 2, 3, 7, 10}
+test_floor_range_mixed()
+
+
+@test("评论渲染: details 折叠模式")
+def test_comments_details():
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/123", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": SAMPLE_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    assert "<details>" in content
+    assert "<summary>评论/回复</summary>" in content
+    assert "**#2 user_a**" in content
+    assert "回复内容A" in content
+    assert "**#3 user_b**" in content
+    assert "</details>" in content
+test_comments_details()
+
+
+@test("评论渲染: heading 标题模式")
+def test_comments_heading():
+    cfg = {**COMMENTS_CFG, "comments_display": "heading"}
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/123", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": SAMPLE_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "## 评论/回复" in content
+    assert "### #2 user_a" in content
+    assert "回复内容B" in content
+    assert "<details>" not in content
+test_comments_heading()
+
+
+@test("评论渲染: 关闭时无评论输出")
+def test_comments_disabled():
+    cfg = {**BASE_CFG, "enable_comments": False}
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/123", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": SAMPLE_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "评论/回复" not in content
+    assert "user_a" not in content
+test_comments_disabled()
+
+
+@test("评论渲染: 楼层过滤")
+def test_comments_floor_filter():
+    cfg = {**COMMENTS_CFG, "comment_floor_range": "2,4"}
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/123", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": SAMPLE_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "user_a" in content  # floor 2
+    assert "user_c" in content  # floor 4
+    assert "user_b" not in content  # floor 3 被过滤
+test_comments_floor_filter()
+
+
+@test("评论渲染: max_comments 限制")
+def test_comments_max_limit():
+    cfg = {**COMMENTS_CFG, "max_comments": 1}
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/123", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": SAMPLE_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "user_a" in content  # 第一条通过
+    assert "user_b" not in content  # 被截断
+    assert "user_c" not in content  # 被截断
+test_comments_max_limit()
+
+
+@test("评论渲染: 无楼层号的评论自动编号")
+def test_comments_auto_floor():
+    comments_no_floor = [
+        {"author": "reply_1", "content": "第一条回复", "published": ""},
+        {"author": "reply_2", "content": "第二条回复", "published": ""},
+    ]
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/123", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": comments_no_floor,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    assert "**#2 reply_1**" in content  # i=0 -> floor=2
+    assert "**#3 reply_2**" in content  # i=1 -> floor=3
+test_comments_auto_floor()
+
+
+# ═══════════════════════════════════════════════
+# 11. 新配置项测试（discourse_domains, embed_mode）
+# ═══════════════════════════════════════════════
+print("\n=== 11. 新配置项测试 ===")
+
+
+@test("配置: discourse_domains 默认包含 linux.do")
+def test_config_discourse_domains():
+    cfg = server.DEFAULT_CONFIG
+    assert "discourse_domains" in cfg
+    assert "linux.do" in cfg["discourse_domains"]
+test_config_discourse_domains()
+
+
+@test("配置: discourse_domains 在白名单中")
+def test_config_discourse_whitelist():
+    assert "discourse_domains" in server.X2MDHandler.ALLOWED_CONFIG_KEYS
+test_config_discourse_whitelist()
+
+
+@test("配置: embed_mode 默认为 local")
+def test_config_embed_mode():
+    cfg = server.DEFAULT_CONFIG
+    assert cfg.get("embed_mode") == "local"
+test_config_embed_mode()
+
+
+@test("配置: embed_mode 在白名单中")
+def test_config_embed_whitelist():
+    assert "embed_mode" in server.X2MDHandler.ALLOWED_CONFIG_KEYS
+test_config_embed_whitelist()
+
+
+# ═══════════════════════════════════════════════
+# 12. iframe 嵌入测试
+# ═══════════════════════════════════════════════
+print("\n=== 12. iframe 嵌入测试 ===")
+
+
+@test("_is_embeddable_video: YouTube URL 识别")
+def test_embeddable_youtube():
+    assert server._is_embeddable_video("https://www.youtube.com/watch?v=abc123")
+    assert server._is_embeddable_video("https://youtu.be/abc123")
+    assert server._is_embeddable_video("https://www.youtube.com/embed/abc123")
+    assert not server._is_embeddable_video("https://example.com/video.mp4")
+    assert not server._is_embeddable_video("")
+    assert not server._is_embeddable_video(None)
+test_embeddable_youtube()
+
+
+@test("_is_embeddable_video: Bilibili URL 识别")
+def test_embeddable_bilibili():
+    assert server._is_embeddable_video("https://www.bilibili.com/video/BV1xx411c7mD")
+    assert server._is_embeddable_video("https://player.bilibili.com/player.html?bvid=BV1xx411c7mD")
+    assert not server._is_embeddable_video("https://example.com/not-bilibili")
+test_embeddable_bilibili()
+
+
+@test("_make_video_iframe: YouTube iframe 生成")
+def test_make_iframe_youtube():
+    result = server._make_video_iframe("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert "<iframe" in result
+    assert "youtube.com/embed/dQw4w9WgXcQ" in result
+    assert "allowfullscreen" in result
+test_make_iframe_youtube()
+
+
+@test("_make_video_iframe: Bilibili iframe 生成")
+def test_make_iframe_bilibili():
+    result = server._make_video_iframe("https://www.bilibili.com/video/BV1xx411c7mD")
+    assert "<iframe" in result
+    assert "player.bilibili.com" in result
+    assert "BV1xx411c7mD" in result
+test_make_iframe_bilibili()
+
+
+@test("build_markdown: embed_mode=iframe 对 YouTube 视频生成 iframe")
+def test_build_embed_iframe():
+    cfg = {**BASE_CFG, "embed_mode": "iframe"}
+    data = {
+        "author": "EmbedTest", "handle": "@embed",
+        "text": "Check this video",
+        "url": "https://x.com/embed/status/999",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+        "download_video": True,
+    }
+    _, content, _, video_tasks = server.build_markdown(data, cfg)
+    assert "<iframe" in content
+    assert "youtube.com/embed/dQw4w9WgXcQ" in content
+    # iframe 模式下不应产生下载任务
+    assert len(video_tasks) == 0
+test_build_embed_iframe()
+
+
+@test("build_markdown: embed_mode=local 对 YouTube 视频下载")
+def test_build_embed_local():
+    cfg = {**BASE_CFG, "embed_mode": "local"}
+    data = {
+        "author": "LocalTest", "handle": "@local",
+        "text": "Check this video",
+        "url": "https://x.com/local/status/999",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+        "download_video": True,
+    }
+    _, content, _, video_tasks = server.build_markdown(data, cfg)
+    assert "<iframe" not in content
+    # local 模式应产生下载任务
+    assert len(video_tasks) == 1
+test_build_embed_local()
+
+
+@test("build_markdown: embed_mode=iframe 对普通视频仍下载")
+def test_build_embed_non_embeddable():
+    cfg = {**BASE_CFG, "embed_mode": "iframe"}
+    data = {
+        "author": "NormalVid", "handle": "@normal",
+        "text": "Normal video",
+        "url": "https://x.com/normal/status/888",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://video.twimg.com/ext/sample.mp4"],
+        "download_video": True,
+    }
+    _, content, _, video_tasks = server.build_markdown(data, cfg)
+    # 非嵌入式视频仍走下载流程
+    assert len(video_tasks) == 1
+    assert "<iframe" not in content
+test_build_embed_non_embeddable()
+
+
+# ═══════════════════════════════════════════════
 # 清理 + 结果
 # ═══════════════════════════════════════════════
 shutil.rmtree(TEMP_DIR, ignore_errors=True)

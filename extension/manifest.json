@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "X2MD - 网页内容转Markdown",
-    "version": "1.2.4",
-    "description": "支持 X、LINUX DO、飞书知识库、飞书云文档、微信公众号的一键保存 Markdown",
+    "version": "1.3.0",
+    "description": "支持 X、LINUX DO、飞书知识库、飞书云文档、微信公众号的一键保存 Markdown，支持评论提取、iframe嵌入、Discourse多域名",
     "permissions": [
         "storage",
         "notifications",
@@ -21,6 +21,9 @@
         "https://cdn.syndication.twimg.com/*",
         "https://publish.twitter.com/*",
         "https://abs.twimg.com/*"
+    ],
+    "optional_host_permissions": [
+        "https://*/*"
     ],
     "background": {
         "service_worker": "background.js"

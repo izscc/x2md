@@ -16,6 +16,47 @@ let SERVER_BASE = "http://127.0.0.1:9527";
 chrome.storage.local.get("x2md_port", (data) => {
     if (data.x2md_port) SERVER_BASE = `http://127.0.0.1:${data.x2md_port}`;
 });
+
+// 动态注册额外 Discourse 域名的内容脚本
+async function registerDiscourseContentScripts(domains) {
+    // 先移除旧的动态注册
+    try {
+        await chrome.scripting.unregisterContentScripts({ ids: ["x2md-discourse-extra"] });
+    } catch { /* 不存在则忽略 */ }
+
+    // 过滤掉已在 manifest 中声明的 linux.do
+    const extraDomains = (domains || []).filter(d => d.toLowerCase() !== "linux.do");
+    if (extraDomains.length === 0) return;
+
+    const matches = extraDomains.map(d => `https://${d}/*`);
+    try {
+        // 先请求可选权限
+        const granted = await chrome.permissions.request({ origins: matches }).catch(() => false);
+        if (!granted) {
+            console.warn("[x2md] 用户未授权额外域名权限:", extraDomains);
+        }
+        await chrome.scripting.registerContentScripts([{
+            id: "x2md-discourse-extra",
+            matches,
+            js: ["dom_utils.js", "article_markdown.js", "discourse.js", "site_actions.js", "content.js"],
+            runAt: "document_idle",
+        }]);
+        console.log("[x2md] 已注册额外 Discourse 域名:", extraDomains);
+    } catch (err) {
+        console.warn("[x2md] 注册 Discourse 内容脚本失败:", err);
+    }
+}
+
+// 启动时从服务器获取配置并注册额外域名
+(async () => {
+    try {
+        const resp = await fetch(`${SERVER_BASE}/config`, { signal: AbortSignal.timeout(3000) });
+        const cfg = await resp.json();
+        if (cfg.discourse_domains) {
+            registerDiscourseContentScripts(cfg.discourse_domains);
+        }
+    } catch { /* 服务未启动，跳过 */ }
+})();
 const GRAPHQL_DISCOVERY_CACHE = new Map();
 const _graphqlInflight = new Map();   // 防止并发重复请求同一 origin
 
@@ -360,6 +401,28 @@ async function fetchViaGraphQL(tweetId, options = {}) {
 
             mainParsed.thread_tweets = threadParsed;
             mainParsed._graphql_source = `${plan.operationName}:${plan.operationId}`;
+
+            // ── 收集非作者回复（评论功能）──
+            if (authorRestId && allTweets.length > 0) {
+                const replyTweets = allTweets.filter((result) =>
+                    result.core?.user_results?.result?.rest_id !== authorRestId
+                );
+                if (replyTweets.length > 0) {
+                    mainParsed._replyTweets = replyTweets.map((rt, idx) => {
+                        const userLegacy = rt.core?.user_results?.result?.legacy;
+                        const parsed = parseLegacyTweet(rt, userLegacy);
+                        return {
+                            floor: idx + 2,
+                            author: parsed?.author || userLegacy?.name || "匿名",
+                            handle: parsed?.handle || (userLegacy?.screen_name ? `@${userLegacy.screen_name}` : ""),
+                            content: parsed?.text || "",
+                            published: parsed?.published || "",
+                            images: parsed?.images || [],
+                        };
+                    });
+                }
+            }
+
             return mainParsed;
         }
 
@@ -656,16 +719,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
                 // ----------------------------------------------------
 
-                // --------- 视频时长检测与二次确认拦截 ---------
+                // --------- 获取服务端配置 ---------
                 let enableVideoDownload = true;
                 let durationThresholdMin = 5;
+                let cfg = {};
                 try {
                     const cfgResp = await fetch(`${serverBase}/config`);
                     if (!cfgResp.ok) throw new Error(`HTTP ${cfgResp.status}`);
-                    const cfg = await cfgResp.json();
+                    cfg = await cfgResp.json();
                     enableVideoDownload = cfg.enable_video_download !== false;
                     durationThresholdMin = cfg.video_duration_threshold || 5;
-                } catch (e) { console.warn("[x2md] 获取配置失败，使用默认视频设置", e); }
+                } catch (e) { console.warn("[x2md] 获取配置失败，使用默认设置", e); }
 
                 const allVideos = [...(data.videos || [])];
                 const allDurations = [...(data.videoDurations || [])];
@@ -702,6 +766,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     data.download_video = true;
                 }
                 // ---------------------------------------------
+
+                // ── 注入评论/回复数据（如果配置开启且有回复）──
+                if (cfg.enable_comments && data._replyTweets && data._replyTweets.length > 0) {
+                    data.comments = data._replyTweets;
+                    delete data._replyTweets;
+                } else {
+                    delete data._replyTweets;
+                }
 
                 const resp = await fetch(`${serverBase}/save`, {
                     method: "POST",
@@ -765,7 +837,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const SYNC_FIELDS = ["filename_format", "max_filename_length",
                         "enable_video_download", "video_duration_threshold", "show_site_save_icon",
                         "enable_platform_folders", "download_images", "image_subfolder",
-                        "overwrite_existing"];
+                        "overwrite_existing",
+                        "enable_comments", "comments_display", "max_comments", "comment_floor_range",
+                        "discourse_domains", "embed_mode"];
                     for (const k of SYNC_FIELDS) {
                         if (synced[k] !== undefined) cfg[k] = synced[k];
                     }
@@ -799,7 +873,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const SYNC_FIELDS = ["filename_format", "max_filename_length",
                         "enable_video_download", "video_duration_threshold", "show_site_save_icon",
                         "enable_platform_folders", "download_images", "image_subfolder",
-                        "overwrite_existing"];
+                        "overwrite_existing",
+                        "enable_comments", "comments_display", "max_comments", "comment_floor_range",
+                        "discourse_domains", "embed_mode"];
                     const toSync = { sync_enabled: true };
                     for (const k of SYNC_FIELDS) {
                         if (message.config[k] !== undefined) toSync[k] = message.config[k];
@@ -812,6 +888,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (message.config.port) {
                     chrome.storage.local.set({ x2md_port: message.config.port });
                     SERVER_BASE = `http://127.0.0.1:${message.config.port}`;
+                }
+                // 更新 Discourse 域名动态注册
+                if (message.config.discourse_domains) {
+                    registerDiscourseContentScripts(message.config.discourse_domains);
                 }
                 sendResponse({ success: json.success !== false, config: json.config });
             } catch (err) {

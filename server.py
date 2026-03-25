@@ -85,6 +85,15 @@ DEFAULT_CONFIG = {
     "overwrite_existing": False,
     # 跨设备同步（默认开启）
     "sync_enabled": True,
+    # 评论/回复提取（默认关闭）
+    "enable_comments": False,
+    "comments_display": "details",   # "details" = 折叠, "heading" = 标题
+    "max_comments": 200,
+    "comment_floor_range": "",       # 楼层范围，如 "1-10" 或 "2,5,8"，空=全部
+    # Discourse 论坛域名列表（支持任意 Discourse 实例）
+    "discourse_domains": ["linux.do"],
+    # 嵌入模式：iframe = 用 iframe 嵌入视频, local = 下载到本地引用
+    "embed_mode": "local",
 }
 
 _log_handlers = [logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8")]
@@ -287,6 +296,53 @@ def _normalize_publish_time(raw: str) -> str:
     return raw
 
 
+def parse_floor_range(range_str: str) -> set | None:
+    """解析楼层范围字符串，返回楼层号集合，空字符串返回 None（表示全部）
+    支持格式: "2,5,8" | "1-10" | "1-3,7,10" """
+    if not range_str or not range_str.strip():
+        return None
+    floors = set()
+    for part in range_str.split(","):
+        part = part.strip()
+        if "-" in part:
+            try:
+                start, end = part.split("-", 1)
+                floors.update(range(int(start), int(end) + 1))
+            except (ValueError, TypeError):
+                continue
+        elif part.isdigit():
+            floors.add(int(part))
+    return floors or None
+
+
+def _is_embeddable_video(url: str) -> bool:
+    """判断视频 URL 是否可以用 iframe 嵌入（YouTube / Bilibili）"""
+    if not url:
+        return False
+    lower = url.lower()
+    return any(p in lower for p in [
+        "youtube.com/watch", "youtu.be/", "youtube.com/embed/",
+        "bilibili.com/video/", "player.bilibili.com",
+    ])
+
+
+def _make_video_iframe(url: str) -> str:
+    """为可嵌入的视频 URL 生成 iframe HTML"""
+    # YouTube
+    yt_match = re.search(r'(?:watch\?v=|youtu\.be/|embed/)([a-zA-Z0-9_-]+)', url)
+    if yt_match:
+        return f'\n<iframe width="560" height="315" src="https://www.youtube.com/embed/{yt_match.group(1)}" frameborder="0" allowfullscreen></iframe>\n'
+    # Bilibili
+    bv_match = re.search(r'bilibili\.com/video/(BV[a-zA-Z0-9]+)', url, re.IGNORECASE)
+    if bv_match:
+        return f'\n<iframe width="560" height="315" src="https://player.bilibili.com/player.html?bvid={bv_match.group(1)}" frameborder="0" allowfullscreen></iframe>\n'
+    # Bilibili player 直接链接
+    if "player.bilibili.com" in url:
+        return f'\n<iframe width="560" height="315" src="{url}" frameborder="0" allowfullscreen></iframe>\n'
+    # fallback
+    return f"[视频：点击播放]({url})"
+
+
 def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     """
     将接收到的推文/文章数据构建为 Markdown 字符串。
@@ -372,6 +428,7 @@ tags: []
 
     vid_map = {}
     video_tasks = []  # (url, subfolder, filename) — 与图片同结构，在 _handle_save 中处理
+    embed_mode = cfg.get("embed_mode", "local")
 
     all_videos = list(videos)
     for t in thread_tweets:
@@ -381,7 +438,11 @@ tags: []
     for vid_url in all_videos:
         if vid_url in vid_map:
             continue
-        if download_video:
+        # iframe 模式：YouTube/Bilibili 用 iframe 嵌入
+        if embed_mode == "iframe" and _is_embeddable_video(vid_url):
+            vid_map[vid_url] = _make_video_iframe(vid_url)
+            video_idx += 1
+        elif download_video:
             vid_filename = f"{filename}_video_{video_idx}.mp4"
             video_tasks.append((vid_url, image_subfolder, vid_filename))
             # 使用相对路径引用，与图片一致，Obsidian 可直接识别
@@ -499,6 +560,47 @@ tags: []
                         _inlined_videos.add(v_url)
 
     body = "\n".join(lines)
+
+    # ── 评论/回复渲染 ────────────────────────────────
+    comments = data.get("comments", [])
+    if cfg.get("enable_comments") and comments:
+        allowed_floors = parse_floor_range(cfg.get("comment_floor_range", ""))
+        max_count = cfg.get("max_comments", 200)
+        display = cfg.get("comments_display", "details")
+
+        filtered = []
+        for i, c in enumerate(comments):
+            floor = c.get("floor") or (i + 2)
+            if allowed_floors and floor not in allowed_floors:
+                continue
+            filtered.append((floor, c))
+            if len(filtered) >= max_count:
+                break
+
+        if filtered:
+            body += "\n\n---\n\n"
+            if display == "heading":
+                body += "## 评论/回复\n\n"
+                for floor, c in filtered:
+                    c_author = c.get("author", "匿名")
+                    c_content = c.get("content", "").strip()
+                    c_published = _normalize_publish_time(c.get("published", ""))
+                    body += f"### #{floor} {c_author}"
+                    if c_published:
+                        body += f" ({c_published})"
+                    body += f"\n\n{c_content}\n\n"
+            else:  # details
+                body += "<details>\n<summary>评论/回复</summary>\n\n"
+                for floor, c in filtered:
+                    c_author = c.get("author", "匿名")
+                    c_content = c.get("content", "").strip()
+                    c_published = _normalize_publish_time(c.get("published", ""))
+                    body += f"**#{floor} {c_author}**"
+                    if c_published:
+                        body += f" *{c_published}*"
+                    body += f"\n\n{c_content}\n\n---\n\n"
+                body += "</details>\n"
+
     return filename, front_matter + "\n" + body, image_tasks, video_tasks
 
 
@@ -661,6 +763,8 @@ class X2MDHandler(BaseHTTPRequestHandler):
         "enable_platform_folders", "platform_folder_names",
         "download_images", "image_subfolder",
         "overwrite_existing", "sync_enabled",
+        "enable_comments", "comments_display", "max_comments", "comment_floor_range",
+        "discourse_domains", "embed_mode",
     }
 
     def _handle_config_update(self, data: dict):

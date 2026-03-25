@@ -449,11 +449,15 @@ function requestRuntimeConfig() {
 
     chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
         runtimeConfig = resp?.success ? (resp.config || {}) : {};
+        // 初始化 Discourse 域名列表
+        if (runtimeConfig.discourse_domains && typeof setDiscourseDomains === "function") {
+            setDiscourseDomains(runtimeConfig.discourse_domains);
+        }
         ensureFloatingSaveButton();
     });
 }
 
-function captureLinuxDoPostElement(post) {
+async function captureLinuxDoPostElement(post) {
     if (!post) {
         showToast("未找到对应帖子内容", "error", 3500);
         return;
@@ -474,8 +478,23 @@ function captureLinuxDoPostElement(post) {
         return;
     }
 
-    console.log("[x2md] LINUX DO 帖子：", { url: data.url, author: data.author, title: data.article_title });
-    showToast("正在保存 LINUX DO 帖子…", "loading", null);
+    // 评论/回复提取（通过 Discourse JSON API）
+    const topicMatch = location.pathname.match(/^\/t\/[^/]+\/(\d+)/);
+    if (topicMatch) {
+        try {
+            const replies = await fetchDiscourseReplies(topicMatch[1], location.hostname);
+            if (replies && replies.length > 0) {
+                data.comments = replies;
+                console.log(`[x2md] 获取到 ${replies.length} 条 Discourse 回复`);
+            }
+        } catch (e) {
+            console.warn("[x2md] 获取 Discourse 回复失败：", e);
+        }
+    }
+
+    const siteName = location.hostname === "linux.do" ? "LINUX DO" : location.hostname;
+    console.log(`[x2md] ${siteName} 帖子：`, { url: data.url, author: data.author, title: data.article_title });
+    showToast(`正在保存 ${siteName} 帖子…`, "loading", null);
     sendToBackground(data);
 }
 
@@ -955,7 +974,7 @@ function bindAllDebounced() {
 
 let _likeSaveTimer = null;
 document.addEventListener("click", (event) => {
-    if (!isLinuxDoTopicPage()) return;
+    if (!isDiscourseTopicPage()) return;
     const btn = event.target?.closest?.(LINUX_DO_LIKE_SELECTOR);
     if (!btn) return;
     clearTimeout(_likeSaveTimer);

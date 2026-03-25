@@ -815,6 +815,168 @@ print("-" * 60)
 
 
 # ═══════════════════════════════════════════════
+# 11. 评论/回复 Obsidian 渲染验证
+# ═══════════════════════════════════════════════
+print("\n=== 11. 评论/回复 Obsidian 渲染验证 ===")
+
+COMMENTS_CFG = {**CFG_NO_DOWNLOAD, "enable_comments": True, "comments_display": "details", "max_comments": 200, "comment_floor_range": ""}
+OB_COMMENTS = [
+    {"floor": 2, "author": "reviewer", "content": "这是一条评论\n包含多行", "published": "2026-03-25T10:00:00+08:00"},
+    {"floor": 3, "author": "commenter", "content": "另一条评论", "published": ""},
+]
+
+
+@test("Obsidian: details 模式评论渲染")
+def test_ob_comments_details():
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文内容",
+        "url": "https://x.com/testuser/status/456", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": OB_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    # Obsidian 支持 <details>/<summary> 标签
+    assert "<details>" in content
+    assert "<summary>评论/回复</summary>" in content
+    assert "**#2 reviewer**" in content
+    assert "2026-03-25 10:00" in content  # 时间被规范化
+    assert "这是一条评论" in content
+    assert "**#3 commenter**" in content
+    assert "</details>" in content
+    # 主内容仍在
+    assert "主推文内容" in content
+test_ob_comments_details()
+
+
+@test("Obsidian: heading 模式评论渲染")
+def test_ob_comments_heading():
+    cfg = {**COMMENTS_CFG, "comments_display": "heading"}
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文内容",
+        "url": "https://x.com/testuser/status/456", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": OB_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "## 评论/回复" in content
+    assert "### #2 reviewer (2026-03-25 10:00)" in content
+    assert "### #3 commenter" in content
+    # heading 模式不应有 <details>
+    assert "<details>" not in content
+test_ob_comments_heading()
+
+
+@test("Obsidian: 评论含图片引用")
+def test_ob_comments_with_images():
+    comments_with_img = [
+        {"floor": 2, "author": "img_user", "content": "看这个图 ![图片](https://example.com/img.jpg)", "published": ""},
+    ]
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/789", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": comments_with_img,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    assert "![图片](https://example.com/img.jpg)" in content
+test_ob_comments_with_images()
+
+
+@test("Obsidian: LinuxDo 评论渲染")
+def test_ob_linuxdo_comments():
+    linuxdo_comments = [
+        {"floor": 2, "author": "linux_user", "content": "很好的教程，感谢分享！", "published": "2026-03-25T09:00:00+08:00"},
+        {"floor": 5, "author": "another", "content": "学到了", "published": "2026-03-25T12:30:00+08:00"},
+    ]
+    data = {
+        "author": "original_poster", "handle": "",
+        "text": "", "article_content": "# 技术教程\n\n这是一篇教程",
+        "article_title": "Linux DO 教程",
+        "url": "https://linux.do/t/topic/12345", "platform": "LinuxDo",
+        "type": "article", "images": [], "videos": [],
+        "comments": linuxdo_comments,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    assert "技术教程" in content
+    assert "**#2 linux_user**" in content
+    assert "感谢分享" in content
+    assert "**#5 another**" in content
+test_ob_linuxdo_comments()
+
+
+# ═══════════════════════════════════════════════
+# 12. iframe 嵌入 Obsidian 渲染验证
+# ═══════════════════════════════════════════════
+print("\n=== 12. iframe 嵌入 Obsidian 渲染验证 ===")
+
+
+@test("Obsidian: YouTube iframe 嵌入渲染正确")
+def test_ob_youtube_iframe():
+    cfg = {**server.DEFAULT_CONFIG, "embed_mode": "iframe"}
+    data = {
+        "author": "YouTuber", "handle": "@youtuber",
+        "text": "Great video!",
+        "url": "https://x.com/youtuber/status/111",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+        "download_video": True,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "<iframe" in content
+    assert "youtube.com/embed/dQw4w9WgXcQ" in content
+    assert 'width="560"' in content
+    assert 'height="315"' in content
+    assert "allowfullscreen" in content
+test_ob_youtube_iframe()
+
+
+@test("Obsidian: Bilibili iframe 嵌入渲染正确")
+def test_ob_bilibili_iframe():
+    cfg = {**server.DEFAULT_CONFIG, "embed_mode": "iframe"}
+    data = {
+        "author": "BiliUser", "handle": "@biliuser",
+        "text": "精彩视频！",
+        "url": "https://x.com/biliuser/status/222",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.bilibili.com/video/BV1xx411c7mD"],
+        "download_video": True,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "<iframe" in content
+    assert "player.bilibili.com" in content
+    assert "BV1xx411c7mD" in content
+test_ob_bilibili_iframe()
+
+
+@test("Obsidian: embed_mode=local 不生成 iframe")
+def test_ob_local_no_iframe():
+    cfg = {**server.DEFAULT_CONFIG, "embed_mode": "local"}
+    data = {
+        "author": "LocalUser", "handle": "@localuser",
+        "text": "Video test",
+        "url": "https://x.com/localuser/status/333",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.youtube.com/watch?v=test123"],
+        "download_video": True,
+    }
+    _, content, _, video_tasks = server.build_markdown(data, cfg)
+    assert "<iframe" not in content
+    assert len(video_tasks) == 1
+    assert "assets/" in content  # 本地路径引用
+test_ob_local_no_iframe()
+
+
+@test("Obsidian: 新配置字段在白名单中")
+def test_ob_new_config_whitelist():
+    assert "discourse_domains" in server.X2MDHandler.ALLOWED_CONFIG_KEYS
+    assert "embed_mode" in server.X2MDHandler.ALLOWED_CONFIG_KEYS
+test_ob_new_config_whitelist()
+
+
+# ═══════════════════════════════════════════════
 # 清理 + 结果
 # ═══════════════════════════════════════════════
 shutil.rmtree(TEMP_DIR, ignore_errors=True)

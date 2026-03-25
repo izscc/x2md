@@ -612,6 +612,110 @@
             </div>
         </div>
 
+        <!-- Discourse 站点管理 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🌐</div>
+                <div>
+                    <h2>Discourse 站点管理</h2>
+                    <p>添加自建 Discourse 论坛域名，自动识别站点类型并注入保存功能</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-hint" style="margin-bottom:12px;">
+                    系统会自动检测站点名称。linux.do 为内置域名，无需手动添加。<br>
+                    添加后，该站点将支持一键保存帖子、点赞保存、评论提取等全部功能。
+                </div>
+                <div id="discourseDomainList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;"></div>
+                <div style="display:flex; gap:8px;">
+                    <input class="form-input" type="text" id="newDiscourseDomain"
+                        placeholder="输入域名，如 meta.discourse.org" style="flex:1;" />
+                    <button class="btn-add" id="btnAddDomain" style="width:auto; padding:8px 16px;">
+                        <span>＋</span> 添加
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 媒体嵌入模式 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🎬</div>
+                <div>
+                    <h2>视频嵌入模式</h2>
+                    <p>控制 YouTube、Bilibili 等视频在 Markdown 中的嵌入方式</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">嵌入方式</div>
+                    <div style="flex:1;">
+                        <select class="form-input" id="embedMode" style="max-width:280px;">
+                            <option value="iframe">iframe 嵌入（Obsidian 阅读视图可直接播放）</option>
+                            <option value="local">本地下载引用（离线可用，占用存储）</option>
+                        </select>
+                        <div class="form-hint">
+                            iframe 模式：在 Markdown 中插入 &lt;iframe&gt; 标签，需联网播放，Obsidian 阅读视图支持。<br>
+                            本地下载：视频下载到本地 assets 文件夹，用 ![[文件名.mp4]] 引用，离线可用。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 评论/回复设置 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">💬</div>
+                <div>
+                    <h2>评论/回复提取</h2>
+                    <p>保存 LinuxDo 帖子或 X 推文时，同时提取评论/回复内容</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">启用提取</div>
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <input type="checkbox" id="enableComments"
+                            style="width:16px; height:16px; cursor:pointer;" />
+                        <label for="enableComments"
+                            style="margin-left: 8px; font-size:13px; cursor:pointer;">保存时同时提取评论/回复（默认关闭）</label>
+                    </div>
+                </div>
+                <div id="commentSubControls">
+                    <div class="section-divider"></div>
+                    <div class="form-row">
+                        <div class="form-label">显示模式</div>
+                        <div style="flex:1;">
+                            <select class="form-input comment-sub" id="commentsDisplay" style="max-width:200px;" disabled>
+                                <option value="details">折叠（&lt;details&gt;）</option>
+                                <option value="heading">标题（## 评论/回复）</option>
+                            </select>
+                            <div class="form-hint">折叠模式在 Obsidian 中默认收起，标题模式直接展开显示</div>
+                        </div>
+                    </div>
+                    <div class="section-divider"></div>
+                    <div class="form-row">
+                        <div class="form-label">最大评论数</div>
+                        <input class="form-input comment-sub" type="number" id="maxComments" placeholder="200" min="1"
+                            max="99999" style="max-width:120px;" disabled />
+                    </div>
+                    <div class="section-divider"></div>
+                    <div class="form-row">
+                        <div class="form-label">楼层范围</div>
+                        <div style="flex:1;">
+                            <input class="form-input comment-sub" type="text" id="commentFloorRange"
+                                placeholder="留空=全部，示例: 1-10 或 2,5,8" style="width:100%;" disabled />
+                            <div class="form-hint">
+                                留空表示提取全部评论。支持范围（1-10）和指定楼层（2,5,8）混合使用（如 1-3,7,10）。<br>
+                                楼层范围和最大评论数同时生效：先按楼层过滤，再截取前 N 条。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 账号同步 -->
         <div class="card">
             <div class="card-header">

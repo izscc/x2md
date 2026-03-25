@@ -1,5 +1,14 @@
 (function (globalScope) {
     const LINUX_DO_HOST = "linux.do";
+    // 可配置 Discourse 域名列表，运行时从配置注入
+    let _discourseDomains = ["linux.do"];
+    function setDiscourseDomains(domains) {
+        if (Array.isArray(domains) && domains.length > 0) {
+            _discourseDomains = domains.map(d => d.toLowerCase().trim()).filter(Boolean);
+        }
+    }
+    function getDiscourseDomains() { return _discourseDomains; }
+
     const LINUX_DO_LIKE_SELECTOR = "button.btn-toggle-reaction-like.reaction-button";
     const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
     const BLOCK_TAGS = new Set(["p", "div", "section", "article", "blockquote", "ul", "ol", "li", "pre"]);
@@ -30,10 +39,15 @@
         }
     }
 
-    function isLinuxDoTopicPage(locationLike = globalScope.location) {
+    function isDiscourseTopicPage(locationLike = globalScope.location) {
         const hostname = String(locationLike?.hostname || "").toLowerCase();
         const pathname = String(locationLike?.pathname || "");
-        return hostname === LINUX_DO_HOST && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname);
+        return _discourseDomains.includes(hostname) && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname);
+    }
+
+    // 向后兼容别名
+    function isLinuxDoTopicPage(locationLike) {
+        return isDiscourseTopicPage(locationLike);
     }
 
     function buildLinuxDoPostTitle(topicTitle, postNumber, username) {
@@ -90,6 +104,36 @@
         if (tag === "br") return "\n";
         if (tag === "hr") return "\n---\n";
 
+        // 视频标签 → iframe 或 Markdown 链接
+        if (tag === "video") {
+            const src = safeGetAttribute(node, "src") || node.querySelector?.("source")?.src || "";
+            if (src) {
+                const resolved = resolveLinuxDoUrl(src, options.pageUrl);
+                return `\n![video](${resolved})\n`;
+            }
+            return "";
+        }
+
+        // iframe 嵌入（YouTube / Bilibili / 其他）
+        if (tag === "iframe") {
+            const src = safeGetAttribute(node, "src") || "";
+            if (!src) return "";
+            const resolved = resolveLinuxDoUrl(src, options.pageUrl);
+            // YouTube
+            if (/youtube\.com\/embed\/|youtu\.be\//i.test(resolved)) {
+                const videoId = resolved.match(/(?:embed\/|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                if (videoId) {
+                    return `\n<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId[1]}" frameborder="0" allowfullscreen></iframe>\n`;
+                }
+            }
+            // Bilibili
+            if (/bilibili\.com\/(?:video|player)/i.test(resolved)) {
+                return `\n<iframe width="560" height="315" src="${resolved}" frameborder="0" allowfullscreen></iframe>\n`;
+            }
+            // 其他 iframe → 保留为链接
+            return `\n[嵌入内容](${resolved})\n`;
+        }
+
         if (tag === "pre") {
             let codeNode = null;
             for (const child of node.childNodes || []) {
@@ -122,6 +166,31 @@
 
         // Discourse onebox 引用（aside.quote / aside.onebox）
         if (tag === "aside" && (classList.includes("quote") || classList.includes("onebox"))) {
+            // 检查 onebox 是否包含视频嵌入（YouTube/Bilibili）
+            if (classList.includes("onebox")) {
+                const iframeEl = node.querySelector?.("iframe");
+                if (iframeEl) {
+                    return convertLinuxDoNodeToMarkdown(iframeEl, options);
+                }
+                // 检查 data-onebox-src 或链接中的视频 URL
+                const oneboxSrc = safeGetAttribute(node, "data-onebox-src") || "";
+                const linkEl = node.querySelector?.("a[href]");
+                const linkHref = safeGetAttribute(linkEl, "href") || "";
+                const videoUrl = oneboxSrc || linkHref;
+                if (videoUrl && /youtube\.com\/watch|youtu\.be\/|bilibili\.com\/video/i.test(videoUrl)) {
+                    // YouTube watch URL → embed
+                    const ytMatch = videoUrl.match(/(?:watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                    if (ytMatch) {
+                        return `\n<iframe width="560" height="315" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen></iframe>\n`;
+                    }
+                    // Bilibili → embed
+                    const bvMatch = videoUrl.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/i);
+                    if (bvMatch) {
+                        return `\n<iframe width="560" height="315" src="https://player.bilibili.com/player.html?bvid=${bvMatch[1]}" frameborder="0" allowfullscreen></iframe>\n`;
+                    }
+                }
+            }
+
             const title = node.querySelector?.(".title, header");
             const titleText = title ? getNodeText(title).trim() : "";
             let inner = "";
@@ -274,17 +343,59 @@
             article_content: articleContent,
             images: [],
             videos: [],
-            platform: "LinuxDo",
+            platform: getDiscoursePlatformName(),
         };
+    }
+
+    function getDiscoursePlatformName() {
+        const host = String(globalScope.location?.hostname || "").toLowerCase();
+        if (host === "linux.do") return "LinuxDo";
+        // 其他 Discourse 站点用域名作为平台名
+        return host.replace(/\./g, "_") || "Discourse";
+    }
+
+    function cookedHtmlToMarkdown(htmlString, pageUrl) {
+        const div = document.createElement("div");
+        div.innerHTML = htmlString;
+        return extractLinuxDoMarkdown(div, { pageUrl: pageUrl || "" });
+    }
+
+    async function fetchDiscourseReplies(topicId, hostname) {
+        const host = hostname || globalScope.location?.hostname || "linux.do";
+        const resp = await fetch(`https://${host}/t/${topicId}.json`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const posts = data.post_stream?.posts || [];
+        // posts[0] 是主帖，posts[1:] 是回复
+        return posts.slice(1).map(p => ({
+            floor: p.post_number,
+            author: p.username || "匿名",
+            content: cookedHtmlToMarkdown(p.cooked || "", `https://${host}/t/${topicId}`),
+            published: p.created_at || "",
+            likes: p.like_count || 0,
+            reply_to: p.reply_to_post_number || null,
+        }));
+    }
+
+    // 向后兼容别名
+    function fetchLinuxDoReplies(topicId) {
+        return fetchDiscourseReplies(topicId);
     }
 
     const exported = {
         LINUX_DO_LIKE_SELECTOR,
         buildLinuxDoPostTitle,
         cleanLinuxDoPostUrl,
+        cookedHtmlToMarkdown,
         extractLinuxDoMarkdown,
         extractLinuxDoPostData,
+        fetchLinuxDoReplies,
+        fetchDiscourseReplies,
         isLinuxDoTopicPage,
+        isDiscourseTopicPage,
+        setDiscourseDomains,
+        getDiscourseDomains,
+        getDiscoursePlatformName,
     };
 
     if (typeof module !== "undefined" && module.exports) {
