@@ -60,6 +60,9 @@ function applyConfigToUI(cfg) {
     document.getElementById("downloadImages").checked = cfg.download_images !== false;
     document.getElementById("imageSubfolder").value = cfg.image_subfolder || "assets";
 
+    // 覆盖策略（默认关闭）
+    document.getElementById("overwriteExisting").checked = !!cfg.overwrite_existing;
+
     // 同步开关回显
     document.getElementById("syncEnabled").checked = !!cfg.sync_enabled;
     updateSyncStatus(!!cfg.sync_enabled);
@@ -178,6 +181,9 @@ function saveConfig() {
     const downloadImages = document.getElementById("downloadImages").checked;
     const imageSubfolder = document.getElementById("imageSubfolder").value.trim() || "assets";
 
+    // 覆盖策略
+    const overwriteExisting = document.getElementById("overwriteExisting").checked;
+
     if (!savePaths.length) {
         showToast("请至少添加一个保存路径", true);
         return;
@@ -197,6 +203,7 @@ function saveConfig() {
         platform_folder_names: platformFolderNames,
         download_images: downloadImages,
         image_subfolder: imageSubfolder,
+        overwrite_existing: overwriteExisting,
     };
 
     document.getElementById("portLabel").textContent = port;

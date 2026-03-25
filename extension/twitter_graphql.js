@@ -75,7 +75,7 @@
             } catch (error) { }
         }
 
-        return normalizeOperationIdList(urls);
+        return Array.from(new Set(urls.filter(function (u) { return typeof u === "string" && u.trim() !== ""; })));
     }
 
     function buildTweetDetailVariables(tweetId) {

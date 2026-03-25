@@ -563,6 +563,32 @@
             </div>
         </div>
 
+        <!-- 文件覆盖策略 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🔁</div>
+                <div>
+                    <h2>重复文件处理</h2>
+                    <p>同一来源再次保存时，是覆盖旧文件还是新建文件</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">覆盖旧文件</div>
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <input type="checkbox" id="overwriteExisting"
+                            style="width:16px; height:16px; cursor:pointer;" />
+                        <label for="overwriteExisting"
+                            style="margin-left: 8px; font-size:13px; cursor:pointer;">再次保存同一来源时覆盖已有文件（默认关闭：会新建带时间戳的副本）</label>
+                    </div>
+                </div>
+                <div class="form-hint" style="margin-top:8px;">
+                    开启后，系统会根据来源 URL 查找已有文件并直接覆盖。<br>
+                    关闭时，同名文件会自动添加时间戳后缀避免覆盖。
+                </div>
+            </div>
+        </div>
+
         <!-- 站点快捷保存 -->
         <div class="card">
             <div class="card-header">

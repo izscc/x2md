@@ -564,30 +564,49 @@ async function scrollAndCollectFeishuBlocks() {
 }
 
 function captureFeishuDocument() {
-    showToast("正在滚动页面加载全部内容…", "loading", null);
+    showToast("正在通过 API 读取飞书文档…", "loading", null);
+    const pageUrl = location.href;
+    const options = { pageUrl };
 
-    scrollAndCollectFeishuBlocks().then((collectedBlocks) => {
-        const pageUrl = location.href;
-        const options = { pageUrl };
+    // 策略1：通过飞书内部 JSON API 直接读取（无需滚动）
+    fetchFeishuDocViaApi(pageUrl).then((apiData) => {
+        let articleContent = null;
 
-        let articleContent;
-        if (collectedBlocks && collectedBlocks.length > 0) {
-            articleContent = extractFeishuMarkdownFromBlocks(collectedBlocks, options);
-        }
-
-        // 如果滚动收集失败或结果不佳，回退到直接提取
-        if (!articleContent || articleContent.length < 50) {
-            const data = extractFeishuDocumentData(document, options);
-            if (!data || !data.article_content.trim()) {
-                showToast("飞书文档提取失败", "error", 4000);
-                return;
+        if (apiData) {
+            articleContent = convertFeishuApiDataToMarkdown(apiData);
+            if (articleContent && articleContent.length >= 50) {
+                console.log("[x2md] Feishu 文档（JSON API 读取成功，长度=" + articleContent.length + "）");
+                return finishFeishuCapture(articleContent);
             }
-            console.log("[x2md] Feishu 文档（直接提取）：", { url: data.url, title: data.article_title });
-            showToast("正在保存飞书文档…", "loading", null);
-            sendToBackground(data);
-            return;
+            console.log("[x2md] Feishu JSON API 返回内容太短，尝试 DOM 提取");
+        } else {
+            console.log("[x2md] Feishu JSON API 不可用，尝试 DOM 提取");
         }
 
+        // 策略2：直接从当前 DOM 提取（不滚动，拿到多少算多少）
+        const domData = extractFeishuDocumentData(document, options);
+        if (domData && domData.article_content && domData.article_content.length >= 50) {
+            console.log("[x2md] Feishu 文档（DOM 直接提取，长度=" + domData.article_content.length + "）");
+            return finishFeishuCapture(domData.article_content);
+        }
+
+        // 策略3：滚动收集（最后兜底）
+        showToast("正在滚动页面加载全部内容…", "loading", null);
+        scrollAndCollectFeishuBlocks().then((collectedBlocks) => {
+            if (collectedBlocks && collectedBlocks.length > 0) {
+                articleContent = extractFeishuMarkdownFromBlocks(collectedBlocks, options);
+            }
+
+            if (articleContent && articleContent.length >= 50) {
+                console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks）");
+                return finishFeishuCapture(articleContent);
+            }
+
+            showToast("飞书文档提取失败", "error", 4000);
+        });
+    });
+
+    function finishFeishuCapture(articleContent) {
         const title = extractFeishuTitle(document);
         const author = extractFeishuAuthor(document);
         const data = {
@@ -604,10 +623,9 @@ function captureFeishuDocument() {
             platform: "Feishu",
         };
 
-        console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks）：", { url: data.url, title });
         showToast("正在保存飞书文档…", "loading", null);
         sendToBackground(data);
-    });
+    }
 }
 
 function captureWechatArticle() {

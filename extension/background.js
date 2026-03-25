@@ -242,8 +242,8 @@ async function fetchNoteContent(articleUrl) {
                 // 等待 tab 完成加载后开始轮询（含超时自动清理防止泄漏）
                 const tabTimeout = setTimeout(() => {
                     chrome.tabs.onUpdated.removeListener(listener);
-                    poll(); // 超时后仍尝试轮询一次
-                }, 15000);
+                    if (!resolved) poll(); // 超时后仍尝试轮询一次（但先检查 resolved 防止竞态）
+                }, 12000);
                 function listener(changedTabId, info) {
                     if (changedTabId === tabId && (info.status === 'complete' || info.status === 'error')) {
                         chrome.tabs.onUpdated.removeListener(listener);
@@ -678,9 +678,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 } else if (!enableVideoDownload) {
                     data.download_video = false;
                 } else if (data.video_confirmed) {
-                    // 如果二次确认识别到强制保留
-                    // 注意由于 confirm 环节 content.js 会带过来用户的选择赋值
-                    // 即有可能是 true 或 false ，无需再动
+                    // 二次确认：content.js 会设置 download_video，但防御性兜底
+                    if (data.download_video === undefined) data.download_video = true;
                 } else {
                     // 如果本身就不含任何视频（但为了防止键位缺失赋予默认状态）
                     data.download_video = true;
@@ -708,6 +707,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         (async () => {
             try {
                 const data = message.data;
+
+                // 填充遗留的视频占位符（与 save_tweet 保持一致）
+                let contentToFix = data.article_content || data.content || "";
+                if (contentToFix.includes("[[VIDEO_HOLDER_")) {
+                    const filledContent = fillArticleVideoPlaceholders(contentToFix, data.videos || []);
+                    const extractedVideoUrls = Array.from(
+                        filledContent.matchAll(/\[MEDIA_VIDEO_URL:(.+?)\]/g),
+                        (match) => match[1],
+                    );
+                    if (data.article_content) data.article_content = filledContent;
+                    else data.content = filledContent;
+                    data.videos = Array.from(new Set([...(data.videos || []), ...extractedVideoUrls]));
+                }
+
                 const resp = await fetch(`${SERVER_BASE}/save`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

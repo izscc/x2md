@@ -77,6 +77,8 @@ DEFAULT_CONFIG = {
     # 图片下载到本地（V1.2 新增）
     "download_images": True,
     "image_subfolder": "assets",
+    # 覆盖已有同源文件（默认关闭）
+    "overwrite_existing": False,
 }
 
 _log_handlers = [logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8")]
@@ -148,6 +150,38 @@ def sanitize_filename(name: str, max_len: int = 60) -> str:
     # Windows 不允许文件名以 . 或空格结尾
     name = name.rstrip(". ")
     return name or "untitled"
+
+
+def find_existing_file_by_source_url(directory: str, source_url: str) -> str | None:
+    """在目录中查找 front matter 里 源: 字段匹配的 .md 文件，返回文件路径或 None"""
+    if not source_url or not os.path.isdir(directory):
+        return None
+    try:
+        for fname in os.listdir(directory):
+            if not fname.endswith(".md"):
+                continue
+            fpath = os.path.join(directory, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    # 只读取前 15 行检查 front matter
+                    in_fm = False
+                    for i, line in enumerate(f):
+                        if i == 0 and line.strip() == "---":
+                            in_fm = True
+                            continue
+                        if in_fm and line.strip() == "---":
+                            break
+                        if in_fm and line.startswith('源:'):
+                            existing_url = line.split(':', 1)[1].strip().strip('"').strip("'")
+                            if existing_url == source_url:
+                                return fpath
+                        if i > 15:
+                            break
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
 
 
 def _download_file(url: str, out_file: str, label: str = "文件"):
@@ -513,8 +547,18 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
                 os.makedirs(final_dir, exist_ok=True)
                 filepath = os.path.join(final_dir, filename + ".md")
-                # 避免同名文件覆盖
-                if os.path.exists(filepath):
+                overwrite = cfg.get("overwrite_existing", False)
+                source_url = data.get("url", "")
+
+                if overwrite and source_url:
+                    # 覆盖模式：先按 URL 查找已有文件
+                    existing = find_existing_file_by_source_url(final_dir, source_url)
+                    if existing:
+                        filepath = existing
+                        logger.info(f"🔁 覆盖已有文件：{filepath}")
+                    # URL 未匹配但同名文件存在，也直接覆盖
+                elif os.path.exists(filepath):
+                    # 非覆盖模式：添加时间戳后缀避免覆盖
                     ts = datetime.now().strftime("%H%M%S")
                     filepath = os.path.join(final_dir, f"{filename}_{ts}.md")
                 with open(filepath, "w", encoding="utf-8") as f:
@@ -548,6 +592,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
         "show_site_save_icon", "setup_completed",
         "enable_platform_folders", "platform_folder_names",
         "download_images", "image_subfolder",
+        "overwrite_existing",
     }
 
     def _handle_config_update(self, data: dict):

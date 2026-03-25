@@ -185,6 +185,16 @@
             markdown = `**${markdown.replace(/\*\*/g, "")}**`;
         }
 
+        // 斜体
+        if ((tag === "em" || tag === "i") && markdown.trim()) {
+            markdown = `*${markdown.trim()}*`;
+        }
+
+        // 删除线
+        if ((tag === "del" || tag === "s") && markdown.trim()) {
+            markdown = `~~${markdown.trim()}~~`;
+        }
+
         if (tag === "h1") markdown = `\n# ${markdown.replace(/\*\*/g, "").trim()}\n`;
         else if (tag === "h2") markdown = `\n## ${markdown.replace(/\*\*/g, "").trim()}\n`;
         else if (tag === "h3") markdown = `\n### ${markdown.replace(/\*\*/g, "").trim()}\n`;

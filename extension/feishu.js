@@ -318,15 +318,257 @@
         };
     }
 
+    // ─────────────────────────────────────────────
+    // 飞书内部 API JSON 读取方案（替代滚动收集）
+    // ─────────────────────────────────────────────
+
+    function extractFeishuDocToken(url) {
+        const match = String(url || "").match(/\/(wiki|docx)\/([A-Za-z0-9]+)/);
+        return match ? { type: match[1], token: match[2] } : null;
+    }
+
+    // 将飞书 API 返回的 text.elements 转为 markdown 内联文本
+    function convertFeishuApiTextElements(elements) {
+        let md = "";
+        for (const el of elements || []) {
+            if (el.text_run) {
+                let text = el.text_run.content || "";
+                if (!text) continue;
+                const style = el.text_run.text_element_style || {};
+                if (style.inline_code) text = `\`${text}\``;
+                else {
+                    if (style.bold) text = `**${text}**`;
+                    if (style.italic) text = `*${text}*`;
+                    if (style.strikethrough) text = `~~${text}~~`;
+                }
+                if (style.link && style.link.url) {
+                    try {
+                        const decoded = decodeURIComponent(style.link.url);
+                        text = `[${text}](${decoded})`;
+                    } catch (e) {
+                        text = `[${text}](${style.link.url})`;
+                    }
+                }
+                md += text;
+            } else if (el.mention_doc) {
+                const title = el.mention_doc.title || "文档";
+                const url = el.mention_doc.url || "";
+                md += url ? `[${title}](${url})` : title;
+            } else if (el.equation) {
+                md += `$${el.equation.content || ""}$`;
+            }
+        }
+        return md;
+    }
+
+    // 代码语言枚举映射（飞书 API 返回数字类型）
+    const FEISHU_CODE_LANG_MAP = {
+        1: "plaintext", 2: "bash", 3: "c", 4: "cpp", 5: "csharp",
+        6: "css", 7: "go", 8: "html", 9: "java", 10: "javascript",
+        11: "json", 12: "kotlin", 13: "lua", 14: "markdown", 15: "objc",
+        16: "perl", 17: "php", 18: "python", 19: "ruby", 20: "rust",
+        21: "scala", 22: "shell", 23: "sql", 24: "swift", 25: "typescript",
+        26: "xml", 27: "yaml",
+    };
+
+    // 递归将飞书 API 的 JSON block 转换为 markdown
+    function convertFeishuApiBlock(block, allBlocks, depth) {
+        if (!block) return "";
+        const type = block.block_type;
+
+        // 获取文本内容（text 块和 heading 块共用 text 字段）
+        const textElements = block.text?.elements || block.heading?.elements || [];
+        const text = convertFeishuApiTextElements(textElements);
+
+        // 递归转换子块
+        function convertChildren(childDepth) {
+            return (block.children || [])
+                .map(function (id) { return convertFeishuApiBlock(allBlocks[id], allBlocks, childDepth || depth); })
+                .filter(Boolean)
+                .join("\n\n");
+        }
+
+        switch (type) {
+            case 1: // page
+                return convertChildren(0);
+            case 2: // text
+                return text || "";
+            case 3: return text ? `# ${text}` : "";
+            case 4: return text ? `## ${text}` : "";
+            case 5: return text ? `### ${text}` : "";
+            case 6: return text ? `#### ${text}` : "";
+            case 7: return text ? `##### ${text}` : "";
+            case 8: case 9: case 10: case 11: // heading6-9 → h6
+                return text ? `###### ${text}` : "";
+            case 12: { // bullet
+                const content = text || convertChildren(depth + 1);
+                const indent = "  ".repeat(depth);
+                return content ? `${indent}- ${content}` : "";
+            }
+            case 13: { // ordered
+                const content = text || convertChildren(depth + 1);
+                const indent = "  ".repeat(depth);
+                return content ? `${indent}1. ${content}` : "";
+            }
+            case 14: { // code
+                const codeElements = block.code?.text?.elements || textElements;
+                const codeText = codeElements.map(function (e) { return e.text_run?.content || ""; }).join("");
+                const langVal = block.code?.style?.language;
+                const langStr = typeof langVal === "number" ? (FEISHU_CODE_LANG_MAP[langVal] || "") : String(langVal || "").toLowerCase();
+                return codeText ? `\`\`\`${langStr}\n${codeText}\n\`\`\`` : "";
+            }
+            case 15: { // quote
+                const content = text || convertChildren(depth);
+                return content ? content.split("\n").map(function (l) { return `> ${l}`; }).join("\n") : "";
+            }
+            case 16: { // todo
+                const checked = block.todo?.style?.done === true;
+                return text ? `- [${checked ? "x" : " "}] ${text}` : "";
+            }
+            case 17: return "---"; // divider
+            case 18: { // image
+                const token = block.image?.token || "";
+                return token ? `![](feishu-image://${token})` : "";
+            }
+            case 19: { // table
+                const cellIds = block.children || [];
+                if (!cellIds.length) return "";
+                const cols = block.table?.property?.column_size || 1;
+                const rows = [];
+                for (let i = 0; i < cellIds.length; i += cols) {
+                    const row = [];
+                    for (let j = 0; j < cols && (i + j) < cellIds.length; j++) {
+                        const cell = allBlocks[cellIds[i + j]];
+                        const cellContent = cell ? (cell.children || [])
+                            .map(function (id) { return convertFeishuApiBlock(allBlocks[id], allBlocks, 0); })
+                            .filter(Boolean)
+                            .join(" ")
+                            .replace(/\|/g, "\\|")
+                            .replace(/\n/g, " ") : "";
+                        row.push(cellContent);
+                    }
+                    rows.push(row);
+                }
+                if (!rows.length) return "";
+                const header = "| " + rows[0].join(" | ") + " |";
+                const sep = "| " + rows[0].map(function () { return "---"; }).join(" | ") + " |";
+                const body = rows.slice(1).map(function (r) { return "| " + r.join(" | ") + " |"; }).join("\n");
+                return [header, sep, body].filter(Boolean).join("\n");
+            }
+            case 20: // table_cell - handled by table
+                return "";
+            case 22: case 23: // grid, grid_column
+                return convertChildren(depth);
+            case 27: { // callout
+                const content = convertChildren(depth);
+                return content ? content.split("\n").map(function (l) { return `> ${l}`; }).join("\n") : "";
+            }
+            default:
+                return text || convertChildren(depth);
+        }
+    }
+
+    // 通过飞书内部 API 获取文档 JSON 并转 markdown（通过页面上下文注入执行）
+    // 返回 Promise<string|null>
+    function fetchFeishuDocViaApi(pageUrl) {
+        const info = extractFeishuDocToken(pageUrl);
+        if (!info) return Promise.resolve(null);
+
+        return new Promise(function (resolve) {
+            // 生成唯一 message ID
+            var msgId = "__x2md_feishu_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+
+            // 监听从页面上下文返回的结果
+            function onMessage(event) {
+                if (event.data && event.data.type === msgId) {
+                    globalScope.removeEventListener("message", onMessage);
+                    clearTimeout(timer);
+                    resolve(event.data.result || null);
+                }
+            }
+            globalScope.addEventListener("message", onMessage);
+
+            // 超时 8 秒
+            var timer = setTimeout(function () {
+                globalScope.removeEventListener("message", onMessage);
+                resolve(null);
+            }, 8000);
+
+            // 注入脚本到页面上下文（这样 fetch 自带页面 cookies）
+            var script = globalScope.document.createElement("script");
+            script.textContent = `(function(){
+                var msgId = ${JSON.stringify(msgId)};
+                var docType = ${JSON.stringify(info.type)};
+                var docToken = ${JSON.stringify(info.token)};
+                var origin = location.origin;
+
+                function sendResult(data) {
+                    window.postMessage({ type: msgId, result: data }, "*");
+                }
+
+                async function run() {
+                    try {
+                        var realDocToken = docToken;
+                        // wiki 页面需先解析真实 doc_token
+                        if (docType === "wiki") {
+                            var wikiResp = await fetch(origin + "/space/api/wiki/v2/tree/get_info?token=" + docToken, {
+                                credentials: "include"
+                            });
+                            if (wikiResp.ok) {
+                                var wikiData = await wikiResp.json();
+                                realDocToken = (wikiData && wikiData.data && wikiData.data.wiki_info && wikiData.data.wiki_info.doc_token) || docToken;
+                            }
+                        }
+                        // 获取文档原始内容
+                        var resp = await fetch(origin + "/space/api/docx/v2/" + realDocToken + "/raw_content", {
+                            credentials: "include"
+                        });
+                        if (!resp.ok) { sendResult(null); return; }
+                        var json = await resp.json();
+                        if (!json || json.code !== 0 || !json.data) { sendResult(null); return; }
+                        sendResult(json.data);
+                    } catch(e) {
+                        console.error("[x2md] Feishu API fetch failed:", e);
+                        sendResult(null);
+                    }
+                }
+                run();
+            })();`;
+            globalScope.document.head.appendChild(script);
+            script.remove();
+        });
+    }
+
+    // 将 API 返回的 data 转为 markdown
+    function convertFeishuApiDataToMarkdown(apiData) {
+        if (!apiData) return null;
+
+        var blocks = apiData.blocks || {};
+        var doc = apiData.document;
+        if (!doc || !doc.block_id) return null;
+
+        var rootBlock = blocks[doc.block_id];
+        if (!rootBlock) return null;
+
+        // 将 document.children 设为 rootBlock 的 children
+        rootBlock.children = doc.children || rootBlock.children || [];
+
+        var md = convertFeishuApiBlock(rootBlock, blocks, 0);
+        return md ? md.replace(/\n{3,}/g, "\n\n").trim() : null;
+    }
+
     const exported = {
         cleanFeishuUrl,
+        convertFeishuApiDataToMarkdown,
         extractFeishuAuthor,
         extractFeishuBlockMarkdown,
+        extractFeishuDocToken,
         extractFeishuDocumentData,
         extractFeishuInlineMarkdown,
         extractFeishuMarkdownFromBlocks,
         extractFeishuTitle,
         extractFeishuUpdated,
+        fetchFeishuDocViaApi,
         isFeishuWikiOrDocxPage,
     };
 
