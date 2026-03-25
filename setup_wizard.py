@@ -69,15 +69,15 @@ class SetupWizard:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("X2MD 设置向导")
-        self.root.geometry("720x580")
+        self.root.geometry("720x680")
         self.root.resizable(False, False)
         self.root.configure(bg=C["bg"])
 
         # 居中显示
         self.root.update_idletasks()
         x = (self.root.winfo_screenwidth() - 720) // 2
-        y = (self.root.winfo_screenheight() - 580) // 2
-        self.root.geometry(f"720x580+{x}+{y}")
+        y = (self.root.winfo_screenheight() - 680) // 2
+        self.root.geometry(f"720x680+{x}+{y}")
 
         # 确保窗口置顶可见（解决 LSUIElement app 窗口被遮挡的问题）
         self.root.lift()
