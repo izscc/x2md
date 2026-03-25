@@ -17,6 +17,7 @@ chrome.storage.local.get("x2md_port", (data) => {
     if (data.x2md_port) SERVER_BASE = `http://127.0.0.1:${data.x2md_port}`;
 });
 const GRAPHQL_DISCOVERY_CACHE = new Map();
+const _graphqlInflight = new Map();   // 防止并发重复请求同一 origin
 
 function hasDiscoveredOperationIds(ids) {
     return Array.isArray(ids?.TweetDetail) && ids.TweetDetail.length > 0 ||
@@ -43,50 +44,63 @@ async function discoverGraphQLOperationIdsFromPage(pageUrl) {
         return cached;
     }
 
-    try {
-        const htmlResp = await fetch(pageUrl, {
-            credentials: "include",
-            headers: {
-                "x-twitter-active-user": "yes",
-                "x-twitter-client-language": "zh-cn",
-            },
-        });
-        if (!htmlResp.ok) {
-            return { TweetDetail: [], TweetResultByRestId: [] };
-        }
-
-        const html = await htmlResp.text();
-        const scriptUrls = extractScriptUrlsFromHtml(html, pageUrl)
-            .filter((url) => url.includes("abs.twimg.com") && url.endsWith(".js"))
-            .sort((left, right) => {
-                const leftMain = left.includes("/main.");
-                const rightMain = right.includes("/main.");
-                if (leftMain === rightMain) return 0;
-                return leftMain ? -1 : 1;
-            });
-
-        let discovered = { TweetDetail: [], TweetResultByRestId: [] };
-
-        for (const scriptUrl of scriptUrls) {
-            const scriptResp = await fetch(scriptUrl);
-            if (!scriptResp.ok) continue;
-
-            const scriptText = await scriptResp.text();
-            discovered = mergeDiscoveredOperationIds(
-                discovered,
-                extractGraphQLOperationIdsFromScriptText(scriptText),
-            );
-
-            if (hasDiscoveredOperationIds(discovered)) {
-                GRAPHQL_DISCOVERY_CACHE.set(cacheKey, discovered);
-                return discovered;
-            }
-        }
-    } catch (error) {
-        console.warn("[x2md] 自动探测 GraphQL operation id 失败：", error);
+    // 如果已有并发请求在执行，等待它的结果，避免重复请求
+    if (_graphqlInflight.has(cacheKey)) {
+        return _graphqlInflight.get(cacheKey);
     }
 
-    return { TweetDetail: [], TweetResultByRestId: [] };
+    const fetchPromise = (async () => {
+        try {
+            const htmlResp = await fetch(pageUrl, {
+                credentials: "include",
+                headers: {
+                    "x-twitter-active-user": "yes",
+                    "x-twitter-client-language": "zh-cn",
+                },
+            });
+            if (!htmlResp.ok) {
+                return { TweetDetail: [], TweetResultByRestId: [] };
+            }
+
+            const html = await htmlResp.text();
+            const scriptUrls = extractScriptUrlsFromHtml(html, pageUrl)
+                .filter((url) => url.includes("abs.twimg.com") && url.endsWith(".js"))
+                .sort((left, right) => {
+                    const leftMain = left.includes("/main.");
+                    const rightMain = right.includes("/main.");
+                    if (leftMain === rightMain) return 0;
+                    return leftMain ? -1 : 1;
+                });
+
+            let discovered = { TweetDetail: [], TweetResultByRestId: [] };
+
+            for (const scriptUrl of scriptUrls) {
+                const scriptResp = await fetch(scriptUrl);
+                if (!scriptResp.ok) continue;
+
+                const scriptText = await scriptResp.text();
+                discovered = mergeDiscoveredOperationIds(
+                    discovered,
+                    extractGraphQLOperationIdsFromScriptText(scriptText),
+                );
+
+                if (hasDiscoveredOperationIds(discovered)) {
+                    GRAPHQL_DISCOVERY_CACHE.set(cacheKey, discovered);
+                    return discovered;
+                }
+            }
+        } catch (error) {
+            console.warn("[x2md] 自动探测 GraphQL operation id 失败：", error);
+        }
+        return { TweetDetail: [], TweetResultByRestId: [] };
+    })();
+
+    _graphqlInflight.set(cacheKey, fetchPromise);
+    try {
+        return await fetchPromise;
+    } finally {
+        _graphqlInflight.delete(cacheKey);
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -520,6 +534,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === "save_tweet") {
         (async () => {
+            const serverBase = SERVER_BASE;   // 快照，防止并发修改
             try {
                 let data = message.data;
 
@@ -688,7 +703,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
                 // ---------------------------------------------
 
-                const resp = await fetch(`${SERVER_BASE}/save`, {
+                const resp = await fetch(`${serverBase}/save`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data)
@@ -701,12 +716,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ success: false, error: err.message || String(err) });
             }
         })();
-        // 必须返回 true 以保持消息通道开启，否则 async 块内部的 sendResponse 将因为通道关闭而失败，产生 content 侧一直 Loading
         return true;
     }
 
     if (message.action === "force_save_tweet") {
         (async () => {
+            const serverBase = SERVER_BASE;   // 快照
             try {
                 const data = message.data;
 
@@ -723,7 +738,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     data.videos = Array.from(new Set([...(data.videos || []), ...extractedVideoUrls]));
                 }
 
-                const resp = await fetch(`${SERVER_BASE}/save`, {
+                const resp = await fetch(`${serverBase}/save`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data)
@@ -739,8 +754,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === "get_config") {
         (async () => {
+            const serverBase = SERVER_BASE;   // 快照
             try {
-                const resp = await fetch(`${SERVER_BASE}/config`);
+                const resp = await fetch(`${serverBase}/config`);
                 const cfg = await resp.json();
                 // 如果开启了同步，用 sync 中的扩展配置覆盖（save_paths 等本地专属字段不同步）
                 const syncData = await chrome.storage.sync.get("x2md_sync").catch(() => ({}));
@@ -768,8 +784,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === "update_config") {
         (async () => {
+            const serverBase = SERVER_BASE;   // 快照
             try {
-                const resp = await fetch(`${SERVER_BASE}/config`, {
+                const resp = await fetch(`${serverBase}/config`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(message.config)
@@ -814,8 +831,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === "ping") {
         (async () => {
+            const serverBase = SERVER_BASE;   // 快照
             try {
-                const resp = await fetch(`${SERVER_BASE}/ping`, {
+                const resp = await fetch(`${serverBase}/ping`, {
                     signal: AbortSignal.timeout(2000)
                 });
                 const json = await resp.json();

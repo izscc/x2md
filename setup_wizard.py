@@ -286,7 +286,21 @@ class SetupWizard:
     def _browse(self, string_var):
         init = string_var.get()
         init_dir = init if os.path.isdir(init) else os.path.dirname(init) if init else HOME
-        folder = filedialog.askdirectory(title="选择保存目录", initialdir=init_dir)
+
+        # 记住当前窗口尺寸和位置（Windows 下 filedialog 会导致窗口缩小）
+        current_geo = self.root.geometry()
+
+        folder = filedialog.askdirectory(
+            title="选择保存目录",
+            initialdir=init_dir,
+            parent=self.root      # 关键：指定父窗口，防止 Windows 丢失窗口状态
+        )
+
+        # 恢复窗口尺寸（Windows 下 filedialog 关闭后可能触发 geometry 重算）
+        self.root.geometry(current_geo)
+        self.root.deiconify()
+        self.root.lift()
+
         if folder:
             string_var.set(folder)
 
