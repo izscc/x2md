@@ -70,7 +70,8 @@ class SetupWizard:
         self.root = tk.Tk()
         self.root.title("X2MD 设置向导")
         self.root.geometry("720x680")
-        self.root.resizable(False, False)
+        self.root.minsize(600, 500)
+        self.root.resizable(True, True)
         self.root.configure(bg=C["bg"])
 
         # 居中显示
