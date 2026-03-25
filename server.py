@@ -67,6 +67,9 @@ DEFAULT_CONFIG = {
     "video_save_path": os.path.join(HOME, "Desktop", "X2MD", "Videos"),
     "show_site_save_icon": True,
     "setup_completed": False,
+    # 视频下载（扩展侧使用）
+    "enable_video_download": True,
+    "video_duration_threshold": 5,
     # 按平台分类子文件夹（V1.2 新增）
     "enable_platform_folders": True,
     "platform_folder_names": {
@@ -80,6 +83,8 @@ DEFAULT_CONFIG = {
     "image_subfolder": "assets",
     # 覆盖已有同源文件（默认关闭）
     "overwrite_existing": False,
+    # 跨设备同步（默认开启）
+    "sync_enabled": True,
 }
 
 _log_handlers = [logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8")]
@@ -250,6 +255,38 @@ def _guess_image_ext(url: str) -> str:
     return ext_map.get(fmt, '.jpg')
 
 
+def _normalize_publish_time(raw: str) -> str:
+    """将各平台不同格式的发布时间统一为 YYYY-MM-DD HH:MM 或 YYYY-MM-DD"""
+    if not raw or not raw.strip():
+        return ""
+    raw = raw.strip()
+    # Twitter RFC 2822: "Wed Mar 25 10:00:00 +0000 2026"
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(raw)
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        pass
+    # ISO 8601 with timezone offset: "2026-03-25T10:00:00+08:00"
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except (ValueError, AttributeError):
+        pass
+    # 其他常见格式
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            dt = datetime.strptime(raw, fmt)
+            return dt.strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+    # 已经是 YYYY-MM-DD 格式
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', raw):
+        return raw
+    # 无法解析，原样返回
+    return raw
+
+
 def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     """
     将接收到的推文/文章数据构建为 Markdown 字符串。
@@ -274,6 +311,9 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     date_str = now.strftime("%Y-%m-%d")
     datetime_str = now.strftime("%Y-%m-%d %H:%M")
 
+    # 规范化发布时间格式（各平台格式不一，统一为 YYYY-MM-DD HH:MM 或 YYYY-MM-DD）
+    published = _normalize_publish_time(published)
+
     # ── 文件名（按配置格式构建）─────────────
     summary_src = article_title if article_title else text
     # 清理可能残留的视频/媒体占位符（避免污染文件名）
@@ -283,10 +323,14 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     max_len = cfg.get("max_filename_length", 60)
     summary_short = sanitize_filename(summary_src[:30] if summary_src else "untitled", max_len)
     author_clean = sanitize_filename(handle.lstrip("@") if handle else author, 20)
+    handle_clean = sanitize_filename(handle.lstrip("@") if handle else "", 20)
+    timestamp_str = now.strftime("%Y%m%d_%H%M%S")
     fmt = cfg.get("filename_format", "{summary}_{date}_{author}")
     filename = (fmt
         .replace("{date}", date_str)
         .replace("{author}", author_clean)
+        .replace("{handle}", handle_clean)
+        .replace("{timestamp}", timestamp_str)
         .replace("{summary}", summary_short))
     # 去除文件名里可能产生的多余下划线，并限制最终长度（Windows 255 字符限制）
     filename = re.sub(r'_+', '_', filename).strip('_')
@@ -303,12 +347,12 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     title = title[:80] + ("…" if len(title) > 80 else "")
     title = title.replace('"', "'")
 
-    author_url = data.get("author_url")
-    if author_url is None:
-        author_url = f"https://x.com/{handle.lstrip('@')}" if handle else ""
+    author_url = data.get("author_url") or ""
+    if not author_url and handle:
+        author_url = f"https://x.com/{handle.lstrip('@')}"
 
     front_matter = f"""---
-title: "{title}"
+标题: "{title}"
 tags: []
 源: "{url}"
 作者主页: "{author_url}"
@@ -374,7 +418,7 @@ tags: []
         images = [img for img in images if "video_thumb" not in img]
 
     # ── 图片本地化处理 ────────────────────────────
-    do_download_images = cfg.get("download_images", False)
+    do_download_images = cfg.get("download_images", True)
     image_tasks = []  # (url, save_dir_placeholder, local_filename)
     _img_counter = [0]  # 用列表做闭包可变计数器
 
@@ -397,6 +441,9 @@ tags: []
         def _repl(m):
             alt_text = m.group(1)
             img_url = m.group(2)
+            # 跳过非 HTTP(S) 的 URL（如 feishu-image://token），保留原始引用
+            if not img_url.startswith(("http://", "https://")):
+                return m.group(0)
             return make_image_ref(img_url, alt_text)
         return re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', _repl, md_text)
 
@@ -452,8 +499,7 @@ tags: []
                         _inlined_videos.add(v_url)
 
     body = "\n".join(lines)
-    all_media_tasks = image_tasks + video_tasks
-    return filename, front_matter + "\n" + body, all_media_tasks
+    return filename, front_matter + "\n" + body, image_tasks, video_tasks
 
 
 class X2MDHandler(BaseHTTPRequestHandler):
@@ -540,7 +586,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            filename, content, image_tasks = build_markdown(data, cfg)
+            filename, content, image_tasks, video_tasks = build_markdown(data, cfg)
         except Exception as e:
             logger.error(f"Markdown 构建失败：{e}")
             self._respond(500, {"error": str(e)})
@@ -548,7 +594,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         # ── 平台子文件夹 ──────────────────────────
         platform = data.get("platform", "Twitter/X")
-        enable_platform_folders = cfg.get("enable_platform_folders", False)
+        enable_platform_folders = cfg.get("enable_platform_folders", True)
         platform_folder_names = cfg.get("platform_folder_names", {})
 
         saved_files = []
@@ -584,11 +630,15 @@ class X2MDHandler(BaseHTTPRequestHandler):
                 logger.info(f"✅ 已保存：{filepath}")
                 saved_files.append(filepath)
 
-                # ── 图片下载到本地（异步，不需要锁）──
+                # ── 媒体下载到本地（异步，不需要锁）──
                 if image_tasks:
                     for img_url, subfolder, local_name in image_tasks:
                         img_dir = os.path.join(final_dir, subfolder)
                         download_image_async(img_url, img_dir, local_name)
+                if video_tasks:
+                    for vid_url, subfolder, local_name in video_tasks:
+                        vid_dir = os.path.join(final_dir, subfolder)
+                        download_video_async(vid_url, vid_dir, local_name)
 
             except Exception as e:
                 logger.error(f"写入失败 [{save_path}]：{e}")
@@ -610,17 +660,18 @@ class X2MDHandler(BaseHTTPRequestHandler):
         "show_site_save_icon", "setup_completed",
         "enable_platform_folders", "platform_folder_names",
         "download_images", "image_subfolder",
-        "overwrite_existing",
+        "overwrite_existing", "sync_enabled",
     }
 
     def _handle_config_update(self, data: dict):
         """更新配置（仅允许白名单内的字段）"""
-        cfg = load_config()
         filtered = {k: v for k, v in data.items() if k in self.ALLOWED_CONFIG_KEYS}
         if not filtered:
             self._respond(400, {"error": "没有有效的配置字段"})
             return
-        cfg.update(filtered)
+        with _config_lock:
+            cfg = dict(load_config())  # 深拷贝，避免竞态修改共享引用
+            cfg.update(filtered)
         save_config(cfg)
         logger.info(f"配置已更新：{filtered}")
         self._respond(200, {"success": True, "config": cfg})

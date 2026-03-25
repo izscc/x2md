@@ -11,9 +11,14 @@ chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
 chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
     if (chrome.runtime.lastError) { return; }
     const list = document.getElementById("path-list");
+    const hint = document.getElementById("status-hint");
     if (!resp || !resp.success) {
         list.innerHTML = '<div class="path-item" style="color:#f4212e">无法读取配置</div>';
         return;
+    }
+    // 动态更新端口显示
+    if (resp.config && resp.config.port && hint) {
+        hint.textContent = `localhost:${resp.config.port}`;
     }
     const paths = (resp.config && resp.config.save_paths) || [];
     if (!paths.length) {

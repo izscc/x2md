@@ -739,6 +739,7 @@ function captureAndSend(btn) {
                     handle: inlineArticle.handle || handle,
                     published: inlineArticle.published || published,
                     images: inlineArticle.images, // 透传已经过去重的剩余外部图
+                    platform: "Twitter/X",
                     graphql_operation_ids: inlineArticle.graphql_operation_ids || extractDiscoveredGraphQLOperationIds(),
                 });
                 return;
@@ -757,6 +758,7 @@ function captureAndSend(btn) {
             author, handle, published, images,
             text: extractTweetTextBasic(article),
             thread_tweets: [],
+            platform: "Twitter/X",
             graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
         });
         return;
@@ -776,6 +778,7 @@ function captureAndSend(btn) {
         images,
         thread_tweets,
         type: "tweet",
+        platform: "Twitter/X",
         graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
     });
 }

@@ -37,7 +37,7 @@ function applyConfigToUI(cfg) {
     document.getElementById("portInput").value = cfg.port || 9527;
     document.getElementById("portLabel").textContent = cfg.port || 9527;
     document.getElementById("filenameFormat").value =
-        cfg.filename_format || "{date}_{author}_{summary}";
+        cfg.filename_format || "{summary}_{date}_{author}";
     document.getElementById("maxLen").value = cfg.max_filename_length || 60;
 
     // 视频设置回显
@@ -63,9 +63,9 @@ function applyConfigToUI(cfg) {
     // 覆盖策略（默认关闭）
     document.getElementById("overwriteExisting").checked = !!cfg.overwrite_existing;
 
-    // 同步开关回显
-    document.getElementById("syncEnabled").checked = !!cfg.sync_enabled;
-    updateSyncStatus(!!cfg.sync_enabled);
+    // 同步开关回显（默认开启，与 server DEFAULT_CONFIG 一致）
+    document.getElementById("syncEnabled").checked = cfg.sync_enabled !== false;
+    updateSyncStatus(cfg.sync_enabled !== false);
 
     renderPaths(cfg.save_paths || []);
 }
@@ -156,7 +156,7 @@ function saveConfig() {
     const port = parseInt(document.getElementById("portInput").value) || 9527;
     const filenameFormat =
         document.getElementById("filenameFormat").value.trim() ||
-        "{date}_{author}_{summary}";
+        "{summary}_{date}_{author}";
     const maxLen = parseInt(document.getElementById("maxLen").value) || 60;
     const savePaths = collectPaths();
 

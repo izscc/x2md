@@ -660,7 +660,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 let enableVideoDownload = true;
                 let durationThresholdMin = 5;
                 try {
-                    const cfgResp = await fetch(`${SERVER_BASE}/config`);
+                    const cfgResp = await fetch(`${serverBase}/config`);
                     if (!cfgResp.ok) throw new Error(`HTTP ${cfgResp.status}`);
                     const cfg = await cfgResp.json();
                     enableVideoDownload = cfg.enable_video_download !== false;
@@ -763,7 +763,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (syncData.x2md_sync && syncData.x2md_sync.sync_enabled) {
                     const synced = syncData.x2md_sync;
                     const SYNC_FIELDS = ["filename_format", "max_filename_length",
-                        "enable_video_download", "video_duration_threshold", "show_site_save_icon"];
+                        "enable_video_download", "video_duration_threshold", "show_site_save_icon",
+                        "enable_platform_folders", "download_images", "image_subfolder",
+                        "overwrite_existing"];
                     for (const k of SYNC_FIELDS) {
                         if (synced[k] !== undefined) cfg[k] = synced[k];
                     }
@@ -795,7 +797,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // 如果开启了同步，将可同步字段写入 chrome.storage.sync
                 if (message.config.sync_enabled) {
                     const SYNC_FIELDS = ["filename_format", "max_filename_length",
-                        "enable_video_download", "video_duration_threshold", "show_site_save_icon"];
+                        "enable_video_download", "video_duration_threshold", "show_site_save_icon",
+                        "enable_platform_folders", "download_images", "image_subfolder",
+                        "overwrite_existing"];
                     const toSync = { sync_enabled: true };
                     for (const k of SYNC_FIELDS) {
                         if (message.config[k] !== undefined) toSync[k] = message.config[k];

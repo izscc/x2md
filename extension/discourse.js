@@ -274,7 +274,7 @@
             article_content: articleContent,
             images: [],
             videos: [],
-            platform: "LINUX DO",
+            platform: "LinuxDo",
         };
     }
 

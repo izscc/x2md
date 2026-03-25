@@ -77,7 +77,7 @@ TEMP_DIR = tempfile.mkdtemp(prefix="x2md_test_")
 def test_find_url_match():
     fpath = os.path.join(TEMP_DIR, "test_match.md")
     with open(fpath, "w", encoding="utf-8") as f:
-        f.write('---\ntitle: "Test"\n源: "https://x.com/user/status/123"\n---\nContent\n')
+        f.write('---\n标题: "Test"\n源: "https://x.com/user/status/123"\n---\nContent\n')
     result = server.find_existing_file_by_source_url(TEMP_DIR, "https://x.com/user/status/123")
     assert result == fpath, f"Expected {fpath}, got {result}"
 test_find_url_match()
@@ -131,7 +131,7 @@ def test_build_twitter():
         "images": [],
         "videos": [],
     }
-    filename, content, img_tasks = server.build_markdown(data, BASE_CFG)
+    filename, content, img_tasks, _ = server.build_markdown(data, BASE_CFG)
     assert filename, "Filename should not be empty"
     assert '源: "https://x.com/testuser/status/123"' in content
     assert '平台: "Twitter/X"' in content
@@ -151,7 +151,7 @@ def test_build_linuxdo():
         "images": [],
         "videos": [],
     }
-    filename, content, _ = server.build_markdown(data, BASE_CFG)
+    filename, content, _, _ = server.build_markdown(data, BASE_CFG)
     assert '平台: "LinuxDo"' in content
     assert "Linux Do" in content
 test_build_linuxdo()
@@ -169,7 +169,7 @@ def test_build_feishu():
         "images": [],
         "videos": [],
     }
-    filename, content, _ = server.build_markdown(data, BASE_CFG)
+    filename, content, _, _ = server.build_markdown(data, BASE_CFG)
     assert '平台: "Feishu"' in content
     assert "飞书文档测试" in content
 test_build_feishu()
@@ -187,7 +187,7 @@ def test_build_wechat():
         "images": [],
         "videos": [],
     }
-    filename, content, _ = server.build_markdown(data, BASE_CFG)
+    filename, content, _, _ = server.build_markdown(data, BASE_CFG)
     assert '平台: "WeChat"' in content
 test_build_wechat()
 
@@ -206,7 +206,7 @@ def test_build_article():
         "images": [],
         "videos": [],
     }
-    filename, content, _ = server.build_markdown(data, BASE_CFG)
+    filename, content, _, _ = server.build_markdown(data, BASE_CFG)
     assert "My Long Article Title" in content
     assert "# Heading" in content
 test_build_article()
@@ -232,7 +232,7 @@ def test_no_overwrite():
         "images": [], "videos": [],
     }
     # 第一次保存
-    filename, content, _ = server.build_markdown(data, cfg)
+    filename, content, _, _ = server.build_markdown(data, cfg)
     fp1 = os.path.join(no_ow_dir, filename + ".md")
     with open(fp1, "w", encoding="utf-8") as f:
         f.write(content)
@@ -240,7 +240,7 @@ def test_no_overwrite():
 
     # 第二次保存同名文件，模拟 _handle_save 的时间戳逻辑
     data["text"] = "Second save"
-    _, content2, _ = server.build_markdown(data, cfg)
+    _, content2, _, _ = server.build_markdown(data, cfg)
     fp2 = os.path.join(no_ow_dir, filename + ".md")
     if os.path.exists(fp2):
         from datetime import datetime
@@ -262,7 +262,7 @@ def test_overwrite_by_url():
     # 先写一个旧文件（模拟之前保存的）
     old_file = os.path.join(overwrite_dir, "old_file_2026-03-20.md")
     with open(old_file, "w", encoding="utf-8") as f:
-        f.write(f'---\ntitle: "Old"\n源: "{source_url}"\n---\nOld content\n')
+        f.write(f'---\n标题: "Old"\n源: "{source_url}"\n---\nOld content\n')
 
     # 查找应该返回旧文件
     found = server.find_existing_file_by_source_url(overwrite_dir, source_url)
@@ -270,7 +270,7 @@ def test_overwrite_by_url():
 
     # 覆盖写入
     with open(found, "w", encoding="utf-8") as f:
-        f.write(f'---\ntitle: "New"\n源: "{source_url}"\n---\nNew content\n')
+        f.write(f'---\n标题: "New"\n源: "{source_url}"\n---\nNew content\n')
 
     with open(old_file, "r", encoding="utf-8") as f:
         assert "New content" in f.read()
@@ -292,7 +292,7 @@ def test_overwrite_same_name():
         "url": "https://x.com/same/status/333", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    filename, content1, _ = server.build_markdown(data, cfg)
+    filename, content1, _, _ = server.build_markdown(data, cfg)
     fp = os.path.join(same_dir, filename + ".md")
     with open(fp, "w", encoding="utf-8") as f:
         f.write(content1)
@@ -305,7 +305,7 @@ def test_overwrite_same_name():
         target = fp  # 同名文件直接覆盖
 
     data["text"] = "Content v2"
-    _, content2, _ = server.build_markdown(data, cfg)
+    _, content2, _, _ = server.build_markdown(data, cfg)
     with open(target, "w", encoding="utf-8") as f:
         f.write(content2)
 
@@ -409,8 +409,8 @@ def test_front_matter_fields():
         "text": "Test content", "url": "https://x.com/fmtest/status/555",
         "platform": "Twitter/X", "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, BASE_CFG)
-    required = ['title:', '源:', '作者主页:', '创建时间:', '发布时间:', '平台:', '类别:', '阅读状态:', '整理:']
+    _, content, _, _ = server.build_markdown(data, BASE_CFG)
+    required = ['标题:', 'tags:', '源:', '作者主页:', '创建时间:', '发布时间:', '平台:', '类别:', '阅读状态:', '整理:']
     for field in required:
         assert field in content, f"Missing front matter field: {field}"
 test_front_matter_fields()
@@ -424,10 +424,10 @@ def test_front_matter_no_newline():
         "url": "https://x.com/nltest/status/666",
         "platform": "Twitter/X", "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, BASE_CFG)
+    _, content, _, _ = server.build_markdown(data, BASE_CFG)
     # 提取 title 行
     for line in content.split("\n"):
-        if line.startswith("title:"):
+        if line.startswith("标题:"):
             assert "\n" not in line.strip()
             break
 test_front_matter_no_newline()
@@ -451,7 +451,7 @@ def test_thread_tweets():
             {"text": "Tweet 2 in thread", "images": [], "videos": []},
         ],
     }
-    _, content, _ = server.build_markdown(data, BASE_CFG)
+    _, content, _, _ = server.build_markdown(data, BASE_CFG)
     assert "Tweet 1 in thread" in content
     assert "Tweet 2 in thread" in content
 test_thread_tweets()
