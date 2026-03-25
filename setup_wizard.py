@@ -55,9 +55,11 @@ C = {
     "success":      "#00ba7c",
 }
 
-# 字体（Mac 优先 SF Pro，Windows 优先微软雅黑，兜底 Inter）
+# 字体（Mac 优先 PingFang SC，Windows 优先微软雅黑 UI）
+# 注意：Windows 上 tkinter 使用 bold 字重渲染中文可能导致乱码，
+# 使用 "Microsoft YaHei UI" 代替 "Microsoft YaHei" 可缓解此问题
 IS_MAC = platform.system() == "Darwin"
-FONT_FAMILY = "PingFang SC" if IS_MAC else "Microsoft YaHei"
+FONT_FAMILY = "PingFang SC" if IS_MAC else "Microsoft YaHei UI"
 FONT = lambda size, weight="normal": (FONT_FAMILY, size, weight)
 
 
@@ -190,7 +192,9 @@ class SetupWizard:
 
     # ── 步骤一：欢迎 ─────────────────────────────
     def _step_welcome(self):
-        tk.Label(self.content_frame, text="🔖", font=("Segoe UI Emoji", 56),
+        # Windows tkinter 对大号 emoji 渲染不佳，改用 Segoe UI Emoji 小号 + 兜底
+        _emoji_font = ("Segoe UI Emoji", 48) if sys.platform == "win32" else (FONT_FAMILY, 56)
+        tk.Label(self.content_frame, text="\U0001F516", font=_emoji_font,
                  bg=C["bg"]).pack(pady=(24, 8))
 
         tk.Label(self.content_frame, text="欢迎使用 X2MD",
@@ -332,7 +336,8 @@ class SetupWizard:
 
     # ── 步骤四：完成 ─────────────────────────────
     def _step_finish(self):
-        tk.Label(self.content_frame, text="✅", font=("Segoe UI Emoji", 48),
+        _emoji_font = ("Segoe UI Emoji", 42) if sys.platform == "win32" else (FONT_FAMILY, 48)
+        tk.Label(self.content_frame, text="\u2705", font=_emoji_font,
                  bg=C["bg"]).pack(pady=(16, 8))
 
         tk.Label(self.content_frame, text="设置完成！",
