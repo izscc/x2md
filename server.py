@@ -239,9 +239,11 @@ tags: []
         else:
             vid_map[vid_url] = f"🎞️ [推特媒体：点击播放视频]({vid_url})"
 
-    def append_unused_videos(lines_list, content_text):
-        if not videos: return
-        unused_vids = [v for v in videos if f"[MEDIA_VIDEO_URL:{v}]" not in (content_text or "")]
+    def append_unused_videos(lines_list, content_text, video_list=None):
+        """追加未在正文中内联的视频，video_list 默认为主推文 videos"""
+        vids = video_list if video_list is not None else videos
+        if not vids: return
+        unused_vids = [v for v in vids if v in vid_map and f"[MEDIA_VIDEO_URL:{v}]" not in (content_text or "")]
         if unused_vids:
             lines_list.append("")
             for v in unused_vids:
@@ -320,8 +322,26 @@ class X2MDHandler(BaseHTTPRequestHandler):
         """覆盖默认日志，使用自定义 logger"""
         logger.info(f"{self.address_string()} - {format % args}")
 
+    # 允许访问本地服务的来源白名单
+    ALLOWED_ORIGINS = {
+        "chrome-extension://",   # Chrome 扩展（前缀匹配）
+        "http://127.0.0.1",
+        "http://localhost",
+    }
+
+    def _get_allowed_origin(self):
+        """检查请求来源是否合法，返回允许的 Origin 或 None"""
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return "http://127.0.0.1"  # 无 Origin 的本地请求（如直接 curl）
+        for allowed in self.ALLOWED_ORIGINS:
+            if origin.startswith(allowed):
+                return origin
+        return None
+
     def _send_cors_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self._get_allowed_origin()
+        self.send_header("Access-Control-Allow-Origin", origin or "http://127.0.0.1")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
@@ -346,9 +366,14 @@ class X2MDHandler(BaseHTTPRequestHandler):
         else:
             self._respond(404, {"error": "Not Found"})
 
+    MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB 请求体上限
+
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
+        if length > self.MAX_REQUEST_SIZE:
+            self._respond(413, {"error": f"请求体过大（{length} 字节），上限 {self.MAX_REQUEST_SIZE} 字节"})
+            return
         body = self.rfile.read(length)
 
         try:
@@ -408,12 +433,23 @@ class X2MDHandler(BaseHTTPRequestHandler):
         else:
             self._respond(500, {"success": False, "errors": errors})
 
+    # 允许通过 API 更新的配置字段白名单
+    ALLOWED_CONFIG_KEYS = {
+        "port", "save_paths", "filename_format", "max_filename_length",
+        "video_save_path", "enable_video_download", "video_duration_threshold",
+        "show_site_save_icon", "setup_completed",
+    }
+
     def _handle_config_update(self, data: dict):
-        """更新配置"""
+        """更新配置（仅允许白名单内的字段）"""
         cfg = load_config()
-        cfg.update(data)
+        filtered = {k: v for k, v in data.items() if k in self.ALLOWED_CONFIG_KEYS}
+        if not filtered:
+            self._respond(400, {"error": "没有有效的配置字段"})
+            return
+        cfg.update(filtered)
         save_config(cfg)
-        logger.info(f"配置已更新：{data}")
+        logger.info(f"配置已更新：{filtered}")
         self._respond(200, {"success": True, "config": cfg})
 
     def _respond(self, code: int, payload: dict):

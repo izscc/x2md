@@ -83,7 +83,9 @@ def launch_wizard_subprocess():
         # 打包环境：直接启动自身并附加 --wizard 参数
         subprocess.Popen([sys.executable, "--wizard"])
     else:
-        script = os.path.join(APP_DIR, "setup_wizard.py")
+        # 开发模式：setup_wizard.py 在源码目录（与 tray_app.py 同级），而非 APP_DIR
+        source_dir = os.path.dirname(os.path.abspath(__file__))
+        script = os.path.join(source_dir, "setup_wizard.py")
         subprocess.Popen([sys.executable, script])
 
 

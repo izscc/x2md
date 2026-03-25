@@ -1,9 +1,9 @@
 {
   "port": 9527,
-  "save_paths": [
-    "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/📄 素材库"
-  ],
+  "save_paths": [],
   "filename_format": "{summary}",
   "max_filename_length": 60,
-  "setup_completed": false
+  "setup_completed": false,
+  "video_save_path": "/home/node/Desktop/X2MD/Videos",
+  "show_site_save_icon": true
 }

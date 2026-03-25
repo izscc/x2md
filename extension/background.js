@@ -9,7 +9,6 @@
 
 importScripts("media_helpers.js");
 importScripts("twitter_graphql.js");
-importScripts("twitter_graphql.js");
 
 const SERVER_BASE = "http://127.0.0.1:9527";
 const GRAPHQL_DISCOVERY_CACHE = new Map();

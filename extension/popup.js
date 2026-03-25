@@ -18,5 +18,11 @@ chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
         list.innerHTML = '<div class="path-item">未配置保存路径</div>';
         return;
     }
-    list.innerHTML = paths.map(p => `<div class="path-item">${p}</div>`).join("");
+    list.innerHTML = "";
+    paths.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "path-item";
+        div.textContent = p;
+        list.appendChild(div);
+    });
 });

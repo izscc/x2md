@@ -73,9 +73,15 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=True,
+    strip=False,             # strip 在 Windows 上会损坏 DLL，统一关闭
     upx=True,
-    upx_exclude=[],
+    upx_exclude=[
+        'python3*.dll',      # Python DLL 不能被 UPX 压缩，否则加载时内存访问无效
+        'python*.dll',
+        'vcruntime*.dll',    # VC++ 运行时也不能压缩
+        'ucrtbase.dll',
+        'api-ms-win-*.dll',
+    ],
     name='X2MD',
 )
 

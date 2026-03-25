@@ -276,7 +276,22 @@ function detectAndExtractArticle() {
     }
 
     // ── 网页全局 MP4 提取与高清优选 (包含 React Fiber 深度探测) ──
-    const allMp4s = document.documentElement.innerHTML.match(/https?:\/\/video\.twimg\.com\/[^"'\s\\]+?\.mp4(?:\?tag=\d+)?/g) || [];
+    // 优先从 script 标签和 video 元素提取，避免 innerHTML 全量序列化导致大页面卡顿
+    const allMp4s = [];
+    const mp4Pattern = /https?:\/\/video\.twimg\.com\/[^"'\s\\]+?\.mp4(?:\?tag=\d+)?/g;
+    document.querySelectorAll('script[type="application/json"], script:not([src])').forEach(script => {
+        const text = script.textContent || "";
+        if (text.includes("video.twimg.com")) {
+            const matches = text.match(mp4Pattern) || [];
+            allMp4s.push(...matches);
+        }
+    });
+    document.querySelectorAll('video[src]').forEach(v => {
+        if (v.src && v.src.includes("video.twimg.com")) allMp4s.push(v.src);
+    });
+    document.querySelectorAll('source[src]').forEach(s => {
+        if (s.src && s.src.includes("video.twimg.com")) allMp4s.push(s.src);
+    });
 
     // 强制探测所有的 video 节点及其父元素的 React state，寻找被长文框架封闭的 MP4 直链
     const getReactPropsKey = (element) => Object.keys(element).find(k => k.startsWith('__reactProps$') || k.startsWith('__reactFiber$'));

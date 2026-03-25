@@ -38,7 +38,7 @@ function applyConfigToUI(cfg) {
 
     // 视频设置回显
     document.getElementById("enableVideoDownload").checked = cfg.enable_video_download !== false;
-    document.getElementById("videoSavePath").value = cfg.video_save_path || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
+    document.getElementById("videoSavePath").value = cfg.video_save_path || "";
     document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
     document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
 
@@ -125,7 +125,7 @@ function saveConfig() {
 
     // 媒体设置读取
     const enableVideoDownload = document.getElementById("enableVideoDownload").checked;
-    const videoSavePath = document.getElementById("videoSavePath").value.trim() || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
+    const videoSavePath = document.getElementById("videoSavePath").value.trim();
     const videoDurationThreshold = parseFloat(document.getElementById("videoDurationThreshold").value) || 5;
     const showSiteSaveIcon = document.getElementById("showSiteSaveIcon").checked;
 
