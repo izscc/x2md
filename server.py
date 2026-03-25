@@ -267,6 +267,10 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
 
     # ── 文件名（按配置格式构建）─────────────
     summary_src = article_title if article_title else text
+    # 清理可能残留的视频/媒体占位符（避免污染文件名）
+    summary_src = re.sub(r'\[MEDIA_VIDEO_URL:[^\]]*\]', '', summary_src)
+    summary_src = re.sub(r'\[\[VIDEO_HOLDER_\d+\]\]', '', summary_src)
+    summary_src = summary_src.strip()
     max_len = cfg.get("max_filename_length", 60)
     summary_short = sanitize_filename(summary_src[:30] if summary_src else "untitled", max_len)
     author_clean = sanitize_filename(handle.lstrip("@") if handle else author, 20)
@@ -283,6 +287,10 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     title_src = article_title if article_title else text
     # 去除换行和多余空白，保证 Front Matter 单行合法
     title = " ".join(title_src.split())
+    # 清理 title 中可能残留的视频/媒体占位符
+    title = re.sub(r'\[MEDIA_VIDEO_URL:[^\]]*\]', '', title)
+    title = re.sub(r'\[\[VIDEO_HOLDER_\d+\]\]', '', title)
+    title = " ".join(title.split()).strip()
     title = title[:80] + ("…" if len(title) > 80 else "")
     title = title.replace('"', "'")
 
