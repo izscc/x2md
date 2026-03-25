@@ -130,6 +130,11 @@
         }
 
         if (tag === "li") {
+            const parentTag = getTagName(element.parentElement);
+            if (parentTag === "ol") {
+                const idx = Array.from(element.parentElement.children).indexOf(element) + 1;
+                return `\n${idx}. ${markdown.trim()}\n`;
+            }
             return `\n- ${markdown.trim()}\n`;
         }
 

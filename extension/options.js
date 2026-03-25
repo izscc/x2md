@@ -170,6 +170,10 @@ function saveConfig() {
     document.getElementById("portLabel").textContent = port;
 
     chrome.runtime.sendMessage({ action: "update_config", config: newConfig }, (resp) => {
+        if (chrome.runtime.lastError) {
+            showToast("❌ 扩展通信失败，请刷新页面重试", true);
+            return;
+        }
         if (resp && resp.success) {
             currentConfig = newConfig;
             updateSyncStatus(syncEnabled);

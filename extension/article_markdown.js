@@ -193,7 +193,13 @@
             const lines = markdown.trim().split("\n").filter((line) => line.trim() !== "");
             markdown = "\n" + lines.map((line) => "> " + line).join("\n") + "\n";
         } else if (tag === "li") {
-            markdown = `\n- ${markdown.trim()}\n`;
+            const parentTag = (element.parentElement?.tagName || "").toLowerCase();
+            if (parentTag === "ol") {
+                const idx = Array.from(element.parentElement.children).indexOf(element) + 1;
+                markdown = `\n${idx}. ${markdown.trim()}\n`;
+            } else {
+                markdown = `\n- ${markdown.trim()}\n`;
+            }
         } else if (isBlockElement(element, options)) {
             markdown = `\n${markdown}\n`;
         }

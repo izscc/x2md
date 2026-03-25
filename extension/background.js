@@ -239,14 +239,23 @@ async function fetchNoteContent(articleUrl) {
                     );
                 };
 
-                // 等待 tab 完成加载后开始轮询
-                chrome.tabs.onUpdated.addListener(function listener(changedTabId, info) {
-                    if (changedTabId === tabId && info.status === 'complete') {
+                // 等待 tab 完成加载后开始轮询（含超时自动清理防止泄漏）
+                const tabTimeout = setTimeout(() => {
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    poll(); // 超时后仍尝试轮询一次
+                }, 15000);
+                function listener(changedTabId, info) {
+                    if (changedTabId === tabId && (info.status === 'complete' || info.status === 'error')) {
                         chrome.tabs.onUpdated.removeListener(listener);
-                        // 等额外 1.5 秒等 CSR 渲染
-                        setTimeout(poll, 1500);
+                        clearTimeout(tabTimeout);
+                        if (info.status === 'complete') {
+                            setTimeout(poll, 1500);
+                        } else {
+                            poll(); // error 状态也尝试一次
+                        }
                     }
-                });
+                }
+                chrome.tabs.onUpdated.addListener(listener);
             }
         );
     });
@@ -635,6 +644,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 let durationThresholdMin = 5;
                 try {
                     const cfgResp = await fetch(`${SERVER_BASE}/config`);
+                    if (!cfgResp.ok) throw new Error(`HTTP ${cfgResp.status}`);
                     const cfg = await cfgResp.json();
                     enableVideoDownload = cfg.enable_video_download !== false;
                     durationThresholdMin = cfg.video_duration_threshold || 5;
@@ -729,7 +739,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     cfg.sync_enabled = true;
                 }
                 // 缓存端口到 local storage，下次启动时无需先请求服务即可使用正确端口
-                if (cfg.port && cfg.port !== 9527) {
+                if (cfg.port) {
                     chrome.storage.local.set({ x2md_port: cfg.port });
                     SERVER_BASE = `http://127.0.0.1:${cfg.port}`;
                 }

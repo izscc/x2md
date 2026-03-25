@@ -19,7 +19,8 @@
         "https://mp.weixin.qq.com/*",
         "http://127.0.0.1/*",
         "https://cdn.syndication.twimg.com/*",
-        "https://publish.twitter.com/*"
+        "https://publish.twitter.com/*",
+        "https://abs.twimg.com/*"
     ],
     "background": {
         "service_worker": "background.js"
