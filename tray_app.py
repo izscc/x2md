@@ -49,15 +49,19 @@ EXT_DIR = os.path.join(APP_DIR, "extension")
 if not os.path.isdir(EXT_DIR):
     EXT_DIR = os.path.join(RESOURCE_DIR, "extension")
 
-_stream_out = (open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False)
-               if sys.platform == "win32" else sys.stdout)
+_log_handlers = [logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8")]
+# Windows 打包后无控制台窗口，sys.stdout/stderr 为 None，不能创建 StreamHandler
+if sys.stdout is not None:
+    try:
+        _stream_out = (open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False)
+                       if sys.platform == "win32" else sys.stdout)
+        _log_handlers.append(logging.StreamHandler(_stream_out))
+    except (AttributeError, OSError):
+        pass
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8"),
-        logging.StreamHandler(_stream_out),
-    ]
+    handlers=_log_handlers,
 )
 logger = logging.getLogger("x2md_tray")
 

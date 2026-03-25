@@ -68,14 +68,18 @@ DEFAULT_CONFIG = {
     "setup_completed": False,
 }
 
+_log_handlers = [logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8")]
+if sys.stdout is not None:
+    try:
+        _stream_out = (open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False)
+                       if sys.platform == "win32" else sys.stdout)
+        _log_handlers.append(logging.StreamHandler(_stream_out))
+    except (AttributeError, OSError):
+        pass
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(os.path.join(APP_DIR, "x2md.log"), encoding="utf-8"),
-        logging.StreamHandler(open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False)
-                                if sys.platform == "win32" else sys.stdout)
-    ]
+    handlers=_log_handlers,
 )
 logger = logging.getLogger("x2md")
 
