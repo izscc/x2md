@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "X2MD - 网页内容转Markdown",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "description": "支持 X、LINUX DO、飞书知识库、飞书云文档、微信公众号的一键保存 Markdown",
     "permissions": [
         "storage",
