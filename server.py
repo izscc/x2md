@@ -780,6 +780,18 @@ class X2MDHandler(BaseHTTPRequestHandler):
         "overwrite_existing", "sync_enabled",
         "enable_comments", "comments_display", "max_comments", "comment_floor_range",
         "discourse_domains", "embed_mode",
+        # 飞书 Bitable
+        "feishu_api_domain", "feishu_app_id", "feishu_app_secret",
+        "feishu_app_token", "feishu_table_id",
+        "feishu_upload_md", "feishu_upload_html",
+        # Notion Database
+        "notion_token", "notion_database_id",
+        "notion_prop_title", "notion_prop_url", "notion_prop_author",
+        "notion_prop_tags", "notion_prop_saved_date", "notion_prop_type",
+        # HTML 导出
+        "html_export_folder",
+        # 飞书一键复制
+        "enable_copy_unlock",
     }
 
     def _handle_config_update(self, data: dict):
