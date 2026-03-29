@@ -911,7 +911,40 @@ function sendToBackground(data) {
 }
 
 function handleSaveResponse(resp) {
-    if (resp && resp.success) {
+    if (!resp) { showToast("保存失败：无响应", "error", 5000); return; }
+
+    // 多目标格式（V1.5+）
+    if (Array.isArray(resp.results)) {
+        const successes = resp.results.filter(r => r.success);
+        const failures = resp.results.filter(r => !r.success);
+        const targetNames = { obsidian: "Obsidian", feishu: "飞书", notion: "Notion", html: "HTML" };
+
+        if (successes.length > 0) {
+            const names = successes.map(r => targetNames[r.target] || r.target).join("、");
+            let detail = "";
+            // Obsidian 文件名
+            const obsResult = successes.find(r => r.target === "obsidian");
+            if (obsResult?.result?.saved?.[0]) {
+                const parts = obsResult.result.saved[0].split("/");
+                let savedName = parts[parts.length - 1].replace(/\.md$/, "");
+                if (savedName.length > 28) savedName = savedName.slice(0, 28) + "…";
+                detail = `\n📄 ${savedName}`;
+            }
+            let msg = `已保存到 ${names}${detail}`;
+            if (failures.length > 0) {
+                const failNames = failures.map(r => targetNames[r.target] || r.target).join("、");
+                msg += `\n⚠️ ${failNames} 失败`;
+            }
+            showToast(msg, failures.length > 0 ? "warning" : "success", 5000);
+        } else {
+            const errMsg = failures.map(r => `[${targetNames[r.target] || r.target}] ${r.error || "未知"}`).join("; ");
+            showToast(`保存失败：${String(errMsg).slice(0, 80)}`, "error", 5000);
+        }
+        return;
+    }
+
+    // 旧格式（单目标，向后兼容）
+    if (resp.success) {
         let savedName = "";
         if (resp.result?.saved?.[0]) {
             const parts = resp.result.saved[0].split("/");
@@ -931,6 +964,7 @@ function handleSaveResponse(resp) {
 const TOAST_COLORS = {
     loading: { bg: "#1d9bf0", shadow: "rgba(29,155,240,.4)" },
     success: { bg: "#00ba7c", shadow: "rgba(0,186,124,.4)" },
+    warning: { bg: "#ff9800", shadow: "rgba(255,152,0,.4)" },
     error: { bg: "#f4212e", shadow: "rgba(244,33,46,.4)" },
 };
 

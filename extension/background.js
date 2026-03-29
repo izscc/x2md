@@ -1,10 +1,12 @@
 /**
- * background.js - X2MD Service Worker v1.3
+ * background.js - X2MD Service Worker v1.5
  *
  * 获取完整推文的 3 层策略（依次降级）：
  *   1. Twitter GraphQL API (TweetDetail) — 携带 cookie，获取最完整数据
  *   2. Twitter oEmbed API — 公开接口，无需认证，可获取完整文字
  *   3. DOM 原始数据（content.js 采集到的）— 最后兜底
+ *
+ * 多目标保存：Obsidian (本地服务) / 飞书多维表格 / Notion Database / HTML文件
  */
 
 importScripts("media_helpers.js");
@@ -604,6 +606,700 @@ async function fetchFullTweetData(tweetData) {
     };
 }
 
+// ═══════════════════════════════════════════════
+// 通用工具：fetchWithRetry（429 退避 + 超时 + 友好错误）
+// ═══════════════════════════════════════════════
+async function fetchWithRetry(url, options = {}, maxRetries = 2) {
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        try {
+            const response = await fetch(url, { ...options, signal: controller.signal });
+            clearTimeout(timeout);
+            if (response.status === 429 && attempt < maxRetries) {
+                const retryAfter = response.headers.get("Retry-After");
+                const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 1000 * Math.pow(2, attempt + 1);
+                console.warn(`[x2md] API 429 限流，${waitTime}ms 后重试 (${attempt + 1}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                continue;
+            }
+            return response;
+        } catch (err) {
+            clearTimeout(timeout);
+            lastError = err;
+            if (err.name === "AbortError") throw new Error("请求超时（30秒），请检查网络");
+            if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        }
+    }
+    throw new Error(lastError?.message || "网络请求失败");
+}
+
+// ═══════════════════════════════════════════════
+// 飞书多维表格 API
+// ═══════════════════════════════════════════════
+const FEISHU_API_DOMAINS = {
+    feishu: "https://open.feishu.cn",
+    lark: "https://open.larksuite.com",
+};
+
+let feishuTokenCache = { feishu: { token: null, expireAt: 0 }, lark: { token: null, expireAt: 0 } };
+
+async function getFeishuAccessToken(appId, appSecret, apiDomain) {
+    const domainKey = apiDomain === "lark" ? "lark" : "feishu";
+    const cached = feishuTokenCache[domainKey];
+    if (cached.token && cached.expireAt > Date.now()) return cached.token;
+
+    const baseUrl = FEISHU_API_DOMAINS[domainKey];
+    const resp = await fetchWithRetry(`${baseUrl}/open-apis/auth/v3/tenant_access_token/internal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    }, 1);
+
+    const data = await resp.json();
+    if (data.code !== 0 || !data.tenant_access_token) {
+        if (data.code === 10003 || data.code === 10014) throw new Error("飞书 App ID 或 App Secret 无效");
+        throw new Error(`飞书认证失败: ${data.msg || "未知错误"} (code: ${data.code})`);
+    }
+
+    feishuTokenCache[domainKey] = { token: data.tenant_access_token, expireAt: Date.now() + (data.expire - 300) * 1000 };
+    return data.tenant_access_token;
+}
+
+function classifyFeishuError(code, msg) {
+    if (code === 1254043 || code === 1254044) return "飞书多维表格不存在或无权限，请检查 App Token 和 Table ID";
+    if (code === 1254001) return "飞书 Token 已过期";
+    if (code === 1254607) return "数据表不存在，请检查 table_id（以 tbl 开头）";
+    if (code === 99991668 || code === 99991672) return "飞书 API 请求过于频繁，请稍后重试";
+    return `飞书操作失败 (${code}): ${msg}`;
+}
+
+async function searchFeishuRecord(baseUrl, appToken, tableId, token, title) {
+    try {
+        const resp = await fetchWithRetry(`${baseUrl}/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+                field_names: ["标题"],
+                filter: { conjunction: "and", conditions: [{ field_name: "标题", operator: "is", value: [title] }] },
+                page_size: 1,
+            }),
+        }, 1);
+        const data = await resp.json();
+        return data.code === 0 && data.data?.items?.length > 0 ? data.data.items[0] : null;
+    } catch { return null; }
+}
+
+async function createFeishuRecord(baseUrl, appToken, tableId, token, fields) {
+    const resp = await fetchWithRetry(`${baseUrl}/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fields }),
+    }, 1);
+    const data = await resp.json();
+    if (data.code !== 0) throw new Error(classifyFeishuError(data.code, data.msg));
+    return data;
+}
+
+async function updateFeishuRecord(baseUrl, appToken, tableId, token, recordId, fields) {
+    const resp = await fetchWithRetry(`${baseUrl}/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fields }),
+    }, 1);
+    const data = await resp.json();
+    if (data.code !== 0) throw new Error(classifyFeishuError(data.code, data.msg));
+    return data;
+}
+
+async function uploadFeishuFile(baseUrl, token, blob, filename) {
+    const formData = new FormData();
+    formData.append("file_type", "stream");
+    formData.append("file_name", filename);
+    formData.append("file", blob, filename);
+    const resp = await fetchWithRetry(`${baseUrl}/open-apis/drive/v1/medias/upload_all`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+    }, 1);
+    const data = await resp.json();
+    if (data.code !== 0 || !data.data?.file_token) throw new Error(classifyFeishuError(data.code || -1, data.msg || "文件上传失败"));
+    return data.data.file_token;
+}
+
+function sanitizeFeishuFilename(name) {
+    return (name || "untitled").replace(/[<>:"/\\|?*\x00-\x1f]/g, "").substring(0, 80);
+}
+
+function sanitizeFeishuTextContent(content) {
+    if (!content || typeof content !== "string") return "";
+    let s = content
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+        .replace(/[\u200B-\u200D\uFEFF\u2028\u2029]/g, "")
+        .replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+        .replace(/!\[([^\]]*)\]\([^)]+\)/g, (_, alt) => alt.trim() ? `[图片: ${alt.trim()}]` : "")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/[ \t]+/g, " ")
+        .replace(/^ +| +$/gm, "");
+    if (s.length > 100000) s = s.substring(0, 99900) + "\n\n... (内容过长，已截断)";
+    return s;
+}
+
+async function handleSaveToFeishu(data, _retried) {
+    // 前置验证：必填字段
+    if (!data.feishu_app_id || !data.feishu_app_secret) {
+        return { success: false, error: "飞书 App ID 或 App Secret 未配置", target: "feishu" };
+    }
+    if (!data.feishu_app_token || !data.feishu_table_id) {
+        return { success: false, error: "飞书 App Token 或 Table ID 未配置", target: "feishu" };
+    }
+
+    const baseUrl = FEISHU_API_DOMAINS[data.feishu_api_domain] || FEISHU_API_DOMAINS.feishu;
+    try {
+        const token = await getFeishuAccessToken(data.feishu_app_id, data.feishu_app_secret, data.feishu_api_domain);
+        const title = data.article_title || data.title || (data.text || "").slice(0, 50) || "Untitled";
+        const existing = await searchFeishuRecord(baseUrl, data.feishu_app_token, data.feishu_table_id, token, title);
+
+        let mdToken = null, htmlToken = null;
+        if (data.feishu_upload_md && data.markdown) {
+            const blob = new Blob([data.markdown], { type: "text/markdown; charset=utf-8" });
+            mdToken = await uploadFeishuFile(baseUrl, token, blob, `${sanitizeFeishuFilename(title)}.md`);
+        }
+        if (data.feishu_upload_html && data.htmlContent) {
+            const blob = new Blob([data.htmlContent], { type: "text/html; charset=utf-8" });
+            htmlToken = await uploadFeishuFile(baseUrl, token, blob, `${sanitizeFeishuFilename(title)}.html`);
+        }
+
+        const fields = {
+            "标题": title,
+            "链接": { link: data.url || "", text: data.url || "" },
+            "作者": data.author || "",
+            "保存时间": Date.now(),
+            "类型": data.type === "article" ? "文章" : data.type === "thread" ? "Thread" : "推文",
+        };
+        if (!data.feishu_upload_md) {
+            fields["正文"] = sanitizeFeishuTextContent(data.article_content || data.text || "");
+        }
+        if (mdToken) fields["附件"] = [{ file_token: mdToken }];
+        if (htmlToken) fields["HTML附件"] = [{ file_token: htmlToken }];
+
+        if (existing) {
+            await updateFeishuRecord(baseUrl, data.feishu_app_token, data.feishu_table_id, token, existing.record_id, fields);
+            return { success: true, action: "updated", target: "feishu" };
+        } else {
+            await createFeishuRecord(baseUrl, data.feishu_app_token, data.feishu_table_id, token, fields);
+            return { success: true, action: "created", target: "feishu" };
+        }
+    } catch (err) {
+        if (!_retried && err.message && (err.message.includes("Token 已过期") || err.message.includes("token expired") || err.message.includes("1254001"))) {
+            const domainKey = data.feishu_api_domain === "lark" ? "lark" : "feishu";
+            feishuTokenCache[domainKey] = { token: null, expireAt: 0 };
+            return handleSaveToFeishu(data, true);
+        }
+        return { success: false, error: err.message, target: "feishu" };
+    }
+}
+
+async function handleTestFeishu(data) {
+    const baseUrl = FEISHU_API_DOMAINS[data.feishu_api_domain] || FEISHU_API_DOMAINS.feishu;
+    try {
+        const token = await getFeishuAccessToken(data.feishu_app_id, data.feishu_app_secret, data.feishu_api_domain);
+        const resp = await fetchWithRetry(`${baseUrl}/open-apis/bitable/v1/apps/${data.feishu_app_token}/tables/${data.feishu_table_id}/fields`, {
+            headers: { Authorization: `Bearer ${token}` },
+        }, 1);
+        const result = await resp.json();
+        if (result.code !== 0) throw new Error(`表格访问失败: ${result.msg}`);
+        const fields = (result.data?.items || []).map(f => f.field_name);
+        const required = ["标题", "链接", "作者", "保存时间"];
+        const missing = required.filter(f => !fields.includes(f));
+        return { success: true, fieldCount: fields.length, fields, missingFields: missing };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+// ═══════════════════════════════════════════════
+// Notion Database API
+// ═══════════════════════════════════════════════
+const NOTION_API_BASE = "https://api.notion.com/v1";
+const NOTION_VERSION = "2022-06-28";
+
+async function notionFetch(endpoint, token, options = {}) {
+    const resp = await fetchWithRetry(`${NOTION_API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+            ...(options.headers || {}),
+        },
+    }, 1);
+    let data;
+    try { data = await resp.json(); } catch { throw new Error(`Notion API 响应格式错误 (${resp.status})`); }
+    if (!resp.ok) {
+        if (resp.status === 401) throw new Error("Notion Token 无效或已过期");
+        if (resp.status === 403) throw new Error("Notion 无权访问，请确认 Integration 已连接到 Database");
+        if (resp.status === 404) throw new Error("Notion Database 不存在，请检查 Database ID");
+        throw new Error(`Notion API 错误 (${resp.status}): ${data.message || JSON.stringify(data)}`);
+    }
+    return data;
+}
+
+async function searchNotionByUrl(databaseId, token, url, urlPropName) {
+    try {
+        const data = await notionFetch(`/databases/${databaseId}/query`, token, {
+            method: "POST",
+            body: JSON.stringify({ filter: { property: urlPropName || "链接", url: { equals: url } }, page_size: 1 }),
+        });
+        return data.results?.length > 0 ? data.results[0] : null;
+    } catch { return null; }
+}
+
+function buildNotionProperties(d) {
+    const pm = d.propMapping || {};
+    const props = {};
+    if (pm.title) props[pm.title] = { title: [{ text: { content: d.title || "" } }] };
+    if (pm.url) props[pm.url] = { url: d.url || "" };
+    if (pm.author) props[pm.author] = { rich_text: [{ text: { content: d.author || "" } }] };
+    if (pm.tags && d.tags?.length > 0) props[pm.tags] = { multi_select: d.tags.map(t => ({ name: t })) };
+    if (pm.savedDate) props[pm.savedDate] = { date: { start: new Date().toISOString().split("T")[0] } };
+    if (pm.type) props[pm.type] = { select: { name: d.type || "推文" } };
+    return props;
+}
+
+function parseNotionRichText(text) {
+    if (!text) return [{ type: "text", text: { content: "" } }];
+    if (text.length > 2000) {
+        const chunks = [];
+        for (let i = 0; i < text.length; i += 2000) chunks.push({ type: "text", text: { content: text.substring(i, i + 2000) } });
+        return chunks;
+    }
+    const richText = [];
+    const regex = /(\*\*(.{1,500}?)\*\*|\*(.{1,500}?)\*|`(.{1,500}?)`|~~(.{1,500}?)~~|\[([^\]]{1,300})\]\(([^)]{1,500})\)|([^*`~\[]+))/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+        if (match[2]) richText.push({ type: "text", text: { content: match[2] }, annotations: { bold: true } });
+        else if (match[3]) richText.push({ type: "text", text: { content: match[3] }, annotations: { italic: true } });
+        else if (match[4]) richText.push({ type: "text", text: { content: match[4] }, annotations: { code: true } });
+        else if (match[5]) richText.push({ type: "text", text: { content: match[5] }, annotations: { strikethrough: true } });
+        else if (match[6] && match[7]) richText.push({ type: "text", text: { content: match[6], link: { url: match[7] } } });
+        else if (match[8]) richText.push({ type: "text", text: { content: match[8] } });
+    }
+    return richText.length > 0 ? richText.filter(rt => rt.text.content.length > 0) : [{ type: "text", text: { content: text } }];
+}
+
+function mapNotionLanguage(lang) {
+    const map = { js: "javascript", ts: "typescript", py: "python", rb: "ruby", sh: "bash", yml: "yaml", md: "markdown", jsx: "javascript", tsx: "typescript" };
+    const lower = (lang || "").toLowerCase();
+    return map[lower] || lower || "plain text";
+}
+
+function convertMarkdownToNotionBlocks(markdown) {
+    if (!markdown) return [];
+    const blocks = [];
+    const cleanMd = markdown.replace(/^---\n[\s\S]*?\n---\n*/, "");
+    const lines = cleanMd.split("\n");
+    let i = 0, inCodeBlock = false, codeContent = "", codeLanguage = "";
+
+    while (i < lines.length) {
+        const line = lines[i];
+        if (line.startsWith("```")) {
+            if (!inCodeBlock) { inCodeBlock = true; codeLanguage = line.slice(3).trim() || "plain text"; codeContent = ""; }
+            else {
+                inCodeBlock = false;
+                blocks.push({ type: "code", code: { rich_text: [{ type: "text", text: { content: codeContent.trimEnd() } }], language: mapNotionLanguage(codeLanguage) } });
+            }
+            i++; continue;
+        }
+        if (inCodeBlock) { codeContent += line + "\n"; i++; continue; }
+        if (line.trim() === "") { i++; continue; }
+        if (/^---+$/.test(line.trim())) { blocks.push({ type: "divider", divider: {} }); i++; continue; }
+        if (line.startsWith("# ")) { blocks.push({ type: "heading_1", heading_1: { rich_text: parseNotionRichText(line.slice(2)) } }); i++; continue; }
+        if (line.startsWith("## ")) { blocks.push({ type: "heading_2", heading_2: { rich_text: parseNotionRichText(line.slice(3)) } }); i++; continue; }
+        if (line.startsWith("### ")) { blocks.push({ type: "heading_3", heading_3: { rich_text: parseNotionRichText(line.slice(4)) } }); i++; continue; }
+
+        const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+        if (imgMatch && !imgMatch[2].startsWith("data:")) {
+            blocks.push({ type: "image", image: { type: "external", external: { url: imgMatch[2] } } }); i++; continue;
+        }
+        if (line.startsWith("> ")) {
+            let quoteText = line.slice(2);
+            while (i + 1 < lines.length && lines[i + 1].startsWith("> ")) { i++; quoteText += "\n" + lines[i].slice(2); }
+            blocks.push({ type: "quote", quote: { rich_text: parseNotionRichText(quoteText) } }); i++; continue;
+        }
+        if (line.match(/^[-*+] /)) {
+            blocks.push({ type: "bulleted_list_item", bulleted_list_item: { rich_text: parseNotionRichText(line.replace(/^[-*+] /, "")) } }); i++; continue;
+        }
+        if (line.match(/^\d+\. /)) {
+            blocks.push({ type: "numbered_list_item", numbered_list_item: { rich_text: parseNotionRichText(line.replace(/^\d+\. /, "")) } }); i++; continue;
+        }
+        // 表格
+        if (line.includes("|") && line.trim().startsWith("|")) {
+            const tableRows = [];
+            let maxRows = 200;
+            while (i < lines.length && lines[i].includes("|") && lines[i].trim().startsWith("|") && maxRows-- > 0) {
+                const row = lines[i].trim();
+                if (!/^[|\-:\s]+$/.test(row)) {
+                    tableRows.push(row.split("|").filter(c => c.trim() !== "").map(c => c.trim()));
+                }
+                i++;
+            }
+            if (tableRows.length > 0) {
+                const tableWidth = Math.max(...tableRows.map(r => r.length));
+                blocks.push({
+                    type: "table", table: {
+                        table_width: tableWidth, has_column_header: true, has_row_header: false,
+                        children: tableRows.map(row => ({
+                            type: "table_row", table_row: {
+                                cells: Array.from({ length: tableWidth }, (_, idx) => [{ type: "text", text: { content: row[idx] || "" } }]),
+                            },
+                        })),
+                    },
+                });
+            }
+            continue;
+        }
+        // <details> → toggle
+        if (line.startsWith("<details>")) {
+            let summaryText = "", toggleContent = "";
+            i++;
+            while (i < lines.length && !lines[i].startsWith("</details>")) {
+                if (lines[i].startsWith("<summary>")) summaryText = lines[i].replace(/<\/?summary>/g, "").replace(/<\/?b>/g, "").trim();
+                else toggleContent += lines[i] + "\n";
+                i++;
+            }
+            blocks.push({ type: "toggle", toggle: { rich_text: parseNotionRichText(summaryText || "详情"), children: [{ type: "paragraph", paragraph: { rich_text: parseNotionRichText(toggleContent.trim()) } }] } });
+            i++; continue;
+        }
+        // <iframe> → bookmark
+        const iframeMatch = line.match(/<iframe[^>]+src="([^"]+)"/);
+        if (iframeMatch) { blocks.push({ type: "bookmark", bookmark: { url: iframeMatch[1] } }); i++; continue; }
+        // 裸 URL → bookmark
+        if (/^https?:\/\/\S+$/.test(line.trim())) { blocks.push({ type: "bookmark", bookmark: { url: line.trim() } }); i++; continue; }
+        // 普通段落
+        blocks.push({ type: "paragraph", paragraph: { rich_text: parseNotionRichText(line) } });
+        i++;
+    }
+    return blocks;
+}
+
+async function clearNotionPageChildren(pageId, token) {
+    try {
+        let hasMore = true, startCursor;
+        while (hasMore) {
+            const params = startCursor ? `?start_cursor=${startCursor}` : "";
+            const data = await notionFetch(`/blocks/${pageId}/children${params}`, token, { method: "GET" });
+            for (const block of (data.results || [])) {
+                try { await notionFetch(`/blocks/${block.id}`, token, { method: "DELETE" }); } catch {}
+            }
+            hasMore = data.has_more;
+            startCursor = data.next_cursor;
+        }
+    } catch {}
+}
+
+async function appendNotionBlocksBatched(pageId, token, blocks) {
+    for (let i = 0; i < blocks.length; i += 100) {
+        await notionFetch(`/blocks/${pageId}/children`, token, {
+            method: "PATCH",
+            body: JSON.stringify({ children: blocks.slice(i, i + 100) }),
+        });
+    }
+}
+
+async function handleSaveToNotion(data) {
+    // 前置验证
+    if (!data.notion_token) {
+        return { success: false, error: "Notion API Token 未配置", target: "notion" };
+    }
+    if (!data.notion_database_id) {
+        return { success: false, error: "Notion Database ID 未配置", target: "notion" };
+    }
+    try {
+        const pm = {
+            title: data.notion_prop_title || "标题",
+            url: data.notion_prop_url || "链接",
+            author: data.notion_prop_author || "作者",
+            tags: data.notion_prop_tags || "",
+            savedDate: data.notion_prop_saved_date || "",
+            type: data.notion_prop_type || "",
+        };
+        const title = data.article_title || data.title || (data.text || "").slice(0, 50) || "Untitled";
+        const content = data.article_content || data.markdown || data.text || "";
+        const existing = await searchNotionByUrl(data.notion_database_id, data.notion_token, data.url, pm.url);
+        const properties = buildNotionProperties({ ...data, title, propMapping: pm, tags: data.hashtags || data.tags || [] });
+        const blocks = convertMarkdownToNotionBlocks(content);
+
+        if (existing) {
+            await clearNotionPageChildren(existing.id, data.notion_token);
+            await appendNotionBlocksBatched(existing.id, data.notion_token, blocks);
+            await notionFetch(`/pages/${existing.id}`, data.notion_token, { method: "PATCH", body: JSON.stringify({ properties }) });
+            return { success: true, action: "updated", target: "notion" };
+        } else {
+            const page = await notionFetch("/pages", data.notion_token, {
+                method: "POST",
+                body: JSON.stringify({ parent: { database_id: data.notion_database_id }, properties, children: blocks.slice(0, 100) }),
+            });
+            if (!page || !page.id) throw new Error("Notion 创建页面成功但未返回 page.id");
+            if (blocks.length > 100) await appendNotionBlocksBatched(page.id, data.notion_token, blocks.slice(100));
+            return { success: true, action: "created", target: "notion" };
+        }
+    } catch (err) {
+        return { success: false, error: err.message, target: "notion" };
+    }
+}
+
+async function handleTestNotion(data) {
+    try {
+        const database = await notionFetch(`/databases/${data.notion_database_id}`, data.notion_token, { method: "GET" });
+        const props = database.properties || {};
+        const missing = [];
+        const pm = { title: data.notion_prop_title || "标题", url: data.notion_prop_url || "链接" };
+        if (pm.title && (!props[pm.title] || props[pm.title].type !== "title")) missing.push(`"${pm.title}" (需要 Title 类型)`);
+        if (pm.url && (!props[pm.url] || props[pm.url].type !== "url")) missing.push(`"${pm.url}" (需要 URL 类型)`);
+        return { success: true, databaseTitle: database.title?.[0]?.plain_text || "未命名", propertyCount: Object.keys(props).length, missingProperties: missing };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+// ═══════════════════════════════════════════════
+// Markdown → HTML 简易转换（用于 HTML 导出和飞书 HTML 附件）
+// ═══════════════════════════════════════════════
+function convertMarkdownToHtml(md) {
+    if (!md) return "";
+    // 截断保护：超过 500KB 的 Markdown 只转换前 500KB，避免 regex 和 btoa 开销过大
+    const MAX_MD_LEN = 500000;
+    let html = md.length > MAX_MD_LEN ? md.slice(0, MAX_MD_LEN) + "\n\n---\n\n（内容过长，已截断）" : md;
+    // 代码块（```lang ... ```）—— 先修复未关闭的代码块，防止 regex 回溯
+    const openFences = (html.match(/```/g) || []).length;
+    if (openFences % 2 !== 0) html += "\n```";
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return `<pre><code class="language-${lang || "text"}">${escaped}</code></pre>`;
+    });
+    // 行内代码
+    html = html.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code.replace(/</g, "&lt;")}</code>`);
+    // 图片
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    // 链接
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    // 标题（h1-h6）
+    html = html.replace(/^######\s+(.+)$/gm, "<h6>$1</h6>");
+    html = html.replace(/^#####\s+(.+)$/gm, "<h5>$1</h5>");
+    html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
+    html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
+    html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
+    html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+    // 粗体 / 斜体
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    html = html.replace(/~~(.+?)~~/g, "<del>$1</del>");
+    // 引用块
+    html = html.replace(/^>\s+(.+)$/gm, "<blockquote>$1</blockquote>");
+    // 合并相邻 blockquote
+    html = html.replace(/<\/blockquote>\n<blockquote>/g, "\n");
+    // 无序列表
+    html = html.replace(/^[-*+]\s+(.+)$/gm, "<li>$1</li>");
+    html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
+    // 有序列表
+    html = html.replace(/^\d+\.\s+(.+)$/gm, "<li>$1</li>");
+    // 分割线
+    html = html.replace(/^---+$/gm, "<hr>");
+    // 表格
+    html = html.replace(/^(\|.+\|)\n\|[\s:|-]+\|\n((?:\|.+\|\n?)*)/gm, (_, headerRow, bodyRows) => {
+        const headers = headerRow.split("|").filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join("");
+        const rows = bodyRows.trim().split("\n").map(row => {
+            const cells = row.split("|").filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join("");
+            return `<tr>${cells}</tr>`;
+        }).join("");
+        return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+    });
+    // iframe 保留
+    // 段落：连续非空行包裹 <p>
+    html = html.replace(/^(?!<[a-z]|$)(.+)$/gm, "<p>$1</p>");
+    // 清理多余空行
+    html = html.replace(/\n{3,}/g, "\n\n");
+    return html;
+}
+
+// ═══════════════════════════════════════════════
+// HTML 文件导出（base64 data URL，Service Worker 兼容）
+// ═══════════════════════════════════════════════
+async function handleDownloadHtml(data) {
+    try {
+        const rawContent = data.article_content || data.text || "";
+        // 将 Markdown 转换为 HTML（而非直接塞入 body）
+        const bodyHtml = convertMarkdownToHtml(rawContent);
+        const title = data.article_title || data.title || "untitled";
+        const safeTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const safeUrl = (data.url || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        const safeAuthor = (data.author || "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        const folder = data.html_export_folder ? data.html_export_folder.replace(/\/+$/, "") + "/" : "";
+        const safeName = sanitizeFeishuFilename(title) || "untitled";
+        const filename = `${folder}${safeName}.html`;
+
+        const fullHtml = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${safeTitle}</title>
+<style>
+body{max-width:800px;margin:2em auto;padding:0 1em;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.7;color:#333;background:#fff}
+h1{font-size:1.6em;border-bottom:1px solid #eee;padding-bottom:.3em}
+h2{font-size:1.3em;margin-top:1.5em}
+h3{font-size:1.1em;margin-top:1.2em}
+img{max-width:100%;height:auto;border-radius:4px;margin:.5em 0}
+pre{background:#f6f8fa;padding:1em;overflow-x:auto;border-radius:6px;border:1px solid #e1e4e8;font-size:.9em}
+code{background:#f0f0f0;padding:.15em .4em;border-radius:3px;font-size:.9em}
+pre code{background:transparent;padding:0}
+blockquote{border-left:4px solid #dfe2e5;margin:1em 0;padding:.5em 1em;color:#666;background:#fafafa}
+a{color:#0969da;text-decoration:none}
+a:hover{text-decoration:underline}
+table{border-collapse:collapse;width:100%;margin:1em 0}
+th,td{border:1px solid #d0d7de;padding:.5em .8em;text-align:left}
+th{background:#f6f8fa;font-weight:600}
+hr{border:none;border-top:1px solid #d0d7de;margin:1.5em 0}
+ul,ol{padding-left:1.5em}
+li{margin:.3em 0}
+.meta{color:#666;font-size:.9em;margin-bottom:1.5em}
+.meta a{color:#0969da}
+del{color:#999}
+</style></head>
+<body>
+<h1>${safeTitle}</h1>
+<div class="meta">
+<p><strong>来源：</strong><a href="${safeUrl}">${safeUrl}</a></p>
+${safeAuthor ? `<p><strong>作者：</strong>${safeAuthor}</p>` : ""}
+${data.published ? `<p><strong>日期：</strong>${data.published}</p>` : ""}
+</div>
+<hr>
+${bodyHtml}
+</body></html>`;
+
+        const base64 = btoa(unescape(encodeURIComponent(fullHtml)));
+        // Chrome data URL 下载上限约 2MB，超过则改用 Blob URL
+        const DATA_URL_LIMIT = 2 * 1024 * 1024;
+        let downloadUrl;
+        if (base64.length > DATA_URL_LIMIT) {
+            // Service Worker 中没有 URL.createObjectURL，降级为截断警告
+            // 实际场景中 500KB Markdown（convertMarkdownToHtml 已截断）生成的 HTML base64 约 700KB-1MB，一般不会超
+            return { success: false, error: "HTML 内容过大（超过 2MB），无法导出为文件", target: "html" };
+        }
+        downloadUrl = `data:text/html;base64,${base64}`;
+
+        return new Promise(resolve => {
+            chrome.downloads.download({ url: downloadUrl, filename, saveAs: false, conflictAction: "overwrite" }, downloadId => {
+                if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message, target: "html" });
+                else resolve({ success: true, downloadId, target: "html" });
+            });
+        });
+    } catch (err) {
+        return { success: false, error: err.message, target: "html" };
+    }
+}
+
+// ═══════════════════════════════════════════════
+// 多目标保存分发（save_tweet / force_save_tweet 共用）
+// ═══════════════════════════════════════════════
+async function dispatchMultiTargetSave(data, serverBase, existingCfg = null) {
+    // 获取完整配置（如果调用方已获取过，则复用，避免重复请求）
+    let cfg = existingCfg || {};
+    if (!existingCfg) {
+        try {
+            const cfgResp = await fetch(`${serverBase}/config`);
+            if (cfgResp.ok) cfg = await cfgResp.json();
+            try {
+                const syncData = await chrome.storage.sync.get("x2md_sync");
+                if (syncData.x2md_sync) Object.assign(cfg, syncData.x2md_sync);
+            } catch {}
+        } catch {}
+    }
+
+    const saveResults = [];
+    const saveToObsidian = cfg.save_to_obsidian !== false;
+    const saveToFeishu = !!cfg.save_to_feishu;
+    const saveToNotion = !!cfg.save_to_notion;
+    const exportHtml = !!cfg.export_html;
+
+    // 边界：所有保存目标都未启用
+    if (!saveToObsidian && !saveToFeishu && !saveToNotion && !exportHtml) {
+        return { success: false, results: [], error: "未启用任何保存目标，请在设置中至少开启一个（Obsidian/飞书/Notion/HTML）" };
+    }
+
+    // 1. Obsidian
+    if (saveToObsidian) {
+        try {
+            const resp = await fetch(`${serverBase}/save`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+            const json = await resp.json();
+            saveResults.push({ target: "obsidian", success: json.success !== false, result: json });
+        } catch (obsErr) {
+            saveResults.push({ target: "obsidian", success: false, error: obsErr.message });
+        }
+    }
+
+    // 2. 补全 markdown / htmlContent 字段（在浅拷贝上操作，不污染调用方的 data）
+    const enriched = { ...data };
+    const markdownContent = enriched.article_content || enriched.text || "";
+    if (!enriched.markdown && markdownContent) enriched.markdown = markdownContent;
+    if (!enriched.htmlContent && markdownContent) enriched.htmlContent = convertMarkdownToHtml(markdownContent);
+
+    // 3. 飞书 / Notion / HTML 并行（使用 enriched 确保含 markdown/htmlContent）
+    const parallelTasks = [];
+    if (saveToFeishu && cfg.feishu_app_id && cfg.feishu_app_secret) {
+        parallelTasks.push(
+            handleSaveToFeishu({
+                ...enriched,
+                feishu_app_id: cfg.feishu_app_id,
+                feishu_app_secret: cfg.feishu_app_secret,
+                feishu_app_token: cfg.feishu_app_token,
+                feishu_table_id: cfg.feishu_table_id,
+                feishu_api_domain: cfg.feishu_api_domain,
+                feishu_upload_md: cfg.feishu_upload_md,
+                feishu_upload_html: cfg.feishu_upload_html,
+            }).catch(e => ({ success: false, error: e.message, target: "feishu" }))
+        );
+    }
+    if (saveToNotion && cfg.notion_token && cfg.notion_database_id) {
+        parallelTasks.push(
+            handleSaveToNotion({
+                ...enriched,
+                notion_token: cfg.notion_token,
+                notion_database_id: cfg.notion_database_id,
+                notion_prop_title: cfg.notion_prop_title,
+                notion_prop_url: cfg.notion_prop_url,
+                notion_prop_author: cfg.notion_prop_author,
+                notion_prop_tags: cfg.notion_prop_tags,
+                notion_prop_saved_date: cfg.notion_prop_saved_date,
+                notion_prop_type: cfg.notion_prop_type,
+            }).catch(e => ({ success: false, error: e.message, target: "notion" }))
+        );
+    }
+    if (exportHtml) {
+        parallelTasks.push(
+            handleDownloadHtml({ ...enriched, html_export_folder: cfg.html_export_folder || "X2MD导出" })
+                .catch(e => ({ success: false, error: e.message, target: "html" }))
+        );
+    }
+
+    if (parallelTasks.length > 0) {
+        saveResults.push(...await Promise.all(parallelTasks));
+    }
+
+    // 汇总
+    const anySuccess = saveResults.some(r => r.success);
+    const errors = saveResults.filter(r => !r.success);
+    return {
+        success: anySuccess,
+        results: saveResults,
+        error: errors.length > 0 ? errors.map(e => `[${e.target}] ${e.error}`).join("; ") : undefined,
+    };
+}
+
 // ─────────────────────────────────────────────
 // 消息处理
 // ─────────────────────────────────────────────
@@ -733,7 +1429,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
                 // ----------------------------------------------------
 
-                // --------- 获取服务端配置 ---------
+                // --------- 获取服务端配置 + 同步配置合并 ---------
                 let enableVideoDownload = true;
                 let durationThresholdMin = 5;
                 let cfg = {};
@@ -741,6 +1437,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const cfgResp = await fetch(`${serverBase}/config`);
                     if (!cfgResp.ok) throw new Error(`HTTP ${cfgResp.status}`);
                     cfg = await cfgResp.json();
+                    // 合并 chrome.storage.sync 中的扩展配置
+                    try {
+                        const syncData = await chrome.storage.sync.get("x2md_sync");
+                        if (syncData.x2md_sync) {
+                            Object.assign(cfg, syncData.x2md_sync);
+                        }
+                    } catch {}
                     enableVideoDownload = cfg.enable_video_download !== false;
                     durationThresholdMin = cfg.video_duration_threshold || 5;
                 } catch (e) { console.warn("[x2md] 获取配置失败，使用默认设置", e); }
@@ -789,13 +1492,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     delete data._replyTweets;
                 }
 
-                const resp = await fetch(`${serverBase}/save`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(data)
-                });
-                const json = await resp.json();
-                sendResponse({ success: json.success !== false, result: json });
+                // ── 多目标保存分发（复用共享函数，传入已获取的 cfg 避免重复请求）──
+                const dispatchResult = await dispatchMultiTargetSave(data, serverBase, cfg);
+                sendResponse(dispatchResult);
 
             } catch (err) {
                 console.error("[x2md] 后台处理或请求失败：", err);
@@ -824,13 +1523,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     data.videos = Array.from(new Set([...(data.videos || []), ...extractedVideoUrls]));
                 }
 
-                const resp = await fetch(`${serverBase}/save`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(data)
-                });
-                const json = await resp.json();
-                sendResponse({ success: json.success !== false, result: json });
+                // 多目标保存分发（与 save_tweet 一致，由共享函数自行获取配置）
+                const dispatchResult = await dispatchMultiTargetSave(data, serverBase);
+                sendResponse(dispatchResult);
             } catch (err) {
                 sendResponse({ success: false, error: err.message || String(err) });
             }
@@ -843,6 +1538,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const serverBase = SERVER_BASE;   // 快照
             try {
                 const resp = await fetch(`${serverBase}/config`);
+                if (!resp.ok) throw new Error(`Obsidian 服务端响应异常 (HTTP ${resp.status})`);
                 const cfg = await resp.json();
                 // 如果开启了同步，用 sync 中的扩展配置覆盖（save_paths 等本地专属字段不同步）
                 const syncData = await chrome.storage.sync.get("x2md_sync").catch(() => ({}));
@@ -938,6 +1634,71 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ online: json.status === "ok" });
             } catch {
                 sendResponse({ online: false });
+            }
+        })();
+        return true;
+    }
+
+    // ── 飞书连接测试 ──
+    if (message.action === "test_feishu") {
+        (async () => {
+            try {
+                const result = await handleTestFeishu(message.data || {});
+                sendResponse(result);
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
+    // ── Notion 连接测试 ──
+    if (message.action === "test_notion") {
+        (async () => {
+            try {
+                const result = await handleTestNotion(message.data || {});
+                sendResponse(result);
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
+    // ── 保存到飞书 ──
+    if (message.action === "save_to_feishu") {
+        (async () => {
+            try {
+                const result = await handleSaveToFeishu(message.data || {});
+                sendResponse(result);
+            } catch (err) {
+                sendResponse({ success: false, error: err.message, target: "feishu" });
+            }
+        })();
+        return true;
+    }
+
+    // ── 保存到 Notion ──
+    if (message.action === "save_to_notion") {
+        (async () => {
+            try {
+                const result = await handleSaveToNotion(message.data || {});
+                sendResponse(result);
+            } catch (err) {
+                sendResponse({ success: false, error: err.message, target: "notion" });
+            }
+        })();
+        return true;
+    }
+
+    // ── HTML 文件导出 ──
+    if (message.action === "download_html") {
+        (async () => {
+            try {
+                const result = await handleDownloadHtml(message.data || {});
+                sendResponse(result);
+            } catch (err) {
+                sendResponse({ success: false, error: err.message, target: "html" });
             }
         })();
         return true;

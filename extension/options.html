@@ -1,783 +1,673 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
-    <meta charset="UTF-8" />
-    <title>X2MD 设置</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X2MD 设置</title>
+<style>
+/* ═══ 浅色主题（默认） ═══ */
+:root {
+  --bg: #ffffff;
+  --surface: #f7f9f9;
+  --surface2: #eff3f4;
+  --border: #e1e4e8;
+  --accent: #1d9bf0;
+  --accent-hover: #1a8cd8;
+  --text: #0f1419;
+  --text-muted: #536471;
+  --danger: #f4212e;
+  --success: #00ba7c;
+  --warning: #f59e0b;
+  --input-bg: #f0f2f5;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
 
-        :root {
-            --bg: #0f1117;
-            --surface: #16181c;
-            --surface2: #1e2028;
-            --border: #2f3336;
-            --accent: #1d9bf0;
-            --accent-hover: #1a8cd8;
-            --text: #e7e9ea;
-            --text-muted: #71767b;
-            --danger: #f4212e;
-            --success: #00ba7c;
-            --radius: 10px;
-        }
+/* ═══ 深色主题 ═══ */
+.theme-dark {
+  --bg: #0f1117;
+  --surface: #16181c;
+  --surface2: #1e2028;
+  --border: #2f3336;
+  --accent: #1d9bf0;
+  --accent-hover: #1a8cd8;
+  --text: #e7e9ea;
+  --text-muted: #71767b;
+  --danger: #f4212e;
+  --success: #00ba7c;
+  --warning: #ffd400;
+  --input-bg: #202327;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+/* ═══ 跟随系统（深色系统时覆盖） ═══ */
+@media (prefers-color-scheme: dark) {
+  .theme-system {
+    --bg: #0f1117;
+    --surface: #16181c;
+    --surface2: #1e2028;
+    --border: #2f3336;
+    --accent: #1d9bf0;
+    --accent-hover: #1a8cd8;
+    --text: #e7e9ea;
+    --text-muted: #71767b;
+    --danger: #f4212e;
+    --success: #00ba7c;
+    --warning: #ffd400;
+    --input-bg: #202327;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+}
 
-        body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            padding: 32px 16px;
-        }
+/* ═══ 基础样式 ═══ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .page {
-            width: 100%;
-            max-width: 700px;
-        }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+  transition: background 0.2s, color 0.2s;
+}
 
-        /* 顶部标题栏 */
-        .top-bar {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 32px;
-        }
+.page { width: 100%; max-width: 680px; }
 
-        .top-bar-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #1d9bf0, #0d6efd);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            flex-shrink: 0;
-        }
+/* ═══ 顶部标题 ═══ */
+.top-bar {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 28px;
+}
+.top-bar-icon {
+  width: 44px; height: 44px; background: linear-gradient(135deg, #1d9bf0, #0d6efd);
+  border-radius: 12px; display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0; color: #fff;
+}
+.top-bar h1 { font-size: 20px; font-weight: 700; }
+.top-bar p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
-        .top-bar h1 {
-            font-size: 22px;
-            font-weight: 700;
-        }
+/* ═══ 服务状态 ═══ */
+.status-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 18px; display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; transition: background .3s;
+}
+.status-dot.online { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.status-dot.offline { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.status-info { flex: 1; }
+.status-info strong { font-size: 13px; }
+.status-info span { font-size: 11px; color: var(--text-muted); display: block; margin-top: 1px; }
+.btn-refresh {
+  padding: 5px 12px; border-radius: 16px; border: 1px solid var(--border);
+  background: transparent; color: var(--accent); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: background .15s;
+}
+.btn-refresh:hover { background: rgba(29,155,240,0.08); }
 
-        .top-bar p {
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-top: 2px;
-        }
+/* ═══ 卡片 / 可折叠 Section ═══ */
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 14px; overflow: hidden; box-shadow: var(--shadow);
+}
+.card-header {
+  padding: 12px 18px; display: flex; align-items: center; gap: 10px;
+  cursor: pointer; user-select: none; transition: background 0.15s;
+}
+.card-header:hover { background: var(--surface2); }
+.card-header-icon { font-size: 16px; flex-shrink: 0; }
+.card-header h2 { font-size: 14px; font-weight: 600; flex: 1; }
+.card-header .arrow {
+  color: var(--text-muted); font-size: 11px; transition: transform 0.25s;
+}
+.card-header.collapsed .arrow { transform: rotate(-90deg); }
+.card-body { padding: 14px 18px; }
+.card-body.hidden { display: none; }
 
-        /* 服务状态卡片 */
-        .status-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 24px;
-        }
+/* ═══ 表单元素 ═══ */
+.form-row {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+}
+.form-row:last-child { margin-bottom: 0; }
+.form-label { font-size: 13px; color: var(--text-muted); flex-shrink: 0; width: 110px; }
+.form-input {
+  flex: 1; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; color: var(--text); font-size: 13px; outline: none;
+  transition: border-color .15s;
+}
+.form-input:focus { border-color: var(--accent); }
+select.form-input { cursor: pointer; }
+.form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.section-divider { height: 1px; background: var(--border); margin: 12px 0; }
 
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            flex-shrink: 0;
-            transition: background .3s;
-        }
+/* ═══ Checkbox 行 ═══ */
+.check-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer;
+}
+.check-row input[type="checkbox"] {
+  width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
+}
+.check-row span { font-size: 13px; }
 
-        .status-indicator.online {
-            background: var(--success);
-            box-shadow: 0 0 8px var(--success);
-        }
+/* ═══ 路径列表 ═══ */
+.path-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.path-row {
+  display: flex; align-items: center; gap: 8px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  animation: fadeIn .2s ease;
+}
+@keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.path-row input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text); font-size: 13px; font-family: monospace;
+}
+.path-row input::placeholder { color: var(--text-muted); }
 
-        .status-indicator.offline {
-            background: var(--danger);
-            box-shadow: 0 0 8px var(--danger);
-        }
+/* ═══ 按钮 ═══ */
+.btn-remove {
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+  padding: 2px 4px; border-radius: 4px; font-size: 16px; line-height: 1;
+  transition: color .15s; flex-shrink: 0;
+}
+.btn-remove:hover { color: var(--danger); }
+.btn-add {
+  display: flex; align-items: center; gap: 6px; background: transparent;
+  border: 1px dashed var(--border); color: var(--text-muted); padding: 7px 12px;
+  border-radius: 8px; font-size: 13px; cursor: pointer; width: 100%; transition: all .15s;
+}
+.btn-add:hover { border-color: var(--accent); color: var(--accent); }
+.btn-save {
+  display: flex; align-items: center; gap: 8px; background: var(--accent);
+  border: none; border-radius: 20px; color: #fff; font-size: 14px; font-weight: 600;
+  padding: 10px 24px; cursor: pointer; margin-top: 4px; transition: background .15s, transform .1s;
+}
+.btn-save:hover { background: var(--accent-hover); }
+.btn-save:active { transform: scale(0.97); }
+.btn-test {
+  background: transparent; color: var(--accent); border: 1px solid var(--accent);
+  padding: 5px 14px; font-size: 12px; border-radius: 16px; cursor: pointer;
+  transition: background .15s;
+}
+.btn-test:hover { background: rgba(29,155,240,0.08); }
 
-        .status-info {
-            flex: 1;
-        }
+/* ═══ 状态消息 ═══ */
+.status-msg {
+  padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-top: 8px; display: none;
+}
+.status-msg.success { display: block; background: rgba(0,186,124,0.1); color: var(--success); border: 1px solid rgba(0,186,124,0.2); }
+.status-msg.error { display: block; background: rgba(244,33,46,0.1); color: var(--danger); border: 1px solid rgba(244,33,46,0.2); }
 
-        .status-info strong {
-            font-size: 14px;
-        }
+/* ═══ Toast ═══ */
+#toast {
+  position: fixed; bottom: 24px; right: 24px; background: var(--success); color: #fff;
+  padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,186,124,.3); opacity: 0; pointer-events: none;
+  transition: opacity .3s; z-index: 9999;
+}
+#toast.show { opacity: 1; }
+#toast.error { background: var(--danger); box-shadow: 0 4px 16px rgba(244,33,46,.3); }
 
-        .status-info span {
-            font-size: 12px;
-            color: var(--text-muted);
-            display: block;
-            margin-top: 2px;
-        }
+/* ═══ 变量 Tag ═══ */
+.tag-group { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tag {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 6px; font-size: 11px; font-family: monospace; color: var(--accent);
+}
 
-        .btn-refresh {
-            padding: 6px 14px;
-            border-radius: 20px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--accent);
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background .15s;
-        }
+/* ═══ Inline Group ═══ */
+.inline-group { display: flex; gap: 10px; align-items: flex-end; }
+.inline-group .field { flex: 1; }
+.field { margin-bottom: 10px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 3px; }
+.field input, .field select {
+  width: 100%; padding: 8px 12px; background: var(--input-bg); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 13px; outline: none;
+  transition: border-color .15s;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
 
-        .btn-refresh:hover {
-            background: #1d9bf015;
-        }
+/* ═══ 条件显隐容器 ═══ */
+.sub-panel { padding-left: 24px; border-left: 2px solid var(--border); margin-top: 8px; }
+.sub-panel.disabled { opacity: 0.4; pointer-events: none; }
 
-        /* 卡片通用 */
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
-
-        .card-header {
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .card-header-icon {
-            font-size: 18px;
-        }
-
-        .card-header h2 {
-            font-size: 15px;
-            font-weight: 600;
-        }
-
-        .card-header p {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-top: 1px;
-        }
-
-        .card-body {
-            padding: 16px 20px;
-        }
-
-        /* 路径列表 */
-        .path-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-
-        .path-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px 12px;
-            animation: fadeIn .2s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-4px);
-            }
-
-            to {
-                opacity: 1;
-                transform: none;
-            }
-        }
-
-        .path-row-icon {
-            font-size: 15px;
-            flex-shrink: 0;
-        }
-
-        .path-row input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: var(--text);
-            font-size: 13px;
-            font-family: 'Inter', monospace;
-        }
-
-        .path-row input::placeholder {
-            color: var(--text-muted);
-        }
-
-        .btn-remove {
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 4px;
-            font-size: 16px;
-            line-height: 1;
-            transition: color .15s;
-            flex-shrink: 0;
-        }
-
-        .btn-remove:hover {
-            color: var(--danger);
-        }
-
-        .btn-add {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            background: transparent;
-            border: 1px dashed var(--border);
-            color: var(--text-muted);
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            cursor: pointer;
-            width: 100%;
-            transition: all .15s;
-        }
-
-        .btn-add:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        /* 通用表单行 */
-        .form-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 14px;
-        }
-
-        .form-row:last-child {
-            margin-bottom: 0;
-        }
-
-        .form-label {
-            font-size: 13px;
-            color: var(--text-muted);
-            flex-shrink: 0;
-            width: 100px;
-        }
-
-        .form-input {
-            flex: 1;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 8px 12px;
-            color: var(--text);
-            font-size: 13px;
-            font-family: monospace;
-            outline: none;
-            transition: border-color .15s;
-        }
-
-        .form-input:focus {
-            border-color: var(--accent);
-        }
-
-        .form-hint {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 4px;
-            line-height: 1.5;
-        }
-
-        /* 保存按钮 */
-        .btn-save {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--accent);
-            border: none;
-            border-radius: 20px;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 600;
-            padding: 10px 24px;
-            cursor: pointer;
-            margin-top: 4px;
-            transition: background .15s, transform .1s;
-        }
-
-        .btn-save:hover {
-            background: var(--accent-hover);
-        }
-
-        .btn-save:active {
-            transform: scale(0.97);
-        }
-
-        /* Toast */
-        #toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--success);
-            color: #fff;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            box-shadow: 0 4px 16px rgba(0, 186, 124, .4);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity .3s;
-            z-index: 9999;
-        }
-
-        #toast.show {
-            opacity: 1;
-        }
-
-        #toast.error {
-            background: var(--danger);
-            box-shadow: 0 4px 16px rgba(244, 33, 46, .4);
-        }
-
-        /* 文件命名占位说明 */
-        .tag-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px;
-        }
-
-        .tag {
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-family: monospace;
-            color: var(--accent);
-        }
-
-        .section-divider {
-            height: 1px;
-            background: var(--border);
-            margin: 16px 0;
-        }
-    </style>
+/* ═══ 响应式 ═══ */
+@media (max-width: 480px) {
+  .page { padding: 0; }
+  .inline-group { flex-direction: column; gap: 0; }
+  .form-label { width: 90px; }
+}
+</style>
 </head>
-
 <body>
-    <div class="page">
-        <!-- 标题 -->
-        <div class="top-bar">
-            <div class="top-bar-icon">🔖</div>
-            <div>
-                <h1>X2MD 设置</h1>
-                <p>配置 X / LINUX DO / 飞书 / 微信公众号 → Obsidian Markdown 保存规则</p>
-            </div>
-        </div>
+<div class="page">
 
-        <!-- 服务状态 -->
-        <div class="status-card">
-            <div class="status-indicator offline" id="statusDot"></div>
-            <div class="status-info">
-                <strong id="statusText">检测本地服务…</strong>
-                <span id="statusSub">正在连接 localhost:<span id="portLabel">9527</span></span>
-            </div>
-            <button class="btn-refresh" id="btnRefresh">刷新</button>
-        </div>
-
-        <!-- 保存路径 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">📁</div>
-                <div>
-                    <h2>保存路径</h2>
-                    <p>支持添加多个路径，保存时同步写入所有路径</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="path-list" id="pathList"></div>
-                <button class="btn-add" id="btnAdd">
-                    <span>＋</span> 添加保存路径
-                </button>
-            </div>
-        </div>
-
-        <!-- 服务设置 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">⚙️</div>
-                <div>
-                    <h2>服务设置</h2>
-                    <p>本地服务器和文件命名规则</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">服务端口</div>
-                    <input class="form-input" type="number" id="portInput" placeholder="9527" min="1024" max="65535" />
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">文件命名</div>
-                    <div style="flex:1">
-                        <input class="form-input" type="text" id="filenameFormat"
-                            placeholder="{date}_{author}_{summary}" style="width:100%" />
-                        <div class="form-hint">支持的变量：</div>
-                        <div class="tag-group">
-                            <span class="tag">{date}</span>
-                            <span class="tag">{author}</span>
-                            <span class="tag">{handle}</span>
-                            <span class="tag">{summary}</span>
-                            <span class="tag">{timestamp}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">文件名限长</div>
-                    <input class="form-input" type="number" id="maxLen" placeholder="60" min="20" max="200" />
-                </div>
-            </div>
-        </div>
-
-        <!-- 媒体下载设置 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🎞️</div>
-                <div>
-                    <h2>媒体下载设置</h2>
-                    <p>管理推文视频的大文件直接下载与警告参数</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">视频自动下载</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="enableVideoDownload" style="width:16px; height:16px; cursor:pointer;"
-                            checked />
-                        <label for="enableVideoDownload"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">开启该功能后，视频会被自动下载到下方路径</label>
-                    </div>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">视频保存路径</div>
-                    <input class="form-input" type="text" id="videoSavePath" placeholder="/Users/.../视频/2026" />
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">警告阈值(分钟)</div>
-                    <div style="flex:1">
-                        <input class="form-input" type="number" id="videoDurationThreshold" placeholder="5" min="1"
-                            max="60" style="width: 100px;" />
-                        <div class="form-hint">当推特视频时长超过此分钟数时，将弹窗向您确认是否仍然下载文件。</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 平台分类文件夹（V1.2 新增）-->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">📂</div>
-                <div>
-                    <h2>平台分类文件夹</h2>
-                    <p>按来源平台自动将文件保存到不同子文件夹，便于 Obsidian 管理</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">启用分类</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="enablePlatformFolders"
-                            style="width:16px; height:16px; cursor:pointer;" checked />
-                        <label for="enablePlatformFolders"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">按平台自动归类到子文件夹（如 Twitter/、WeChat/、LinuxDo/）</label>
-                    </div>
-                </div>
-                <div class="form-hint" style="margin-top:8px;">
-                    开启后，保存的 Markdown 文件将自动放入对应平台子文件夹中。<br>
-                    例如：<code>保存路径/Twitter/文件名.md</code>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">文件夹命名</div>
-                    <div style="flex:1;">
-                        <div style="display:grid; grid-template-columns:120px 1fr; gap:6px; align-items:center;">
-                            <span style="font-size:12px; color:var(--text-muted);">Twitter/X:</span>
-                            <input class="form-input platform-folder-input" data-platform="Twitter/X" value="Twitter" style="padding:6px 10px;" />
-                            <span style="font-size:12px; color:var(--text-muted);">LINUX DO:</span>
-                            <input class="form-input platform-folder-input" data-platform="LINUX DO" value="LINUX DO" style="padding:6px 10px;" />
-                            <span style="font-size:12px; color:var(--text-muted);">飞书:</span>
-                            <input class="form-input platform-folder-input" data-platform="飞书" value="飞书" style="padding:6px 10px;" />
-                            <span style="font-size:12px; color:var(--text-muted);">微信公众号:</span>
-                            <input class="form-input platform-folder-input" data-platform="微信公众号" value="微信公众号" style="padding:6px 10px;" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 图片本地化（V1.2 新增）-->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🖼️</div>
-                <div>
-                    <h2>图片本地下载</h2>
-                    <p>将远程图片下载到本地，避免 CDN 链接过期导致 Obsidian 中图片失效</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">启用下载</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="downloadImages"
-                            style="width:16px; height:16px; cursor:pointer;" checked />
-                        <label for="downloadImages"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">自动下载图片到本地（推荐开启）</label>
-                    </div>
-                </div>
-                <div class="form-row" style="margin-top:8px;">
-                    <div class="form-label">子文件夹名</div>
-                    <input class="form-input" type="text" id="imageSubfolder" value="assets"
-                        style="max-width: 200px;" />
-                </div>
-                <div class="form-hint">
-                    图片和视频将下载到 Markdown 文件同级的此子文件夹中。<br>
-                    例如：<code>保存路径/assets/文件名_img_1.jpg</code>
-                </div>
-            </div>
-        </div>
-
-        <!-- 文件覆盖策略 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🔁</div>
-                <div>
-                    <h2>重复文件处理</h2>
-                    <p>同一来源再次保存时，是覆盖旧文件还是新建文件</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">覆盖旧文件</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="overwriteExisting"
-                            style="width:16px; height:16px; cursor:pointer;" />
-                        <label for="overwriteExisting"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">再次保存同一来源时覆盖已有文件（默认关闭：会新建带时间戳的副本）</label>
-                    </div>
-                </div>
-                <div class="form-hint" style="margin-top:8px;">
-                    开启后，系统会根据来源 URL 查找已有文件并直接覆盖。<br>
-                    关闭时，同名文件会自动添加时间戳后缀避免覆盖。
-                </div>
-            </div>
-        </div>
-
-        <!-- 站点快捷保存 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">📌</div>
-                <div>
-                    <h2>站点快捷保存</h2>
-                    <p>控制 linux.do、飞书、微信公众号页面右上角的一键保存 MD 小图标</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">显示小图标</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="showSiteSaveIcon" style="width:16px; height:16px; cursor:pointer;"
-                            checked />
-                        <label for="showSiteSaveIcon"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">在 linux.do 话题页、飞书知识库、飞书云文档、微信公众号文章页面显示悬浮保存按钮</label>
-                    </div>
-                </div>
-                <div class="form-hint">关闭后仍可使用既有的站内触发方式，例如 linux.do 的点赞保存。</div>
-            </div>
-        </div>
-
-        <!-- Discourse 站点管理 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🌐</div>
-                <div>
-                    <h2>Discourse 站点管理</h2>
-                    <p>添加自建 Discourse 论坛域名，自动识别站点类型并注入保存功能</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-hint" style="margin-bottom:12px;">
-                    系统会自动检测站点名称。linux.do 为内置域名，无需手动添加。<br>
-                    添加后，该站点将支持一键保存帖子、点赞保存、评论提取等全部功能。
-                </div>
-                <div id="discourseDomainList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;"></div>
-                <div style="display:flex; gap:8px;">
-                    <input class="form-input" type="text" id="newDiscourseDomain"
-                        placeholder="输入域名，如 meta.discourse.org" style="flex:1;" />
-                    <button class="btn-add" id="btnAddDomain" style="width:auto; padding:8px 16px;">
-                        <span>＋</span> 添加
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 媒体嵌入模式 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🎬</div>
-                <div>
-                    <h2>视频嵌入模式</h2>
-                    <p>控制 YouTube、Bilibili 等视频在 Markdown 中的嵌入方式</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">嵌入方式</div>
-                    <div style="flex:1;">
-                        <select class="form-input" id="embedMode" style="max-width:280px;">
-                            <option value="iframe">iframe 嵌入（Obsidian 阅读视图可直接播放）</option>
-                            <option value="local">本地下载引用（离线可用，占用存储）</option>
-                        </select>
-                        <div class="form-hint">
-                            iframe 模式：在 Markdown 中插入 &lt;iframe&gt; 标签，需联网播放，Obsidian 阅读视图支持。<br>
-                            本地下载：视频下载到本地 assets 文件夹，用 ![[文件名.mp4]] 引用，离线可用。
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 评论/回复设置 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">💬</div>
-                <div>
-                    <h2>评论/回复提取</h2>
-                    <p>保存 LinuxDo 帖子或 X 推文时，同时提取评论/回复内容</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">启用提取</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="enableComments"
-                            style="width:16px; height:16px; cursor:pointer;" />
-                        <label for="enableComments"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">保存时同时提取评论/回复（默认关闭）</label>
-                    </div>
-                </div>
-                <div id="commentSubControls">
-                    <div class="section-divider"></div>
-                    <div class="form-row">
-                        <div class="form-label">显示模式</div>
-                        <div style="flex:1;">
-                            <select class="form-input comment-sub" id="commentsDisplay" style="max-width:200px;" disabled>
-                                <option value="details">折叠（&lt;details&gt;）</option>
-                                <option value="heading">标题（## 评论/回复）</option>
-                            </select>
-                            <div class="form-hint">折叠模式在 Obsidian 中默认收起，标题模式直接展开显示</div>
-                        </div>
-                    </div>
-                    <div class="section-divider"></div>
-                    <div class="form-row">
-                        <div class="form-label">最大评论数</div>
-                        <input class="form-input comment-sub" type="number" id="maxComments" placeholder="200" min="1"
-                            max="99999" style="max-width:120px;" disabled />
-                    </div>
-                    <div class="section-divider"></div>
-                    <div class="form-row">
-                        <div class="form-label">楼层范围</div>
-                        <div style="flex:1;">
-                            <input class="form-input comment-sub" type="text" id="commentFloorRange"
-                                placeholder="留空=全部，示例: 1-10 或 2,5,8" style="width:100%;" disabled />
-                            <div class="form-hint">
-                                留空表示提取全部评论。支持范围（1-10）和指定楼层（2,5,8）混合使用（如 1-3,7,10）。<br>
-                                楼层范围和最大评论数同时生效：先按楼层过滤，再截取前 N 条。
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 一键复制（飞书文档解锁） -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">📋</div>
-                <div>
-                    <h2>飞书文档一键复制</h2>
-                    <p>在飞书仅阅读/禁止复制的文档页面显示复制按钮，一键复制全部内容到剪贴板</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">启用功能</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="enableCopyUnlock"
-                            style="width:16px; height:16px; cursor:pointer;" />
-                        <label for="enableCopyUnlock"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">在飞书文档页面显示一键复制按钮（默认关闭）</label>
-                    </div>
-                </div>
-                <div class="form-hint" style="margin-top:8px;">
-                    开启后，飞书知识库、云文档、智能纪要等页面右上角会出现 📋 复制按钮。<br>
-                    点击后自动提取全部内容（含图片链接和视频 iframe），复制为 Markdown 格式。<br>
-                    粘贴到 Obsidian 后，图片可通过链接预览，视频以 iframe 方式嵌入。
-                </div>
-            </div>
-        </div>
-
-        <!-- 账号同步 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🔄</div>
-                <div>
-                    <h2>跨设备同步</h2>
-                    <p>开启后，文件命名、视频下载等偏好设置通过 Chrome 账号自动同步到其他设备</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">开启同步</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="syncEnabled" style="width:16px; height:16px; cursor:pointer;" checked />
-                        <label for="syncEnabled"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">同步偏好设置到其他已登录同一 Chrome 账号的设备</label>
-                    </div>
-                </div>
-                <div class="form-hint" style="margin-top:8px;">
-                    同步范围：文件命名格式、文件名限长、视频下载设置、站点图标开关。<br>
-                    不同步：保存路径、视频保存路径、服务端口（这些因设备而异）。
-                </div>
-                <div id="syncStatus" style="margin-top:8px; font-size:12px; color:var(--text-muted);"></div>
-            </div>
-        </div>
-
-        <!-- 保存按钮 -->
-        <button class="btn-save" id="btnSave">
-            <span>💾</span> 保存设置
-        </button>
+  <!-- ═══ 标题 ═══ -->
+  <div class="top-bar">
+    <div class="top-bar-icon">MD</div>
+    <div>
+      <h1>X2MD 设置</h1>
+      <p>X / LINUX DO / 飞书 / 微信公众号 内容保存与管理</p>
     </div>
+  </div>
 
-    <div id="toast"></div>
+  <!-- ═══ 服务状态 ═══ -->
+  <div class="status-card">
+    <div class="status-dot offline" id="statusDot"></div>
+    <div class="status-info">
+      <strong id="statusText">检测本地服务...</strong>
+      <span id="statusSub">localhost:<span id="portLabel">9527</span></span>
+    </div>
+    <button class="btn-refresh" id="btnRefresh">刷新</button>
+  </div>
 
-    <script src="options.js"></script>
+  <!-- ═══ 外观设置 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="appearance">
+      <span class="card-header-icon">🎨</span>
+      <h2>外观设置</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="appearance">
+      <div class="form-row">
+        <div class="form-label">主题</div>
+        <select class="form-input" id="themeSelect" style="max-width:200px;">
+          <option value="light">浅色</option>
+          <option value="dark">深色</option>
+          <option value="system">跟随系统</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 保存目标 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="save-targets">
+      <span class="card-header-icon">💾</span>
+      <h2>保存目标</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="save-targets">
+      <div class="form-hint" style="margin-bottom:10px;">选择保存内容的目标平台，可同时保存到多个目标。</div>
+      <label class="check-row"><input type="checkbox" id="saveToObsidian" checked><span>保存到 Obsidian（本地服务器）</span></label>
+      <label class="check-row"><input type="checkbox" id="saveToFeishu"><span>保存到飞书多维表格</span></label>
+      <label class="check-row"><input type="checkbox" id="saveToNotion"><span>保存到 Notion Database</span></label>
+      <label class="check-row"><input type="checkbox" id="exportHtml"><span>导出 HTML 文件</span></label>
+    </div>
+  </div>
+
+  <!-- ═══ 保存路径（Obsidian） ═══ -->
+  <div class="card" id="obsidianSection">
+    <div class="card-header" data-toggle="obsidian-paths">
+      <span class="card-header-icon">📁</span>
+      <h2>Obsidian 保存路径</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="obsidian-paths">
+      <div class="form-hint" style="margin-bottom:8px;">支持添加多个路径，保存时同步写入所有路径。</div>
+      <div class="path-list" id="pathList"></div>
+      <button class="btn-add" id="btnAdd"><span>＋</span> 添加保存路径</button>
+    </div>
+  </div>
+
+  <!-- ═══ 服务设置 ═══ -->
+  <div class="card" id="serviceSection">
+    <div class="card-header" data-toggle="service-settings">
+      <span class="card-header-icon">⚙️</span>
+      <h2>服务设置</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="service-settings">
+      <div class="form-row">
+        <div class="form-label">服务端口</div>
+        <input class="form-input" type="number" id="portInput" placeholder="9527" min="1024" max="65535" style="max-width:120px;" />
+      </div>
+      <div class="section-divider"></div>
+      <div class="form-row">
+        <div class="form-label">文件命名</div>
+        <div style="flex:1">
+          <input class="form-input" type="text" id="filenameFormat" placeholder="{date}_{author}_{summary}" style="width:100%" />
+          <div class="tag-group">
+            <span class="tag">{date}</span><span class="tag">{author}</span>
+            <span class="tag">{handle}</span><span class="tag">{summary}</span>
+            <span class="tag">{timestamp}</span>
+          </div>
+        </div>
+      </div>
+      <div class="section-divider"></div>
+      <div class="form-row">
+        <div class="form-label">文件名限长</div>
+        <input class="form-input" type="number" id="maxLen" placeholder="60" min="20" max="200" style="max-width:120px;" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 飞书多维表格设置 ═══ -->
+  <div class="card" id="feishuBitableSection" style="display:none;">
+    <div class="card-header" data-toggle="feishu-bitable">
+      <span class="card-header-icon">📊</span>
+      <h2>飞书多维表格设置</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="feishu-bitable">
+      <div class="form-hint" style="margin-bottom:10px;">
+        在飞书开放平台创建应用获取 App ID/Secret，将应用添加为多维表格的协作者。<br>
+        表格需包含：标题(文本)、链接(超链接)、作者(文本)、标签(文本)、保存日期(日期)、类型(单选)、正文(文本) 等字段。
+      </div>
+      <div class="field">
+        <label>API 版本</label>
+        <select id="feishuApiDomain">
+          <option value="feishu">飞书（国内版）</option>
+          <option value="lark">Lark（国际版）</option>
+        </select>
+      </div>
+      <div class="inline-group">
+        <div class="field"><label>App ID</label><input type="text" id="feishuAppId" placeholder="cli_xxx"></div>
+        <div class="field"><label>App Secret</label><input type="password" id="feishuAppSecret" placeholder="xxx"></div>
+      </div>
+      <div class="inline-group">
+        <div class="field"><label>多维表格 app_token</label><input type="text" id="feishuAppToken" placeholder="bascnxxx"></div>
+        <div class="field"><label>数据表 table_id</label><input type="text" id="feishuTableId" placeholder="tblxxx"></div>
+      </div>
+      <div class="section-divider"></div>
+      <label class="check-row"><input type="checkbox" id="feishuUploadMd"><span>上传 Markdown 附件</span></label>
+      <label class="check-row"><input type="checkbox" id="feishuUploadHtml"><span>上传 HTML 附件</span></label>
+      <div style="margin-top:10px;">
+        <button class="btn-test" id="testFeishu">测试连接</button>
+        <div class="status-msg" id="feishuStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Notion Database 设置 ═══ -->
+  <div class="card" id="notionSection" style="display:none;">
+    <div class="card-header" data-toggle="notion-settings">
+      <span class="card-header-icon">📝</span>
+      <h2>Notion Database 设置</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="notion-settings">
+      <div class="form-hint" style="margin-bottom:10px;">
+        需在 <a href="https://www.notion.so/profile/integrations" target="_blank" style="color:var(--accent)">Notion Integrations</a> 创建 Integration 获取 Token，然后将 Integration 连接到目标 Database。<br>
+        属性类型：标题=Title, 链接=URL, 作者=Rich Text, 标签=Multi Select, 保存日期=Date, 类型=Select。
+      </div>
+      <div class="field">
+        <label>Integration Token</label>
+        <input type="password" id="notionToken" placeholder="secret_xxx...">
+      </div>
+      <div class="field">
+        <label>Database ID</label>
+        <input type="text" id="notionDatabaseId" placeholder="32位 Database ID">
+        <div class="form-hint">从 Database 链接中复制 32 位 ID</div>
+      </div>
+      <div class="section-divider"></div>
+      <div class="form-hint" style="margin-bottom:8px;">属性映射（必须与 Database 中的列名完全一致）</div>
+      <div class="inline-group">
+        <div class="field"><label>标题 (Title)</label><input type="text" id="notionPropTitle" value="标题"></div>
+        <div class="field"><label>链接 (URL)</label><input type="text" id="notionPropUrl" value="链接"></div>
+      </div>
+      <div class="inline-group">
+        <div class="field"><label>作者 (Text)</label><input type="text" id="notionPropAuthor" value="作者"></div>
+        <div class="field"><label>标签 (Multi Select)</label><input type="text" id="notionPropTags" value="标签"></div>
+      </div>
+      <div class="inline-group">
+        <div class="field"><label>保存日期 (Date)</label><input type="text" id="notionPropSavedDate" value="保存日期"></div>
+        <div class="field"><label>类型 (Select)</label><input type="text" id="notionPropType" value="类型"></div>
+      </div>
+      <div style="margin-top:10px;">
+        <button class="btn-test" id="testNotion">测试连接</button>
+        <div class="status-msg" id="notionStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ HTML 导出设置 ═══ -->
+  <div class="card" id="htmlExportSection" style="display:none;">
+    <div class="card-header" data-toggle="html-export">
+      <span class="card-header-icon">🌐</span>
+      <h2>HTML 导出设置</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="html-export">
+      <div class="form-hint" style="margin-bottom:10px;">
+        将内容导出为离线 HTML 文件，包含完整样式、代码高亮、图片灯箱功能。文件保存到浏览器下载目录。
+      </div>
+      <div class="field">
+        <label>导出文件夹（相对于浏览器下载目录）</label>
+        <input type="text" id="htmlExportFolder" value="X2MD导出">
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 媒体下载 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="media-settings">
+      <span class="card-header-icon">🎞️</span>
+      <h2>媒体下载设置</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="media-settings">
+      <label class="check-row">
+        <input type="checkbox" id="enableVideoDownload" checked>
+        <span>视频自动下载（开启后视频会被下载到指定路径）</span>
+      </label>
+      <div class="section-divider"></div>
+      <div class="form-row">
+        <div class="form-label">视频保存路径</div>
+        <input class="form-input" type="text" id="videoSavePath" placeholder="/Users/.../视频" />
+      </div>
+      <div class="section-divider"></div>
+      <div class="form-row">
+        <div class="form-label">警告阈值(分钟)</div>
+        <div style="flex:1">
+          <input class="form-input" type="number" id="videoDurationThreshold" placeholder="5" min="1" max="60" style="max-width:100px;" />
+          <div class="form-hint">视频时长超过此分钟数时弹窗确认。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 平台分类文件夹 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="platform-folders">
+      <span class="card-header-icon">📂</span>
+      <h2>平台分类文件夹</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="platform-folders">
+      <label class="check-row">
+        <input type="checkbox" id="enablePlatformFolders" checked>
+        <span>按平台自动归类到子文件夹</span>
+      </label>
+      <div class="form-hint" style="margin-top:6px;">例如：<code>保存路径/Twitter/文件名.md</code></div>
+      <div class="section-divider"></div>
+      <div style="display:grid; grid-template-columns:100px 1fr; gap:6px; align-items:center;">
+        <span style="font-size:12px; color:var(--text-muted);">Twitter/X:</span>
+        <input class="form-input platform-folder-input" data-platform="Twitter/X" value="Twitter" style="padding:6px 10px;" />
+        <span style="font-size:12px; color:var(--text-muted);">LINUX DO:</span>
+        <input class="form-input platform-folder-input" data-platform="LINUX DO" value="LINUX DO" style="padding:6px 10px;" />
+        <span style="font-size:12px; color:var(--text-muted);">飞书:</span>
+        <input class="form-input platform-folder-input" data-platform="飞书" value="飞书" style="padding:6px 10px;" />
+        <span style="font-size:12px; color:var(--text-muted);">微信公众号:</span>
+        <input class="form-input platform-folder-input" data-platform="微信公众号" value="微信公众号" style="padding:6px 10px;" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 图片本地下载 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="image-settings">
+      <span class="card-header-icon">🖼️</span>
+      <h2>图片本地下载</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="image-settings">
+      <label class="check-row">
+        <input type="checkbox" id="downloadImages" checked>
+        <span>自动下载图片到本地（推荐开启）</span>
+      </label>
+      <div class="form-row" style="margin-top:8px;">
+        <div class="form-label">子文件夹名</div>
+        <input class="form-input" type="text" id="imageSubfolder" value="assets" style="max-width:200px;" />
+      </div>
+      <div class="form-hint">图片下载到 Markdown 文件同级的子文件夹中。</div>
+    </div>
+  </div>
+
+  <!-- ═══ 重复文件处理 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="overwrite-settings">
+      <span class="card-header-icon">🔁</span>
+      <h2>重复文件处理</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="overwrite-settings">
+      <label class="check-row">
+        <input type="checkbox" id="overwriteExisting">
+        <span>再次保存同一来源时覆盖已有文件</span>
+      </label>
+      <div class="form-hint" style="margin-top:6px;">关闭时同名文件自动添加时间戳后缀。</div>
+    </div>
+  </div>
+
+  <!-- ═══ 站点快捷保存 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="site-icon">
+      <span class="card-header-icon">📌</span>
+      <h2>站点快捷保存</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="site-icon">
+      <label class="check-row">
+        <input type="checkbox" id="showSiteSaveIcon" checked>
+        <span>在 linux.do / 飞书 / 微信公众号页面显示悬浮保存按钮</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- ═══ Discourse 站点管理 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="discourse-sites">
+      <span class="card-header-icon">🌍</span>
+      <h2>Discourse 站点管理</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="discourse-sites">
+      <div class="form-hint" style="margin-bottom:10px;">
+        添加自建 Discourse 论坛域名。linux.do 为内置域名，无需手动添加。
+      </div>
+      <div id="discourseDomainList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;"></div>
+      <div style="display:flex; gap:8px;">
+        <input class="form-input" type="text" id="newDiscourseDomain" placeholder="输入域名，如 meta.discourse.org" style="flex:1;" />
+        <button class="btn-add" id="btnAddDomain" style="width:auto; padding:7px 14px;"><span>＋</span> 添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 视频嵌入模式 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="embed-settings">
+      <span class="card-header-icon">🎬</span>
+      <h2>视频嵌入模式</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="embed-settings">
+      <div class="form-row">
+        <div class="form-label">嵌入方式</div>
+        <div style="flex:1;">
+          <select class="form-input" id="embedMode" style="max-width:300px;">
+            <option value="iframe">iframe 嵌入（需联网，Obsidian 可播放）</option>
+            <option value="local">本地下载引用（离线可用）</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 评论/回复提取 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="comment-settings">
+      <span class="card-header-icon">💬</span>
+      <h2>评论/回复提取</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="comment-settings">
+      <label class="check-row">
+        <input type="checkbox" id="enableComments">
+        <span>保存时同时提取评论/回复（默认关闭）</span>
+      </label>
+      <div id="commentSubControls" class="sub-panel">
+        <div class="form-row">
+          <div class="form-label">显示模式</div>
+          <select class="form-input comment-sub" id="commentsDisplay" style="max-width:200px;" disabled>
+            <option value="details">折叠（details）</option>
+            <option value="heading">标题（## 评论/回复）</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-label">最大评论数</div>
+          <input class="form-input comment-sub" type="number" id="maxComments" placeholder="200" min="1" max="99999" style="max-width:120px;" disabled />
+        </div>
+        <div class="form-row">
+          <div class="form-label">楼层范围</div>
+          <div style="flex:1;">
+            <input class="form-input comment-sub" type="text" id="commentFloorRange" placeholder="留空=全部，如 1-10 或 2,5,8" style="width:100%;" disabled />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 飞书文档一键复制 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="feishu-copy">
+      <span class="card-header-icon">📋</span>
+      <h2>飞书文档一键复制</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="feishu-copy">
+      <label class="check-row">
+        <input type="checkbox" id="enableCopyUnlock">
+        <span>在飞书文档页面显示一键复制按钮（默认关闭）</span>
+      </label>
+      <div class="form-hint" style="margin-top:6px;">
+        开启后，飞书知识库等页面右上角出现复制按钮，自动提取全部内容为 Markdown。
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 跨设备同步 ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="sync-settings">
+      <span class="card-header-icon">🔄</span>
+      <h2>跨设备同步</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="sync-settings">
+      <label class="check-row">
+        <input type="checkbox" id="syncEnabled" checked>
+        <span>通过 Chrome 账号同步偏好设置到其他设备</span>
+      </label>
+      <div class="form-hint" style="margin-top:6px;">
+        同步：文件命名、限长、视频设置、站点图标开关。不同步：保存路径、端口。
+      </div>
+      <div id="syncStatus" style="margin-top:6px; font-size:11px; color:var(--text-muted);"></div>
+    </div>
+  </div>
+
+  <!-- ═══ 保存按钮 ═══ -->
+  <div style="display:flex; gap:10px; padding:16px 0;">
+    <button class="btn-save" id="btnSave"><span>💾</span> 保存设置</button>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script src="options.js"></script>
 </body>
-
 </html>
