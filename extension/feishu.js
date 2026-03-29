@@ -46,7 +46,7 @@
     }
 
     // ─────────────────────────────────────────────
-    // 飞书页面类型检测（扩展：支持 wiki/docx/minutes/sheets/mindnotes）
+    // 飞书页面类型检测（扩展：支持 wiki/docx/minutes/sheets/mindnotes/messenger）
     // ─────────────────────────────────────────────
 
     function detectFeishuPageType(locationLike) {
@@ -63,6 +63,7 @@
         if (/^\/mindnotes\/[^/]+/.test(pathname)) return "mindnotes";
         if (/^\/docs\/[^/]+/.test(pathname)) return "docs";  // 旧版飞书文档
         if (/^\/drive\/[^/]+/.test(pathname)) return "drive";
+        if (/^\/messenger\b/.test(pathname)) return "messenger";
 
         return null;
     }
@@ -832,12 +833,473 @@
         return md ? md.replace(/\n{3,}/g, "\n\n").trim() : null;
     }
 
+    // ─────────────────────────────────────────────
+    // 飞书 Messenger 聊天记录提取
+    // ─────────────────────────────────────────────
+
+    /**
+     * 将飞书消息 body.content JSON 转为 Markdown 文本
+     * msg_type: text / post / image / file / media / sticker / share_chat / share_user / system / merge_forward 等
+     */
+    function convertFeishuMsgContent(msgType, contentJson) {
+        if (!contentJson) return "";
+        var content;
+        try {
+            content = typeof contentJson === "string" ? JSON.parse(contentJson) : contentJson;
+        } catch (e) {
+            return String(contentJson);
+        }
+
+        if (msgType === "text") {
+            return String(content.text || "").trim();
+        }
+
+        if (msgType === "post") {
+            // 富文本消息：多语言 → 取第一个可用语言
+            var langContent = content.zh_cn || content.en_us || content[Object.keys(content)[0]];
+            if (!langContent) return "";
+            var parts = [];
+            if (langContent.title) parts.push("**" + langContent.title + "**");
+            var paragraphs = langContent.content || [];
+            for (var p = 0; p < paragraphs.length; p++) {
+                var line = "";
+                var elements = paragraphs[p] || [];
+                for (var e = 0; e < elements.length; e++) {
+                    var el = elements[e];
+                    if (el.tag === "text") line += el.text || "";
+                    else if (el.tag === "a") line += "[" + (el.text || el.href || "") + "](" + (el.href || "") + ")";
+                    else if (el.tag === "at") line += "@" + (el.user_name || el.user_id || "");
+                    else if (el.tag === "img") line += "![图片](feishu-image://" + (el.image_key || "") + ")";
+                    else if (el.tag === "media") line += "[视频/媒体]";
+                    else if (el.tag === "emotion") line += el.emoji_type || "[表情]";
+                    else line += el.text || "";
+                }
+                parts.push(line);
+            }
+            return parts.join("\n").trim();
+        }
+
+        if (msgType === "image") {
+            return "![图片](feishu-image://" + (content.image_key || "") + ")";
+        }
+
+        if (msgType === "file") {
+            return "[文件: " + (content.file_name || "未知文件") + "]";
+        }
+
+        if (msgType === "media") {
+            return "[媒体: " + (content.file_name || "视频/音频") + "]";
+        }
+
+        if (msgType === "sticker") {
+            return "[表情包]";
+        }
+
+        if (msgType === "share_chat") {
+            return "[分享群聊: " + (content.chat_name || "") + "]";
+        }
+
+        if (msgType === "share_user") {
+            return "[分享联系人: " + (content.user_id || "") + "]";
+        }
+
+        if (msgType === "system") {
+            return "*[系统消息]*";
+        }
+
+        if (msgType === "merge_forward") {
+            return "[合并转发消息]";
+        }
+
+        if (msgType === "interactive") {
+            // 卡片消息 — 提取标题和内容
+            var title = content.header?.title?.content || "";
+            return title ? "[卡片: " + title + "]" : "[卡片消息]";
+        }
+
+        // 未知类型 fallback
+        return "[" + msgType + " 消息]";
+    }
+
+    /**
+     * 格式化时间戳为可读格式
+     * @param {string|number} ts 毫秒时间戳
+     */
+    function formatFeishuTimestamp(ts) {
+        if (!ts) return "";
+        var d = new Date(typeof ts === "string" ? parseInt(ts, 10) : ts);
+        if (isNaN(d.getTime())) return "";
+        var pad = function (n) { return n < 10 ? "0" + n : String(n); };
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " +
+            pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    }
+
+    /**
+     * 将飞书消息列表转为 Markdown 对话格式
+     * @param {Array} messages - 飞书 IM API 消息数组
+     * @param {Object} userMap - { open_id: display_name } 映射
+     * @param {Object} options
+     * @returns {string} Markdown 格式的聊天记录
+     */
+    function convertFeishuChatToMarkdown(messages, userMap, options) {
+        options = options || {};
+        if (!messages || messages.length === 0) return "";
+
+        var lines = [];
+        var lastDate = "";
+
+        for (var i = 0; i < messages.length; i++) {
+            var msg = messages[i];
+            if (msg.deleted) continue;
+
+            var senderId = msg.sender?.id || "";
+            var senderName = (userMap && userMap[senderId]) || senderId || "未知";
+            var time = formatFeishuTimestamp(msg.create_time);
+            var dateStr = time.slice(0, 10);
+
+            // 按日期分组
+            if (dateStr && dateStr !== lastDate) {
+                if (lines.length > 0) lines.push("");
+                lines.push("## " + dateStr);
+                lines.push("");
+                lastDate = dateStr;
+            }
+
+            var timeStr = time.slice(11) || "";  // HH:MM:SS
+            var content = convertFeishuMsgContent(msg.msg_type || "", msg.body?.content || "");
+
+            // 处理 @mentions — 替换占位符
+            if (msg.mentions && content) {
+                for (var m = 0; m < msg.mentions.length; m++) {
+                    var mention = msg.mentions[m];
+                    if (mention.key && mention.name) {
+                        content = content.replace(mention.key, "@" + mention.name);
+                    }
+                }
+            }
+
+            if (!content) continue;
+
+            // 多行消息缩进处理
+            var contentLines = content.split("\n");
+            if (contentLines.length > 1) {
+                lines.push("**" + senderName + "** (" + timeStr + "):");
+                for (var cl = 0; cl < contentLines.length; cl++) {
+                    lines.push("> " + contentLines[cl]);
+                }
+            } else {
+                lines.push("**" + senderName + "** (" + timeStr + "): " + content);
+            }
+        }
+
+        return lines.join("\n").trim();
+    }
+
+    /**
+     * 通过 DOM 提取飞书 messenger 页面当前可见的聊天记录（兜底策略）
+     * 飞书 messenger 是 React SPA，DOM 结构可能变化，这里用宽泛选择器做 best-effort 提取
+     */
+    function extractFeishuChatFromDOM(doc) {
+        doc = doc || globalScope.document;
+
+        // 尝试获取聊天标题（对话名称/群名）
+        var chatTitle = "";
+        var titleSelectors = [
+            "[class*='chat-header'] [class*='name']",
+            "[class*='ChatHeader'] [class*='name']",
+            "[class*='header-title']",
+            "[class*='chat_name']",
+            "[class*='chatName']",
+            "[data-testid*='chat-name']",
+            "[data-testid*='header-title']",
+        ];
+        for (var t = 0; t < titleSelectors.length; t++) {
+            var titleEl = doc.querySelector(titleSelectors[t]);
+            if (titleEl) {
+                var tt = cleanZeroWidth(getNodeText(titleEl)).trim();
+                if (tt && tt.length >= 2 && tt.length < 100) { chatTitle = tt; break; }
+            }
+        }
+        if (!chatTitle) {
+            chatTitle = String(doc.title || "").replace(/\s*-\s*飞书.*$/, "").trim() || "飞书聊天记录";
+        }
+
+        // 尝试多种消息容器选择器
+        var messageSelectors = [
+            "[class*='message-list'] [class*='message-item']",
+            "[class*='MessageList'] [class*='MessageItem']",
+            "[class*='msg-list'] [class*='msg-item']",
+            "[class*='chat-message']",
+            "[data-testid*='message']",
+            "[class*='im-message']",
+            "[class*='message_content']",
+            "[class*='messageContent']",
+        ];
+
+        var messageElements = [];
+        for (var s = 0; s < messageSelectors.length; s++) {
+            var found = doc.querySelectorAll(messageSelectors[s]);
+            if (found && found.length > 0) {
+                messageElements = Array.from(found);
+                break;
+            }
+        }
+
+        if (messageElements.length === 0) return null;
+
+        // 从每个消息元素中提取信息
+        var contentParts = [];
+        var senderSelectors = [
+            "[class*='sender'], [class*='Sender'], [class*='name'], [class*='nickname']",
+            "[class*='avatar'] + span, [class*='avatar'] + div",
+        ];
+        var timeSelectors = [
+            "[class*='time'], [class*='Time'], [class*='timestamp'], time",
+        ];
+        var textSelectors = [
+            "[class*='content'], [class*='Content'], [class*='text'], [class*='Text']",
+            "[class*='rich-text'], [class*='richText']",
+            "p, span",
+        ];
+
+        for (var i = 0; i < messageElements.length; i++) {
+            var msgEl = messageElements[i];
+            var sender = "";
+            var time = "";
+            var text = "";
+
+            // 发送人
+            for (var si = 0; si < senderSelectors.length; si++) {
+                var senderEl = msgEl.querySelector(senderSelectors[si]);
+                if (senderEl) {
+                    sender = cleanZeroWidth(getNodeText(senderEl)).trim();
+                    if (sender) break;
+                }
+            }
+
+            // 时间
+            for (var ti = 0; ti < timeSelectors.length; ti++) {
+                var timeEl = msgEl.querySelector(timeSelectors[ti]);
+                if (timeEl) {
+                    time = cleanZeroWidth(getNodeText(timeEl)).trim();
+                    if (time) break;
+                }
+            }
+
+            // 消息内容
+            for (var xi = 0; xi < textSelectors.length; xi++) {
+                var textEl = msgEl.querySelector(textSelectors[xi]);
+                if (textEl) {
+                    text = cleanZeroWidth(getNodeText(textEl)).trim();
+                    if (text && text.length > 0) break;
+                }
+            }
+
+            if (!text) {
+                text = cleanZeroWidth(getNodeText(msgEl)).trim();
+            }
+
+            if (!text) continue;
+
+            var line = "";
+            if (sender && time) line = "**" + sender + "** (" + time + "): " + text;
+            else if (sender) line = "**" + sender + "**: " + text;
+            else if (time) line = "(" + time + ") " + text;
+            else line = text;
+
+            contentParts.push(line);
+        }
+
+        if (contentParts.length === 0) return null;
+
+        return {
+            type: "article",
+            url: cleanFeishuUrl(globalScope.location?.href || ""),
+            author: "",
+            handle: "",
+            author_url: "",
+            published: "",
+            article_title: chatTitle,
+            article_content: contentParts.join("\n\n"),
+            images: [],
+            videos: [],
+            platform: "飞书聊天",
+        };
+    }
+
+    /**
+     * 通过注入页面脚本，调用飞书 messenger 内部 API 获取消息
+     * 飞书网页版的 messenger 使用内部 API 加载消息，注入脚本共享 cookies 可以直接调用
+     * @returns {Promise<Object|null>} 聊天数据 { chatName, messages: [...], userMap: {...} }
+     */
+    function fetchFeishuChatViaInternalApi() {
+        return new Promise(function (resolve) {
+            var msgId = "__x2md_feishu_chat_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+            var expectedOrigin = globalScope.location?.origin || "";
+
+            function onMessage(event) {
+                if (expectedOrigin && event.origin !== expectedOrigin) return;
+                if (event.data && event.data.type === msgId) {
+                    globalScope.removeEventListener("message", onMessage);
+                    clearTimeout(timer);
+                    resolve(event.data.result || null);
+                }
+            }
+            globalScope.addEventListener("message", onMessage);
+
+            var timer = setTimeout(function () {
+                globalScope.removeEventListener("message", onMessage);
+                resolve(null);
+            }, 15000);
+
+            // 注入到页面上下文（共享 cookies 和 JS 全局对象）
+            var script = globalScope.document.createElement("script");
+            script.textContent = `(function(){
+                var msgId = ${JSON.stringify(msgId)};
+                var origin = location.origin;
+
+                function sendResult(data) {
+                    window.postMessage({ type: msgId, result: data }, location.origin);
+                }
+
+                async function run() {
+                    try {
+                        // 策略1: 尝试从飞书 messenger 全局状态中获取当前聊天ID
+                        var chatId = null;
+                        var chatName = "";
+
+                        // 从 URL hash 或路径中提取 chat ID
+                        var hashMatch = location.hash.match(/chat[_-]?id[=\\/]([a-zA-Z0-9_-]+)/i);
+                        if (hashMatch) chatId = hashMatch[1];
+
+                        // 尝试从 URL 路径提取（/messenger/oc_xxx 格式）
+                        if (!chatId) {
+                            var pathMatch = location.pathname.match(/\\/messenger\\/?(oc_[a-zA-Z0-9]+)/);
+                            if (pathMatch) chatId = pathMatch[1];
+                        }
+
+                        // 尝试从 URL 参数提取
+                        if (!chatId) {
+                            var params = new URLSearchParams(location.search);
+                            chatId = params.get("chatId") || params.get("chat_id") || params.get("id") || "";
+                        }
+
+                        // 尝试从页面全局状态获取
+                        if (!chatId && window.__INITIAL_STATE__) {
+                            var state = window.__INITIAL_STATE__;
+                            chatId = state.chatId || state.chat_id || (state.chat && state.chat.id) || "";
+                        }
+
+                        // 尝试从 React fiber 获取
+                        if (!chatId) {
+                            var appRoot = document.querySelector("#root, #app, [id*='messenger']");
+                            if (appRoot && appRoot._reactRootContainer) {
+                                try {
+                                    var fiber = appRoot._reactRootContainer._internalRoot?.current;
+                                    // 遍历 fiber tree 找 chatId（简化版）
+                                    var queue = [fiber];
+                                    for (var qi = 0; qi < queue.length && qi < 200; qi++) {
+                                        var f = queue[qi];
+                                        if (!f) continue;
+                                        if (f.memoizedProps?.chatId) { chatId = f.memoizedProps.chatId; break; }
+                                        if (f.memoizedState?.chatId) { chatId = f.memoizedState.chatId; break; }
+                                        if (f.child) queue.push(f.child);
+                                        if (f.sibling) queue.push(f.sibling);
+                                    }
+                                } catch(e) {}
+                            }
+                        }
+
+                        if (!chatId) {
+                            sendResult({ error: "no_chat_id", chatId: null });
+                            return;
+                        }
+
+                        // 获取聊天信息
+                        try {
+                            var chatResp = await fetch(origin + "/messenger/api/v1/chat/info?chat_id=" + chatId, {
+                                credentials: "include"
+                            });
+                            if (chatResp.ok) {
+                                var chatData = await chatResp.json();
+                                chatName = chatData?.data?.name || chatData?.data?.chat_name || "";
+                            }
+                        } catch(e) {}
+
+                        // 获取消息列表（尝试多个可能的内部 API 路径）
+                        var messages = null;
+                        var userMap = {};
+                        var apiPaths = [
+                            "/messenger/api/v1/messages?chat_id=" + chatId + "&count=200",
+                            "/messenger/api/v1/message/list?chat_id=" + chatId + "&page_size=200",
+                            "/api/im/v1/messages?container_id=" + chatId + "&container_id_type=chat&page_size=50",
+                            "/messenger/api/messages?chat_id=" + chatId + "&limit=200",
+                        ];
+
+                        for (var i = 0; i < apiPaths.length; i++) {
+                            try {
+                                var resp = await fetch(origin + apiPaths[i], {
+                                    credentials: "include",
+                                    headers: { "Accept": "application/json" }
+                                });
+                                if (!resp.ok) continue;
+                                var data = await resp.json();
+                                // 不同 API 返回格式可能不同
+                                var items = data?.data?.items || data?.data?.messages || data?.data?.list || data?.messages || [];
+                                if (items.length > 0) {
+                                    messages = items;
+                                    break;
+                                }
+                            } catch(e) { continue; }
+                        }
+
+                        // 尝试获取群成员名称映射
+                        if (chatId) {
+                            try {
+                                var memberResp = await fetch(origin + "/messenger/api/v1/chat/members?chat_id=" + chatId + "&page_size=100", {
+                                    credentials: "include"
+                                });
+                                if (memberResp.ok) {
+                                    var memberData = await memberResp.json();
+                                    var members = memberData?.data?.items || memberData?.data?.members || [];
+                                    for (var m = 0; m < members.length; m++) {
+                                        var member = members[m];
+                                        var id = member.open_id || member.user_id || member.id || "";
+                                        var name = member.name || member.display_name || member.nickname || "";
+                                        if (id && name) userMap[id] = name;
+                                    }
+                                }
+                            } catch(e) {}
+                        }
+
+                        sendResult({
+                            chatId: chatId,
+                            chatName: chatName,
+                            messages: messages,
+                            userMap: userMap,
+                            messageCount: messages ? messages.length : 0,
+                        });
+                    } catch(e) {
+                        console.error("[x2md] Feishu chat fetch failed:", e);
+                        sendResult({ error: e.message });
+                    }
+                }
+                run();
+            })();`;
+            (globalScope.document.head || globalScope.document.documentElement).appendChild(script);
+            script.remove();
+        });
+    }
+
     const exported = {
         cleanFeishuUrl,
         convertFeishuApiDataToMarkdown,
+        convertFeishuChatToMarkdown,
+        convertFeishuMsgContent,
         detectFeishuPageType,
         extractFeishuAuthor,
         extractFeishuBlockMarkdown,
+        extractFeishuChatFromDOM,
         extractFeishuDocToken,
         extractFeishuDocumentData,
         extractFeishuInlineMarkdown,
@@ -845,8 +1307,10 @@
         extractFeishuMinutesData,
         extractFeishuTitle,
         extractFeishuUpdated,
+        fetchFeishuChatViaInternalApi,
         fetchFeishuDocViaApi,
         findFeishuScrollContainer,
+        formatFeishuTimestamp,
         isFeishuContentPage,
         isFeishuWikiOrDocxPage,
         neutralizeFeishuCopyProtection,

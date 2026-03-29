@@ -180,6 +180,7 @@ function applyConfigToUI(cfg) {
     document.getElementById("notionPropTags").value = cfg.notion_prop_tags || "标签";
     document.getElementById("notionPropSavedDate").value = cfg.notion_prop_saved_date || "保存日期";
     document.getElementById("notionPropType").value = cfg.notion_prop_type || "类型";
+    document.getElementById("notionPropCommentCount").value = cfg.notion_prop_comment_count || "评论数";
 
     // HTML 导出
     document.getElementById("htmlExportFolder").value = cfg.html_export_folder || "X2MD导出";
@@ -482,7 +483,17 @@ function testNotionConnection() {
 
     chrome.runtime.sendMessage({
         action: "test_notion",
-        data: { notion_token: token, notion_database_id: dbId }
+        data: {
+            notion_token: token,
+            notion_database_id: dbId,
+            notion_prop_title: document.getElementById("notionPropTitle").value.trim() || "标题",
+            notion_prop_url: document.getElementById("notionPropUrl").value.trim() || "链接",
+            notion_prop_author: document.getElementById("notionPropAuthor").value.trim() || "作者",
+            notion_prop_tags: document.getElementById("notionPropTags").value.trim() || "标签",
+            notion_prop_saved_date: document.getElementById("notionPropSavedDate").value.trim() || "保存日期",
+            notion_prop_type: document.getElementById("notionPropType").value.trim() || "类型",
+            notion_prop_comment_count: document.getElementById("notionPropCommentCount").value.trim() || "评论数",
+        }
     }, (resp) => {
         if (resp && resp.success) {
             let msg = `连接成功！数据库: ${resp.databaseTitle || dbId}（${resp.propertyCount || 0} 个属性）`;
@@ -574,6 +585,7 @@ function saveConfig() {
         notion_prop_tags: document.getElementById("notionPropTags").value.trim() || "标签",
         notion_prop_saved_date: document.getElementById("notionPropSavedDate").value.trim() || "保存日期",
         notion_prop_type: document.getElementById("notionPropType").value.trim() || "类型",
+        notion_prop_comment_count: document.getElementById("notionPropCommentCount").value.trim() || "评论数",
         // HTML
         html_export_folder: document.getElementById("htmlExportFolder").value.trim() || "X2MD导出",
         // 媒体

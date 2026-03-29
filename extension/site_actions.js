@@ -29,6 +29,11 @@
             return "feishu";
         }
 
+        if ((hostname.endsWith(".feishu.cn") || hostname.endsWith(".larksuite.com")) &&
+            /^\/messenger\b/.test(pathname)) {
+            return "feishu_chat";
+        }
+
         if (hostname === "mp.weixin.qq.com" && /^\/s(\/|$|\?)/.test(pathname)) {
             return "wechat";
         }
@@ -61,6 +66,15 @@
                 title: "保存当前 Discourse 内容为 Markdown",
                 background: "#f97316",
                 shadow: "rgba(249, 115, 22, 0.35)",
+            };
+        }
+
+        if (siteKey === "feishu_chat") {
+            return {
+                label: "MD",
+                title: "保存当前飞书聊天记录为 Markdown",
+                background: "#1677ff",
+                shadow: "rgba(22, 119, 255, 0.35)",
             };
         }
 

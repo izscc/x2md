@@ -918,7 +918,7 @@ const FEISHU_FIELD_TYPES = {
 const FEISHU_REQUIRED_FIELDS = [
     { name: "标题", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
     { name: "链接", type: FEISHU_FIELD_TYPES.URL, desc: "超链接" },
-    { name: "作者", type: FEISHU_FIELD_TYPES.SELECT, desc: "单选" },
+    { name: "作者", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
     { name: "分类", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
     { name: "标签", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
     { name: "保存时间", type: FEISHU_FIELD_TYPES.DATE, desc: "日期" },
@@ -960,11 +960,19 @@ async function handleTestFeishu(data) {
             fieldMap[f.field_name] = { type: f.type, typeName: getFeishuFieldTypeName(f.type) };
         });
 
-        // 步骤3: 验证字段配置
+        // 步骤3: 构建完整字段列表（7个基础 + 1个条件字段）
+        const requiredFields = [...FEISHU_REQUIRED_FIELDS];
+        if (data.feishu_upload_md) {
+            requiredFields.push({ name: "附件", type: FEISHU_FIELD_TYPES.ATTACHMENT, desc: "附件" });
+        } else {
+            requiredFields.push({ name: "正文", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" });
+        }
+
+        // 步骤4: 验证字段配置
         const missingFields = [];
         const wrongTypeFields = [];
 
-        FEISHU_REQUIRED_FIELDS.forEach(required => {
+        requiredFields.forEach(required => {
             const existing = fieldMap[required.name];
             if (!existing) {
                 missingFields.push(required);
@@ -1097,6 +1105,10 @@ function buildNotionProperties(d) {
     if (pm.tags && d.tags?.length > 0) props[pm.tags] = { multi_select: d.tags.map(t => ({ name: t })) };
     if (pm.savedDate) props[pm.savedDate] = { date: { start: new Date().toISOString().split("T")[0] } };
     if (pm.type) props[pm.type] = { select: { name: d.type || "推文" } };
+    if (pm.commentCount) {
+        const count = Array.isArray(d.comments) ? d.comments.length : (typeof d.commentCount === "number" ? d.commentCount : 0);
+        props[pm.commentCount] = { number: count };
+    }
     return props;
 }
 
@@ -1273,6 +1285,7 @@ async function handleSaveToNotion(data) {
             tags: data.notion_prop_tags || "",
             savedDate: data.notion_prop_saved_date || "",
             type: data.notion_prop_type || "",
+            commentCount: data.notion_prop_comment_count || "",
         };
         const title = data.article_title || data.title || (data.text || "").slice(0, 50) || "Untitled";
         const content = data.article_content || data.markdown || data.text || "";
@@ -1304,9 +1317,25 @@ async function handleTestNotion(data) {
         const database = await notionFetch(`/databases/${data.notion_database_id}`, data.notion_token, { method: "GET" });
         const props = database.properties || {};
         const missing = [];
-        const pm = { title: data.notion_prop_title || "标题", url: data.notion_prop_url || "链接" };
-        if (pm.title && (!props[pm.title] || props[pm.title].type !== "title")) missing.push(`"${pm.title}" (需要 Title 类型)`);
-        if (pm.url && (!props[pm.url] || props[pm.url].type !== "url")) missing.push(`"${pm.url}" (需要 URL 类型)`);
+        const expectedFields = [
+            { key: "notion_prop_title", default: "标题", type: "title", label: "Title" },
+            { key: "notion_prop_url", default: "链接", type: "url", label: "URL" },
+            { key: "notion_prop_author", default: "作者", type: "rich_text", label: "Text" },
+            { key: "notion_prop_tags", default: "标签", type: "multi_select", label: "Multi Select" },
+            { key: "notion_prop_saved_date", default: "保存日期", type: "date", label: "Date" },
+            { key: "notion_prop_type", default: "类型", type: "select", label: "Select" },
+            { key: "notion_prop_comment_count", default: "评论数", type: "number", label: "Number" },
+        ];
+        for (const field of expectedFields) {
+            const name = data[field.key] || field.default;
+            if (!name) continue;
+            const prop = props[name];
+            if (!prop) {
+                missing.push(`"${name}" (需要 ${field.label} 类型)`);
+            } else if (prop.type !== field.type) {
+                missing.push(`"${name}" (期望 ${field.label}, 实际 ${prop.type})`);
+            }
+        }
         return { success: true, databaseTitle: database.title?.[0]?.plain_text || "未命名", propertyCount: Object.keys(props).length, missingProperties: missing };
     } catch (err) {
         return { success: false, error: err.message };
@@ -1555,6 +1584,7 @@ async function dispatchMultiTargetSave(data, serverBase, existingCfg = null) {
                 notion_prop_tags: cfg.notion_prop_tags,
                 notion_prop_saved_date: cfg.notion_prop_saved_date,
                 notion_prop_type: cfg.notion_prop_type,
+                notion_prop_comment_count: cfg.notion_prop_comment_count,
             }).catch(e => ({ success: false, error: e.message, target: "notion" }))
         );
     }

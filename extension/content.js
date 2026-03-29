@@ -454,9 +454,14 @@ function requestRuntimeConfig() {
 
     chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
         runtimeConfig = resp?.success ? (resp.config || {}) : {};
-        // 初始化 Discourse 域名列表
-        if (runtimeConfig.discourse_domains && typeof setDiscourseDomains === "function") {
-            setDiscourseDomains(runtimeConfig.discourse_domains);
+        // 初始化 Discourse 域名列表（同步到 discourse.js 和 site_actions.js）
+        if (runtimeConfig.discourse_domains) {
+            if (typeof setDiscourseDomains === "function") {
+                setDiscourseDomains(runtimeConfig.discourse_domains);
+            }
+            if (typeof setSiteDiscourseDomains === "function") {
+                setSiteDiscourseDomains(runtimeConfig.discourse_domains);
+            }
         }
         ensureFloatingSaveButton();
         ensureFloatingCopyButton();
@@ -751,13 +756,78 @@ function captureWechatArticle() {
     sendToBackground(data);
 }
 
+function captureFeishuChat() {
+    showToast("正在提取飞书聊天记录…", "loading", null);
+
+    // 策略1：通过飞书内部 API 获取消息 JSON
+    fetchFeishuChatViaInternalApi().then((chatData) => {
+        if (chatData && chatData.messages && chatData.messages.length > 0) {
+            debugLog(" Feishu Chat（内部 API 获取 " + chatData.messageCount + " 条消息）");
+            const chatName = chatData.chatName || "飞书聊天记录";
+            const markdown = convertFeishuChatToMarkdown(chatData.messages, chatData.userMap || {});
+
+            if (markdown && markdown.length >= 20) {
+                showToast("正在保存聊天记录（" + chatData.messageCount + " 条消息）…", "loading", null);
+                sendToBackground({
+                    type: "article",
+                    url: cleanFeishuUrl(location.href),
+                    author: "",
+                    handle: "",
+                    author_url: "",
+                    published: "",
+                    article_title: chatName,
+                    article_content: markdown,
+                    images: [],
+                    videos: [],
+                    platform: "飞书聊天",
+                });
+                return;
+            }
+        }
+
+        // 内部 API 失败时的诊断信息
+        if (chatData && chatData.error === "no_chat_id") {
+            debugLog(" Feishu Chat: 无法识别当前聊天 ID，降级到 DOM 提取");
+        } else if (chatData && chatData.error) {
+            debugLog(" Feishu Chat API 错误: " + chatData.error);
+        } else {
+            debugLog(" Feishu Chat: 内部 API 未返回消息，降级到 DOM 提取");
+        }
+
+        // 策略2（兜底）：DOM 直接提取当前可见消息
+        showToast("尝试从页面提取聊天记录…", "loading", null);
+        const domData = extractFeishuChatFromDOM(document);
+        if (domData && domData.article_content && domData.article_content.length >= 20) {
+            debugLog(" Feishu Chat（DOM 提取）");
+            showToast("正在保存聊天记录…", "loading", null);
+            sendToBackground(domData);
+        } else {
+            showToast("聊天记录提取失败。请确保已打开一个聊天会话。", "error", 5000);
+        }
+    }).catch((err) => {
+        console.error("[x2md] Feishu Chat 提取出错：", err);
+        // 最后兜底尝试 DOM
+        const domData = extractFeishuChatFromDOM(document);
+        if (domData && domData.article_content && domData.article_content.length >= 20) {
+            showToast("正在保存聊天记录…", "loading", null);
+            sendToBackground(domData);
+        } else {
+            showToast("聊天记录提取失败", "error", 4000);
+        }
+    });
+}
+
 function handleFloatingSave(siteKey) {
-    if (siteKey === "linux_do") {
+    if (siteKey === "linux_do" || siteKey === "discourse") {
         captureLinuxDoPostElement(findCurrentLinuxDoPost());
         return;
     }
     if (siteKey === "feishu") {
         captureFeishuDocument();
+        return;
+    }
+    if (siteKey === "feishu_chat") {
+        captureFeishuChat();
         return;
     }
     if (siteKey === "wechat") {
@@ -890,6 +960,10 @@ function captureAndSend(btn) {
 }
 
 function sendToBackground(data) {
+    debugLog("sendToBackground:", { type: data.type, url: data.url, platform: data.platform, hasContent: !!(data.article_content || data.text) });
+    if (!data.url) {
+        console.warn("[x2md] 警告：发送数据缺少 URL 字段", data);
+    }
     chrome.runtime.sendMessage({ action: "save_tweet", data }, (resp) => {
         if (chrome.runtime.lastError) {
             console.error("[x2md] 扩展通信失败：", chrome.runtime.lastError);
