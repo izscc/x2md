@@ -474,12 +474,18 @@ async function captureLinuxDoPostElement(post) {
         return;
     }
 
+    // 判断点赞的是主帖（#1）还是评论
+    const postNumberMatch = String(post.id || "").match(/post_(\d+)/);
+    const clickedPostNumber = postNumberMatch ? Number(postNumberMatch[1]) : 1;
+
     const topicTitle =
         document.querySelector("h1 a")?.innerText?.trim() ||
         document.querySelector("h1")?.innerText?.trim() ||
         document.title.replace(/\s*-\s*LINUX DO.*$/, "").trim();
 
-    const data = extractLinuxDoPostData(post, {
+    // 始终提取主帖内容（#1）
+    const mainPost = document.getElementById("post_1") || document.querySelector("article[data-post-id]");
+    const data = extractLinuxDoPostData(mainPost, {
         pageUrl: location.href,
         topicTitle,
     });
@@ -489,14 +495,26 @@ async function captureLinuxDoPostElement(post) {
         return;
     }
 
-    // 评论/回复提取（通过 Discourse JSON API）
+    // 通过 Discourse JSON API 获取回复数据
     const topicMatch = location.pathname.match(/^\/t\/[^/]+\/(\d+)/);
     if (topicMatch) {
         try {
-            const replies = await fetchDiscourseReplies(topicMatch[1], location.hostname);
-            if (replies && replies.length > 0) {
-                data.comments = replies;
-                console.log(`[x2md] 获取到 ${replies.length} 条 Discourse 回复`);
+            const allReplies = await fetchDiscourseReplies(topicMatch[1], location.hostname);
+            if (allReplies && allReplies.length > 0) {
+                if (clickedPostNumber <= 1) {
+                    // 点赞主帖：附带全部评论
+                    data.comments = allReplies;
+                    console.log(`[x2md] 主帖保存，附带 ${allReplies.length} 条回复`);
+                } else {
+                    // 点赞评论：只保留该评论 + 回复该评论的内容
+                    const likedComment = allReplies.find(r => r.floor === clickedPostNumber);
+                    const repliesToComment = allReplies.filter(r => r.reply_to === clickedPostNumber);
+                    const filtered = [];
+                    if (likedComment) filtered.push(likedComment);
+                    filtered.push(...repliesToComment);
+                    data.comments = filtered;
+                    console.log(`[x2md] 评论 #${clickedPostNumber} 保存，附带 ${repliesToComment.length} 条回复`);
+                }
             }
         } catch (e) {
             console.warn("[x2md] 获取 Discourse 回复失败：", e);
