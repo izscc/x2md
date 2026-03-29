@@ -461,7 +461,7 @@ tags: {tags_yaml}
             vid_filename = f"{filename}_video_{video_idx}.mp4"
             video_tasks.append((vid_url, image_subfolder, vid_filename))
             # 使用相对路径引用，与图片一致，Obsidian 可直接识别
-            vid_map[vid_url] = f"![video_{video_idx}]({image_subfolder}/{vid_filename})"
+            vid_map[vid_url] = f"![video_{video_idx}](./{image_subfolder}/{vid_filename})"
             video_idx += 1
         else:
             vid_map[vid_url] = f"[视频：点击播放]({vid_url})"
@@ -507,7 +507,7 @@ tags: {tags_yaml}
         ext = _guess_image_ext(orig_url)
         local_name = f"{filename}_img_{_img_counter[0]}{ext}"
         image_tasks.append((orig_url, image_subfolder, local_name))
-        return f"![{alt}]({image_subfolder}/{local_name})"
+        return f"![{alt}](./{image_subfolder}/{local_name})"
 
     # ── 处理 article_content 中已内嵌的远程图片链接 ──
     def localize_article_images(md_text: str) -> str:
