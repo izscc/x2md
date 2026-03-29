@@ -367,7 +367,7 @@
         const data = await resp.json();
         const posts = data.post_stream?.posts || [];
         // posts[0] 是主帖，posts[1:] 是回复
-        return posts.slice(1).map(p => ({
+        const replies = posts.slice(1).map(p => ({
             floor: p.post_number,
             author: p.username || "匿名",
             content: cookedHtmlToMarkdown(p.cooked || "", `https://${host}/t/${topicId}`),
@@ -375,6 +375,9 @@
             likes: p.like_count || 0,
             reply_to: p.reply_to_post_number || null,
         }));
+        // 附带 topic 级别的标签
+        replies._topicTags = Array.isArray(data.tags) ? data.tags : [];
+        return replies;
     }
 
     // 向后兼容别名

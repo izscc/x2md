@@ -370,6 +370,12 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     thread_tweets = data.get("thread_tweets", [])  # 线程推文列表
     platform = data.get("platform", "Twitter/X")
 
+    # 标签：优先使用平台提供的 tags，其次使用 hashtags（Twitter）
+    raw_tags = data.get("tags", []) or []
+    raw_hashtags = data.get("hashtags", []) or []
+    # 合并去重
+    all_tags = list(dict.fromkeys(raw_tags + raw_hashtags))
+
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
     datetime_str = now.strftime("%Y-%m-%d %H:%M")
@@ -414,9 +420,11 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     if not author_url and handle:
         author_url = f"https://x.com/{handle.lstrip('@')}"
 
+    tags_yaml = "[" + ", ".join(f'"{t}"' for t in all_tags) + "]" if all_tags else "[]"
+
     front_matter = f"""---
 标题: "{title}"
-tags: []
+tags: {tags_yaml}
 源: "{url}"
 作者主页: "{author_url}"
 创建时间: "{datetime_str}"

@@ -507,6 +507,19 @@ function parseLegacyTweet(result, userLegacy) {
     const handle = userLegacy?.screen_name ? "@" + userLegacy.screen_name : "";
     const published = legacy.created_at || "";
 
+    // 提取推文 hashtags
+    const hashtags = [];
+    const hashtagEntities = legacy.entities?.hashtags || [];
+    for (const h of hashtagEntities) {
+        if (h.text) hashtags.push(h.text);
+    }
+    // note_tweet 也可能有 hashtags
+    if (noteTweetResult?.entity_set?.hashtags) {
+        for (const h of noteTweetResult.entity_set.hashtags) {
+            if (h.text && !hashtags.includes(h.text)) hashtags.push(h.text);
+        }
+    }
+
     return {
         text,
         images: Array.from(new Set(images)),
@@ -515,6 +528,7 @@ function parseLegacyTweet(result, userLegacy) {
         author,
         handle,
         published,
+        hashtags,
     };
 }
 

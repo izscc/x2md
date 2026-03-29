@@ -495,11 +495,15 @@ async function captureLinuxDoPostElement(post) {
         return;
     }
 
-    // 通过 Discourse JSON API 获取回复数据
+    // 通过 Discourse JSON API 获取回复数据 + 帖子标签
     const topicMatch = location.pathname.match(/^\/t\/[^/]+\/(\d+)/);
     if (topicMatch) {
         try {
             const allReplies = await fetchDiscourseReplies(topicMatch[1], location.hostname);
+            // 提取 topic 级别标签
+            if (allReplies._topicTags && allReplies._topicTags.length > 0) {
+                data.tags = allReplies._topicTags;
+            }
             if (allReplies && allReplies.length > 0) {
                 if (clickedPostNumber <= 1) {
                     // 点赞主帖：附带全部评论

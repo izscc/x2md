@@ -333,6 +333,13 @@
         const title = extractWechatTitle(doc);
         const author = extractWechatAuthor(doc);
 
+        // 提取 og:article:tag 标签
+        const tags = [];
+        doc.querySelectorAll?.('meta[property="og:article:tag"], meta[property="article:tag"]').forEach(el => {
+            const tag = safeGetAttribute(el, "content");
+            if (tag && tag.trim()) tags.push(tag.trim());
+        });
+
         return {
             type: "article",
             url: cleanWechatUrl(pageUrl),
@@ -345,6 +352,7 @@
             images: [],
             videos: [],
             platform: "微信公众号",
+            tags,
         };
     }
 
