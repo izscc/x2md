@@ -1231,13 +1231,46 @@ function bindAllDebounced() {
     }, 200);
 }
 
-let _likeSaveTimer = null;
+// Discourse 点赞按钮：单击 = 保存到 OB（拦截点赞），双击 = 正常点赞（不保存）
+let _likeClickCount = 0;
+let _likeClickTimer = null;
+let _likeClickBtn = null;
+let _likePassThrough = false; // 标记：放行重放的点击，防止循环拦截
+
 document.addEventListener("click", (event) => {
     if (!isDiscourseTopicPage()) return;
     const btn = event.target?.closest?.(LINUX_DO_LIKE_SELECTOR);
     if (!btn) return;
-    clearTimeout(_likeSaveTimer);
-    _likeSaveTimer = setTimeout(() => captureLinuxDoPost(btn), 500);
+
+    // 放行标记：双击重放的点击不拦截
+    if (_likePassThrough) {
+        _likePassThrough = false;
+        return;
+    }
+
+    // 拦截本次点击
+    event.preventDefault();
+    event.stopPropagation();
+
+    _likeClickCount++;
+    _likeClickBtn = btn;
+
+    clearTimeout(_likeClickTimer);
+    _likeClickTimer = setTimeout(() => {
+        const clicks = _likeClickCount;
+        const targetBtn = _likeClickBtn;
+        _likeClickCount = 0;
+        _likeClickBtn = null;
+
+        if (clicks >= 2) {
+            // 双击：恢复点赞，不保存
+            _likePassThrough = true;
+            targetBtn.click();
+        } else {
+            // 单击：保存到 OB，不点赞
+            captureLinuxDoPost(targetBtn);
+        }
+    }, 300);
 }, true);
 
 const observer = new MutationObserver(bindAllDebounced);
