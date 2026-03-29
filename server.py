@@ -166,8 +166,9 @@ def normalize_image_url(url: str) -> str:
 
 
 def sanitize_filename(name: str, max_len: int = 60) -> str:
-    """清理文件名中的非法字符（兼容 Windows）"""
-    name = re.sub(r'[\\/:*?"<>|]', "_", name)
+    """清理文件名中的非法字符（兼容 Windows + Markdown 路径安全）"""
+    # Windows 非法字符 + Markdown/URL 特殊字符（# 会被解析为 anchor，[] 破坏链接语法，% 导致编码歧义）
+    name = re.sub(r'[\\/:*?"<>|#%\[\]]', "_", name)
     name = re.sub(r'\s+', " ", name.strip())
     name = name[:max_len]
     # Windows 不允许文件名以 . 或空格结尾
@@ -507,7 +508,11 @@ tags: {tags_yaml}
         ext = _guess_image_ext(orig_url)
         local_name = f"{filename}_img_{_img_counter[0]}{ext}"
         image_tasks.append((orig_url, image_subfolder, local_name))
-        return f"![{alt}]({image_subfolder}/{local_name})"
+        ref_path = f"{image_subfolder}/{local_name}"
+        # 路径含空格时用尖括号包裹，确保 Markdown 解析正确
+        if " " in ref_path:
+            return f"![{alt}](<{ref_path}>)"
+        return f"![{alt}]({ref_path})"
 
     # ── 处理 article_content 中已内嵌的远程图片链接 ──
     def localize_article_images(md_text: str) -> str:
