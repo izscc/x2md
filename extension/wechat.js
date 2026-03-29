@@ -170,7 +170,7 @@
             if (text.includes("![](")) return text;
             // 微信内部跳转链接转为绝对路径
             const absHref = href.startsWith("/") ? `https://mp.weixin.qq.com${href}` : href;
-            return `[${text}](${absHref})`;
+            return `[${escapeMdLinkText(text)}](${escapeMdLinkUrl(absHref)})`;
         }
 
         // 加粗
@@ -226,26 +226,10 @@
             }
         }
 
-        // 表格处理：转换为 GFM pipe table
+        // 表格处理：转换为 GFM pipe table（使用共享函数）
         if (tag === "table") {
-            const rows = [];
-            for (const tr of node.querySelectorAll?.("tr") || []) {
-                const cells = [];
-                for (const cell of tr.querySelectorAll?.("td, th") || []) {
-                    cells.push(convertWechatNodeToMarkdown(cell, options).replace(/\n/g, " ").trim());
-                }
-                if (cells.length) rows.push(cells);
-            }
-            if (rows.length) {
-                const colCount = Math.max(...rows.map(r => r.length));
-                const lines = [];
-                rows.forEach((row, i) => {
-                    while (row.length < colCount) row.push("");
-                    lines.push("| " + row.join(" | ") + " |");
-                    if (i === 0) lines.push("| " + Array(colCount).fill("---").join(" | ") + " |");
-                });
-                return "\n" + lines.join("\n") + "\n";
-            }
+            const result = convertTableToGfm(node, convertWechatNodeToMarkdown, options);
+            if (result) return result;
         }
         if (tag === "tr" || tag === "td" || tag === "th" || tag === "thead" || tag === "tbody") {
             return markdown;

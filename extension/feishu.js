@@ -246,7 +246,7 @@
         return getTagName(node) === "strong" ||
             getTagName(node) === "b" ||
             style === "bold" ||
-            Number.isFinite(numericWeight) && numericWeight >= 700;
+            (Number.isFinite(numericWeight) && numericWeight >= 700);
     }
 
     function extractFeishuInlineMarkdown(node, options = {}) {
@@ -281,7 +281,7 @@
             const text = markdown.trim();
             if (!href || !text) return markdown;
             if (text.includes("![](")) return text;
-            return `[${text}](${href})`;
+            return `[${escapeMdLinkText(text)}](${escapeMdLinkUrl(href)})`;
         }
 
         if (tag === "div" && getClassList(node).includes("ace-line")) {
@@ -420,7 +420,7 @@
             const link = block.querySelector?.("a");
             const href = safeGetAttribute(link, "href") || "";
             const text = cleanZeroWidth(getNodeText(link)).trim() || "多维表格";
-            return href ? `[${text}](${resolveFeishuUrl(href, options.pageUrl)})` : text;
+            return href ? `[${escapeMdLinkText(text)}](${escapeMdLinkUrl(resolveFeishuUrl(href, options.pageUrl))})` : text;
         }
 
         if (type === "code") {
@@ -530,23 +530,25 @@
                 const style = el.text_run.text_element_style || {};
                 if (style.inline_code) text = `\`${text}\``;
                 else {
-                    if (style.bold) text = `**${text}**`;
-                    if (style.italic) text = `*${text}*`;
+                    if (style.bold && style.italic) text = `***${text}***`;
+                    else if (style.bold) text = `**${text}**`;
+                    else if (style.italic) text = `*${text}*`;
                     if (style.strikethrough) text = `~~${text}~~`;
                 }
                 if (style.link && style.link.url) {
+                    const escapedText = escapeMdLinkText(text);
                     try {
                         const decoded = decodeURIComponent(style.link.url);
-                        text = `[${text}](${decoded})`;
+                        text = `[${escapedText}](${escapeMdLinkUrl(decoded)})`;
                     } catch (e) {
-                        text = `[${text}](${style.link.url})`;
+                        text = `[${escapedText}](${escapeMdLinkUrl(style.link.url)})`;
                     }
                 }
                 md += text;
             } else if (el.mention_doc) {
                 const title = el.mention_doc.title || "文档";
                 const url = el.mention_doc.url || "";
-                md += url ? `[${title}](${url})` : title;
+                md += url ? `[${escapeMdLinkText(title)}](${escapeMdLinkUrl(url)})` : title;
             } else if (el.equation) {
                 md += `$${el.equation.content || ""}$`;
             }
@@ -673,8 +675,10 @@
             // 生成唯一 message ID
             var msgId = "__x2md_feishu_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
-            // 监听从页面上下文返回的结果
+            // 监听从页面上下文返回的结果（验证来源）
+            var expectedOrigin = globalScope.location?.origin || "";
             function onMessage(event) {
+                if (expectedOrigin && event.origin !== expectedOrigin) return;
                 if (event.data && event.data.type === msgId) {
                     globalScope.removeEventListener("message", onMessage);
                     clearTimeout(timer);
@@ -698,7 +702,7 @@
                 var origin = location.origin;
 
                 function sendResult(data) {
-                    window.postMessage({ type: msgId, result: data }, "*");
+                    window.postMessage({ type: msgId, result: data }, location.origin);
                 }
 
                 async function run() {

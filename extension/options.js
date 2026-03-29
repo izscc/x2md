@@ -220,7 +220,7 @@ let _discourseDomains = ["linux.do"];
 function renderDiscourseDomains(domains) {
     _discourseDomains = domains && domains.length ? [...domains] : ["linux.do"];
     const list = document.getElementById("discourseDomainList");
-    list.innerHTML = "";
+    list.textContent = "";
 
     _discourseDomains.forEach((domain, i) => {
         const row = document.createElement("div");
@@ -286,6 +286,10 @@ function addDiscourseDomain() {
     if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
         showToast("请输入有效域名", true); return;
     }
+    // 安全校验：禁止内网地址
+    if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(domain)) {
+        showToast("不允许使用内网地址", true); return;
+    }
     if (_discourseDomains.includes(domain)) { showToast("该域名已存在", true); return; }
     _discourseDomains.push(domain);
     renderDiscourseDomains(_discourseDomains);
@@ -295,7 +299,7 @@ function addDiscourseDomain() {
 // ─── 路径列表 ───
 function renderPaths(paths) {
     const list = document.getElementById("pathList");
-    list.innerHTML = "";
+    list.textContent = "";
     paths.forEach((p, i) => {
         const row = document.createElement("div");
         row.className = "path-row";
@@ -352,7 +356,7 @@ function checkStatus() {
 }
 
 // ─── 飞书测试连接 ───
-async function testFeishuConnection() {
+function testFeishuConnection() {
     const statusEl = document.getElementById("feishuStatus");
     statusEl.className = "status-msg";
     statusEl.style.display = "none";
@@ -400,7 +404,7 @@ async function testFeishuConnection() {
 }
 
 // ─── Notion 测试连接 ───
-async function testNotionConnection() {
+function testNotionConnection() {
     const statusEl = document.getElementById("notionStatus");
     statusEl.className = "status-msg";
     statusEl.style.display = "none";

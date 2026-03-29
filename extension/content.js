@@ -9,6 +9,10 @@
  * 完整内容（解决"显示更多"截断、图片丢失）由 background.js 处理。
  */
 
+// 调试日志开关
+const X2MD_DEBUG = false;
+function debugLog(...args) { if (X2MD_DEBUG) console.log("[x2md]", ...args); }
+
 // ─────────────────────────────────────────────
 // 图片辅助（用于 DOM 级后备数据）
 // ─────────────────────────────────────────────
@@ -499,16 +503,17 @@ async function captureLinuxDoPostElement(post) {
     const topicMatch = location.pathname.match(/^\/t\/[^/]+\/(\d+)/);
     if (topicMatch) {
         try {
-            const allReplies = await fetchDiscourseReplies(topicMatch[1], location.hostname);
+            const replyResult = await fetchDiscourseReplies(topicMatch[1], location.hostname);
+            const allReplies = replyResult.replies || [];
             // 提取 topic 级别标签
-            if (allReplies._topicTags && allReplies._topicTags.length > 0) {
-                data.tags = allReplies._topicTags;
+            if (replyResult.topicTags && replyResult.topicTags.length > 0) {
+                data.tags = replyResult.topicTags;
             }
-            if (allReplies && allReplies.length > 0) {
+            if (allReplies.length > 0) {
                 if (clickedPostNumber <= 1) {
                     // 点赞主帖：附带全部评论
                     data.comments = allReplies;
-                    console.log(`[x2md] 主帖保存，附带 ${allReplies.length} 条回复`);
+                    debugLog(`主帖保存，附带 ${allReplies.length} 条回复`);
                 } else {
                     // 点赞评论：只保留该评论 + 回复该评论的内容
                     const likedComment = allReplies.find(r => r.floor === clickedPostNumber);
@@ -517,7 +522,7 @@ async function captureLinuxDoPostElement(post) {
                     if (likedComment) filtered.push(likedComment);
                     filtered.push(...repliesToComment);
                     data.comments = filtered;
-                    console.log(`[x2md] 评论 #${clickedPostNumber} 保存，附带 ${repliesToComment.length} 条回复`);
+                    debugLog(`评论 #${clickedPostNumber} 保存，附带 ${repliesToComment.length} 条回复`);
                 }
             }
         } catch (e) {
@@ -526,7 +531,7 @@ async function captureLinuxDoPostElement(post) {
     }
 
     const siteName = location.hostname === "linux.do" ? "LINUX DO" : location.hostname;
-    console.log(`[x2md] ${siteName} 帖子：`, { url: data.url, author: data.author, title: data.article_title });
+    debugLog(`${siteName} 帖子：`, { url: data.url, author: data.author, title: data.article_title });
     showToast(`正在保存 ${siteName} 帖子…`, "loading", null);
     sendToBackground(data);
 
@@ -558,7 +563,7 @@ async function scrollAndCollectFeishuBlocks() {
     const container = findFeishuScrollContainer(document) ||
         document.querySelector(".bear-web-x-container");
     if (!container) {
-        console.log("[x2md] 未找到可滚动容器，跳过滚动收集");
+        debugLog(" 未找到可滚动容器，跳过滚动收集");
         return null;
     }
 
@@ -614,7 +619,7 @@ async function scrollAndCollectFeishuBlocks() {
     }
 
     container.scrollTop = originalScrollTop;
-    console.log(`[x2md] 飞书滚动收集完成：${seen.size} unique blocks`);
+    debugLog(`飞书滚动收集完成：${seen.size} unique blocks`);
 
     const sorted = Array.from(seen.entries())
         .sort((a, b) => {
@@ -672,12 +677,12 @@ function captureFeishuDocument() {
         if (apiData) {
             const apiContent = convertFeishuApiDataToMarkdown(apiData);
             if (apiContent && apiContent.length >= 50) {
-                console.log("[x2md] Feishu 文档（JSON API 读取成功，长度=" + apiContent.length + "）");
+                debugLog(" Feishu 文档（JSON API 读取成功，长度=" + apiContent.length + "）");
                 return finishFeishuCapture(apiContent);
             }
-            console.log("[x2md] Feishu JSON API 返回内容太短（" + (apiContent?.length || 0) + "），降级到滚动收集");
+            debugLog(" Feishu JSON API 返回内容太短（" + (apiContent?.length || 0) + "），降级到滚动收集");
         } else {
-            console.log("[x2md] Feishu JSON API 不可用（可能权限限制），降级到滚动收集");
+            debugLog(" Feishu JSON API 不可用（可能权限限制），降级到滚动收集");
         }
 
         // 策略2（原策略3）：直接跳到滚动收集 — 跳过 DOM 直读
@@ -690,15 +695,15 @@ function captureFeishuDocument() {
             }
 
             if (scrollContent && scrollContent.length >= 50) {
-                console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks，长度=" + scrollContent.length + "）");
+                debugLog(" Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks，长度=" + scrollContent.length + "）");
                 return finishFeishuCapture(scrollContent);
             }
 
             // 策略3（兜底）：如果滚动收集也失败了，尝试 DOM 直读（聊胜于无）
-            console.log("[x2md] 滚动收集失败，最后尝试 DOM 直读");
+            debugLog(" 滚动收集失败，最后尝试 DOM 直读");
             const domData = extractFeishuDocumentData(document, options);
             if (domData && domData.article_content && domData.article_content.length >= 30) {
-                console.log("[x2md] Feishu 文档（DOM 兜底提取，长度=" + domData.article_content.length + "）");
+                debugLog(" Feishu 文档（DOM 兜底提取，长度=" + domData.article_content.length + "）");
                 return finishFeishuCapture(domData.article_content);
             }
 
@@ -741,7 +746,7 @@ function captureWechatArticle() {
         return;
     }
 
-    console.log("[x2md] WeChat 文章：", { url: data.url, author: data.author, title: data.article_title });
+    debugLog(" WeChat 文章：", { url: data.url, author: data.author, title: data.article_title });
     showToast("正在保存微信公众号文章…", "loading", null);
     sendToBackground(data);
 }
@@ -825,14 +830,14 @@ function captureAndSend(btn) {
     // ── Note 长文推文检测 ─────────────────────────────
     const noteArticleUrl = detectNoteUrl(article);
     if (noteArticleUrl) {
-        console.log("[x2md] 检测到 Note 推文，文章链接：", noteArticleUrl);
+        debugLog(" 检测到 Note 推文，文章链接：", noteArticleUrl);
         showToast("检测到长文 Note，正在提取内容…", "loading", null);
 
         try {
             // 优先：在当前页面查找内嵌文章内容（推文详情页会渲染 Note 预览）
             const inlineArticle = detectAndExtractArticle();
             if (inlineArticle && inlineArticle.article_content && inlineArticle.article_content.trim().length > 50) {
-                console.log("[x2md] 当前页面已有内嵌文章内容，直接保存");
+                debugLog(" 当前页面已有内嵌文章内容，直接保存");
                 sendToBackground({
                     ...inlineArticle,
                     url: tweetUrl,       // 用原始推文链接（/status/xxx）作为源
@@ -851,7 +856,7 @@ function captureAndSend(btn) {
         }
 
         // 降级：让 background 尝试 fetch（可能得到空壳），最终降级为摘要+链接
-        console.log("[x2md] 当前页面无内嵌内容，由 background 处理");
+        debugLog(" 当前页面无内嵌内容，由 background 处理");
         sendToBackground({
             type: "note",
             url: tweetUrl,
@@ -869,7 +874,7 @@ function captureAndSend(btn) {
     const text = extractTweetTextBasic(article);
     const thread_tweets = extractThreadBasic(article, handle);
 
-    console.log("[x2md] 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40) });
+    debugLog(" 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40) });
     sendToBackground({
         author,
         handle,
@@ -1160,7 +1165,7 @@ async function handleCopyFullContent() {
                     if (content && content.length < 50) content = null;
                 }
             } catch (e) {
-                console.log("[x2md copy] API fallback:", e);
+                debugLog("copy: API fallback:", e);
             }
 
             // 策略2: 滚动收集
@@ -1346,4 +1351,4 @@ observer.observe(document.body, { childList: true, subtree: true });
 requestRuntimeConfig();
 bindAll();
 
-console.log("[x2md] 内容脚本已加载 v1.3");
+debugLog(" 内容脚本已加载 v1.3");

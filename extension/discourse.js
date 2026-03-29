@@ -71,7 +71,7 @@
         return classList.includes("anchor") ||
             classList.includes("cooked-selection-barrier") ||
             classList.includes("codeblock-button-wrapper") ||
-            classList.includes("meta") && !!safeClosest(element, "a.lightbox") ||
+            (classList.includes("meta") && !!safeClosest(element, "a.lightbox")) ||
             tag === "svg" ||
             tag === "script" ||
             tag === "style";
@@ -204,26 +204,10 @@
             return "\n" + lines.map((l) => `> ${l}`).join("\n") + "\n";
         }
 
-        // Discourse 表格
+        // Discourse 表格（使用共享 GFM 转换函数）
         if (tag === "table") {
-            const rows = [];
-            for (const tr of node.querySelectorAll?.("tr") || []) {
-                const cells = [];
-                for (const cell of tr.querySelectorAll?.("td, th") || []) {
-                    cells.push(convertLinuxDoNodeToMarkdown(cell, options).replace(/\n/g, " ").trim());
-                }
-                if (cells.length) rows.push(cells);
-            }
-            if (rows.length) {
-                const colCount = Math.max(...rows.map(r => r.length));
-                const tableLines = [];
-                rows.forEach((row, i) => {
-                    while (row.length < colCount) row.push("");
-                    tableLines.push("| " + row.join(" | ") + " |");
-                    if (i === 0) tableLines.push("| " + Array(colCount).fill("---").join(" | ") + " |");
-                });
-                return "\n" + tableLines.join("\n") + "\n";
-            }
+            const result = convertTableToGfm(node, convertLinuxDoNodeToMarkdown, options);
+            if (result) return result;
         }
         if (tag === "tr" || tag === "td" || tag === "th" || tag === "thead" || tag === "tbody") {
             // 被 table handler 调用时单独处理
@@ -254,7 +238,7 @@
             const text = markdown.trim();
             if (!href || !text) return markdown;
             if (/!\[[^\]]*]\(/.test(text)) return markdown;
-            return `[${text}](${href})`;
+            return `[${escapeMdLinkText(text)}](${escapeMdLinkUrl(href)})`;
         }
 
         if ((tag === "strong" || tag === "b") && markdown.trim()) {
@@ -355,9 +339,19 @@
     }
 
     function cookedHtmlToMarkdown(htmlString, pageUrl) {
-        const div = document.createElement("div");
-        div.innerHTML = htmlString;
-        return extractLinuxDoMarkdown(div, { pageUrl: pageUrl || "" });
+        // 使用 DOMParser 代替 innerHTML，避免直接执行脚本（安全加固）
+        let container;
+        if (typeof DOMParser !== "undefined") {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(`<div>${htmlString || ""}</div>`, "text/html");
+            container = doc.body.firstElementChild || doc.body;
+        } else {
+            // Node.js 测试环境等无 DOMParser 时的兜底
+            const div = document.createElement("div");
+            div.innerHTML = htmlString || "";
+            container = div;
+        }
+        return extractLinuxDoMarkdown(container, { pageUrl: pageUrl || "" });
     }
 
     async function fetchDiscourseReplies(topicId, hostname) {
@@ -375,9 +369,11 @@
             likes: p.like_count || 0,
             reply_to: p.reply_to_post_number || null,
         }));
-        // 附带 topic 级别的标签
-        replies._topicTags = Array.isArray(data.tags) ? data.tags : [];
-        return replies;
+        // 返回结构化对象，而非在数组上挂属性
+        return {
+            replies,
+            topicTags: Array.isArray(data.tags) ? data.tags : [],
+        };
     }
 
     // 向后兼容别名

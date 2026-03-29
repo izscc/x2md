@@ -12,7 +12,21 @@
 importScripts("media_helpers.js");
 importScripts("twitter_graphql.js");
 
+// 调试日志开关：仅在开发时设为 true
+const X2MD_DEBUG = false;
+function debugLog(...args) { if (X2MD_DEBUG) console.log("[x2md]", ...args); }
+
 let SERVER_BASE = "http://127.0.0.1:9527";
+
+// 可同步到 chrome.storage.sync 的配置字段列表（去重定义）
+const SYNC_FIELDS = [
+    "filename_format", "max_filename_length",
+    "enable_video_download", "video_duration_threshold", "show_site_save_icon",
+    "enable_platform_folders", "download_images", "image_subfolder",
+    "overwrite_existing",
+    "enable_comments", "comments_display", "max_comments", "comment_floor_range",
+    "discourse_domains", "embed_mode",
+];
 
 // 从本地存储恢复用户自定义端口
 chrome.storage.local.get("x2md_port", (data) => {
@@ -43,7 +57,7 @@ async function registerDiscourseContentScripts(domains) {
             js: ["dom_utils.js", "article_markdown.js", "discourse.js", "site_actions.js", "content.js"],
             runAt: "document_idle",
         }]);
-        console.log("[x2md] 已注册额外 Discourse 域名:", extraDomains);
+        debugLog(" 已注册额外 Discourse 域名:", extraDomains);
     } catch (err) {
         console.warn("[x2md] 注册 Discourse 内容脚本失败:", err);
     }
@@ -290,7 +304,7 @@ async function fetchNoteContent(articleUrl) {
                             resolved = true;
                             clearTimeout(timeout);
                             chrome.tabs.remove(tabId).catch(() => { });
-                            console.log(`[x2md] Note 内容提取成功：title="${result.title.slice(0, 30)}" 长度=${result.content.length}`);
+                            debugLog(`Note 内容提取成功：title="${result.title.slice(0, 30)}" 长度=${result.content.length}`);
                             resolve(result);
                         }
                     );
@@ -571,7 +585,7 @@ async function fetchFullTweetData(tweetData) {
     if (!match) return tweetData;
 
     const tweetId = match[1];
-    console.log("[x2md] 开始获取完整推文：", tweetId);
+    debugLog(" 开始获取完整推文：", tweetId);
 
     // 策略1：GraphQL API
     let apiResult = await fetchViaGraphQL(tweetId, {
@@ -581,16 +595,16 @@ async function fetchFullTweetData(tweetData) {
 
     // 策略2：oEmbed（GraphQL 失败时）
     if (!apiResult || !apiResult.text) {
-        console.log("[x2md] GraphQL 失败，尝试 oEmbed");
+        debugLog(" GraphQL 失败，尝试 oEmbed");
         apiResult = await fetchViaOEmbed(tweetData.url);
     }
 
     if (!apiResult) {
-        console.log("[x2md] 所有 API 均失败，使用 DOM 原始数据");
+        debugLog(" 所有 API 均失败，使用 DOM 原始数据");
         return tweetData;
     }
 
-    console.log(`[x2md] API 获取成功：text=${apiResult.text.slice(0, 50)} images=${apiResult.images.length}`);
+    debugLog(`API 获取成功：text=${apiResult.text.slice(0, 50)} images=${apiResult.images.length}`);
 
     return {
         ...tweetData,
@@ -1069,10 +1083,11 @@ async function handleTestNotion(data) {
 // ═══════════════════════════════════════════════
 function convertMarkdownToHtml(md) {
     if (!md) return "";
-    // 截断保护：超过 500KB 的 Markdown 只转换前 500KB，避免 regex 和 btoa 开销过大
+    // 截断保护：超过 500KB 的 Markdown 只转换前 500KB
     const MAX_MD_LEN = 500000;
     let html = md.length > MAX_MD_LEN ? md.slice(0, MAX_MD_LEN) + "\n\n---\n\n（内容过长，已截断）" : md;
-    // 代码块（```lang ... ```）—— 先修复未关闭的代码块，防止 regex 回溯
+
+    // 代码块（```lang ... ```）—— 先修复未关闭的代码块
     const openFences = (html.match(/```/g) || []).length;
     if (openFences % 2 !== 0) html += "\n```";
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
@@ -1081,44 +1096,53 @@ function convertMarkdownToHtml(md) {
     });
     // 行内代码
     html = html.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code.replace(/</g, "&lt;")}</code>`);
-    // 图片
+    // 图片（必须在链接之前）
     html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
     // 链接
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-    // 标题（h1-h6）
+    // 标题（h1-h6，从 h6 向上匹配避免误匹配）
     html = html.replace(/^######\s+(.+)$/gm, "<h6>$1</h6>");
     html = html.replace(/^#####\s+(.+)$/gm, "<h5>$1</h5>");
     html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
     html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
     html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
     html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
-    // 粗体 / 斜体
+    // 粗体 / 斜体 / 删除线
     html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
     html = html.replace(/~~(.+?)~~/g, "<del>$1</del>");
-    // 引用块
+    // 引用块（逐行标记再合并）
     html = html.replace(/^>\s+(.+)$/gm, "<blockquote>$1</blockquote>");
-    // 合并相邻 blockquote
-    html = html.replace(/<\/blockquote>\n<blockquote>/g, "\n");
+    html = html.replace(/<\/blockquote>\n<blockquote>/g, "<br>");
+    // 任务列表（Obsidian 格式：- [x] / - [ ]）
+    html = html.replace(/^[-*+]\s+\[x\]\s+(.+)$/gm, '<li class="task-list-item"><input type="checkbox" checked disabled> $1</li>');
+    html = html.replace(/^[-*+]\s+\[ \]\s+(.+)$/gm, '<li class="task-list-item"><input type="checkbox" disabled> $1</li>');
+    // 有序列表（必须在无序列表之前，防止 <li> 被无序列表二次匹配）
+    html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<li data-ol="$1">$2</li>');
     // 无序列表
     html = html.replace(/^[-*+]\s+(.+)$/gm, "<li>$1</li>");
-    html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
-    // 有序列表
-    html = html.replace(/^\d+\.\s+(.+)$/gm, "<li>$1</li>");
+    // 包裹连续 <li> 为 <ul>（区分有序和无序）
+    html = html.replace(/((?:<li data-ol="\d+">.*<\/li>\n?)+)/g, (match) => {
+        return "<ol>" + match.replace(/ data-ol="\d+"/g, "") + "</ol>";
+    });
+    html = html.replace(/((?:<li[ >].*<\/li>\n?)+)/g, (match) => {
+        if (match.startsWith("<ol>")) return match; // 已处理的有序列表
+        return "<ul>" + match + "</ul>";
+    });
     // 分割线
     html = html.replace(/^---+$/gm, "<hr>");
     // 表格
     html = html.replace(/^(\|.+\|)\n\|[\s:|-]+\|\n((?:\|.+\|\n?)*)/gm, (_, headerRow, bodyRows) => {
         const headers = headerRow.split("|").filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join("");
-        const rows = bodyRows.trim().split("\n").map(row => {
+        const rows = bodyRows.trim().split("\n").filter(Boolean).map(row => {
             const cells = row.split("|").filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join("");
             return `<tr>${cells}</tr>`;
         }).join("");
         return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
     });
-    // iframe 保留
-    // 段落：连续非空行包裹 <p>
-    html = html.replace(/^(?!<[a-z]|$)(.+)$/gm, "<p>$1</p>");
+    // iframe 保留（已有 HTML 标签行不包裹 <p>）
+    // 段落：非空非 HTML 标签行包裹 <p>
+    html = html.replace(/^(?!<[a-z/]|$)(.+)$/gm, "<p>$1</p>");
     // 清理多余空行
     html = html.replace(/\n{3,}/g, "\n\n");
     return html;
@@ -1304,6 +1328,11 @@ async function dispatchMultiTargetSave(data, serverBase, existingCfg = null) {
 // 消息处理
 // ─────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // 安全校验：仅接受来自本扩展的消息（content scripts 或 popup/options 页面）
+    if (!sender || (sender.id !== chrome.runtime.id)) {
+        sendResponse({ success: false, error: "Unauthorized sender" });
+        return false;
+    }
 
     if (message.action === "save_tweet") {
         (async () => {
@@ -1313,7 +1342,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 if (data.type === "note" && data.note_article_url) {
                     // 长文 Note：后台打开 tab，等待渲染后提取完整内容
-                    console.log("[x2md] 处理 Note（后台 tab 方案）：", data.note_article_url);
+                    debugLog(" 处理 Note（后台 tab 方案）：", data.note_article_url);
 
                     // 【关键修复】即使是解析长文，也必须对母推文本身调用 GraphQL 获取其自带的高清视频或原图，防止富媒体遗失！
                     let enrichedData = await fetchFullTweetData(data);
@@ -1355,7 +1384,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const articleMatch = data.text && data.text.match(/https?:\/\/(x|twitter)\.com\/(i\/article|[^/]+\/article)\/\d+/i);
                     if (articleMatch) {
                         const articleUrl = articleMatch[0].replace("twitter.com", "x.com");
-                        console.log("[x2md] 在推文提取文本中发现长文(Note)链接，切换提取模式：", articleUrl);
+                        debugLog(" 在推文提取文本中发现长文(Note)链接，切换提取模式：", articleUrl);
 
                         const noteResult = await fetchNoteContent(articleUrl);
                         if (noteResult && noteResult.content) {
@@ -1396,7 +1425,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // --------- 统一填补长文专栏中的遗留视频占位符 ---------
                 let contentToFix = data.article_content || data.content || "";
                 if (contentToFix.includes("[[VIDEO_HOLDER_")) {
-                    console.log("[x2md] 检测到长文包含未解析的视频占位符，尝试通过 GraphQL 兜底获取");
+                    debugLog(" 检测到长文包含未解析的视频占位符，尝试通过 GraphQL 兜底获取");
 
                     let apiData = data;
                     if (!data._api_fetched && data.url && data.url.includes("/status/")) {
@@ -1463,7 +1492,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const maxDurationMin = maxDurationMs / 1000 / 60;
 
                     if (maxDurationMin > durationThresholdMin) {
-                        console.log(`[x2md] 发现超长视频 (${maxDurationMin.toFixed(1)} > ${durationThresholdMin} min)，要求前台确认`);
+                        debugLog(`发现超长视频 (${maxDurationMin.toFixed(1)} > ${durationThresholdMin} min)，要求前台确认`);
                         sendResponse({
                             require_video_confirm: true,
                             durationMin: maxDurationMin.toFixed(1),
@@ -1544,12 +1573,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const syncData = await chrome.storage.sync.get("x2md_sync").catch(() => ({}));
                 if (syncData.x2md_sync && syncData.x2md_sync.sync_enabled) {
                     const synced = syncData.x2md_sync;
-                    const SYNC_FIELDS = ["filename_format", "max_filename_length",
-                        "enable_video_download", "video_duration_threshold", "show_site_save_icon",
-                        "enable_platform_folders", "download_images", "image_subfolder",
-                        "overwrite_existing",
-                        "enable_comments", "comments_display", "max_comments", "comment_floor_range",
-                        "discourse_domains", "embed_mode"];
                     for (const k of SYNC_FIELDS) {
                         if (synced[k] !== undefined) cfg[k] = synced[k];
                     }
@@ -1580,12 +1603,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const json = await resp.json();
                 // 如果开启了同步，将可同步字段写入 chrome.storage.sync
                 if (message.config.sync_enabled) {
-                    const SYNC_FIELDS = ["filename_format", "max_filename_length",
-                        "enable_video_download", "video_duration_threshold", "show_site_save_icon",
-                        "enable_platform_folders", "download_images", "image_subfolder",
-                        "overwrite_existing",
-                        "enable_comments", "comments_display", "max_comments", "comment_floor_range",
-                        "discourse_domains", "embed_mode"];
                     const toSync = { sync_enabled: true };
                     for (const k of SYNC_FIELDS) {
                         if (message.config[k] !== undefined) toSync[k] = message.config[k];
