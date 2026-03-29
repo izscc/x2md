@@ -356,17 +356,47 @@
 
     async function fetchDiscourseReplies(topicId, hostname) {
         const host = hostname || globalScope.location?.hostname || "linux.do";
-        const resp = await fetch(`https://${host}/t/${topicId}.json`, {
+        const baseUrl = `https://${host}`;
+        const resp = await fetch(`${baseUrl}/t/${topicId}.json`, {
             signal: AbortSignal.timeout(15000),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        const posts = data.post_stream?.posts || [];
-        // posts[0] 是主帖，posts[1:] 是回复
-        const replies = posts.slice(1).map(p => ({
+
+        // 第一批帖子（topic JSON 默认返回约20条）
+        const firstPosts = data.post_stream?.posts || [];
+        const allPostIds = data.post_stream?.stream || [];
+        const loadedIds = new Set(firstPosts.map(p => p.id));
+
+        // 分页获取剩余帖子（每批最多20个 post_id）
+        const missingIds = allPostIds.filter(id => !loadedIds.has(id));
+        const PAGE_SIZE = 20;
+        const extraPosts = [];
+        for (let i = 0; i < missingIds.length; i += PAGE_SIZE) {
+            const batch = missingIds.slice(i, i + PAGE_SIZE);
+            const params = batch.map(id => `post_ids[]=${id}`).join("&");
+            try {
+                const batchResp = await fetch(`${baseUrl}/t/${topicId}/posts.json?${params}`, {
+                    signal: AbortSignal.timeout(10000),
+                });
+                if (batchResp.ok) {
+                    const batchData = await batchResp.json();
+                    const batchPosts = batchData.post_stream?.posts || batchData.posts || [];
+                    extraPosts.push(...batchPosts);
+                }
+            } catch (e) {
+                console.warn(`[x2md] Discourse 分页获取失败 (batch ${i / PAGE_SIZE + 1}):`, e.message);
+                break; // 网络问题时停止继续获取，返回已有数据
+            }
+        }
+
+        const allPosts = [...firstPosts, ...extraPosts];
+        // posts[0] 是主帖，posts[1:] 是回复（按 post_number 排序）
+        allPosts.sort((a, b) => (a.post_number || 0) - (b.post_number || 0));
+        const replies = allPosts.slice(1).map(p => ({
             floor: p.post_number,
             author: p.username || "匿名",
-            content: cookedHtmlToMarkdown(p.cooked || "", `https://${host}/t/${topicId}`),
+            content: cookedHtmlToMarkdown(p.cooked || "", `${baseUrl}/t/${topicId}`),
             published: p.created_at || "",
             likes: p.like_count || 0,
             reply_to: p.reply_to_post_number || null,
@@ -403,5 +433,6 @@
         module.exports = exported;
     }
 
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);

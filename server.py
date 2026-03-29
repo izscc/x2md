@@ -13,6 +13,7 @@ import re
 import ssl
 import sys
 import logging
+import traceback
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
@@ -117,11 +118,11 @@ if sys.stdout is not None:
     except (AttributeError, OSError):
         pass
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     handlers=_log_handlers,
 )
-logger = logging.getLogger("x2md")
+logger = logging.getLogger("x2md_server")
 
 # 全局配置缓存和媒体下载线程池
 _config_cache: dict | None = None
@@ -136,6 +137,7 @@ def load_config() -> dict:
     if _config_cache is not None:
         return _config_cache
 
+    logger.info(f"首次加载配置文件: {CONFIG_FILE}")
     with _config_lock:
         # double-check after acquiring lock
         if _config_cache is not None:
@@ -145,13 +147,20 @@ def load_config() -> dict:
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
+                    merged_keys = []
                     for k, v in DEFAULT_CONFIG.items():
                         if k not in cfg:
                             cfg[k] = v
+                            merged_keys.append(k)
+                    if merged_keys:
+                        logger.debug(f"从默认配置补全字段: {merged_keys}")
                     _config_cache = cfg
+                    logger.info(f"配置加载成功, port={cfg.get('port')}, save_paths={cfg.get('save_paths', [])}")
                     return cfg
             except Exception as e:
-                logger.warning(f"配置文件读取失败，使用默认配置：{e}")
+                logger.warning(f"配置文件读取失败，使用默认配置: {e}")
+        else:
+            logger.info("配置文件不存在，使用默认配置")
         _config_cache = DEFAULT_CONFIG.copy()
         save_config(_config_cache)
         return _config_cache
@@ -686,17 +695,17 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        logger.debug(f"GET {path} from {self.address_string()}")
 
         if path == "/ping":
-            # 心跳检测
             self._respond(200, {"status": "ok", "version": "1.6.0"})
 
         elif path == "/config":
-            # 返回当前配置
             cfg = load_config()
             self._respond(200, cfg)
 
         else:
+            logger.debug(f"GET 404: {path}")
             self._respond(404, {"error": "Not Found"})
 
     MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB 请求体上限
@@ -704,15 +713,20 @@ class X2MDHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
+        origin = self.headers.get("Origin", "N/A")
+        logger.debug(f"POST {path} from {self.address_string()}, Content-Length={length}, Origin={origin}")
+
         if length > self.MAX_REQUEST_SIZE:
+            logger.warning(f"请求体过大: {length} 字节 (上限 {self.MAX_REQUEST_SIZE})")
             self._respond(413, {"error": f"请求体过大（{length} 字节），上限 {self.MAX_REQUEST_SIZE} 字节"})
             return
         body = self.rfile.read(length)
 
         try:
             data = json.loads(body.decode("utf-8"))
-            logger.info(f"接收到请求: type={data.get('type','?')} platform={data.get('platform','?')} url={data.get('url','')[:80]}")
-        except json.JSONDecodeError:
+            logger.info(f"POST {path}: type={data.get('type','?')} platform={data.get('platform','?')} url={data.get('url','')[:80]}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON 解析失败: {e}, body_preview={body[:200]}")
             self._respond(400, {"error": "Invalid JSON"})
             return
 
@@ -723,22 +737,27 @@ class X2MDHandler(BaseHTTPRequestHandler):
         elif path == "/config/reset":
             self._handle_config_reset()
         else:
+            logger.debug(f"POST 404: {path}")
             self._respond(404, {"error": "Not Found"})
 
     def _handle_save(self, data: dict):
         """核心：接收推文数据，写入 Markdown 文件"""
+        logger.info(f"处理 /save 请求: type={data.get('type','?')}, platform={data.get('platform','?')}, url={data.get('url','')[:80]}")
         cfg = load_config()
         save_paths = cfg.get("save_paths", [])
+        logger.debug(f"save_paths={save_paths}, enable_platform_folders={cfg.get('enable_platform_folders')}")
 
         if not save_paths:
+            logger.error("未配置保存路径，返回 500")
             self._respond(500, {"error": "未配置保存路径"})
             return
 
         try:
+            logger.debug("开始构建 Markdown...")
             filename, content, image_tasks, video_tasks = build_markdown(data, cfg)
+            logger.info(f"Markdown 构建完成: filename={filename}, content_len={len(content)}, images={len(image_tasks)}, videos={len(video_tasks)}")
         except Exception as e:
-            import traceback
-            logger.error(f"Markdown 构建失败：{e}\n{traceback.format_exc()}")
+            logger.error(f"Markdown 构建失败: {e}\n{traceback.format_exc()}")
             self._respond(500, {"error": str(e)})
             return
 
@@ -835,14 +854,18 @@ class X2MDHandler(BaseHTTPRequestHandler):
     def _handle_config_update(self, data: dict):
         """更新配置（仅允许白名单内的字段）"""
         filtered = {k: v for k, v in data.items() if k in self.ALLOWED_CONFIG_KEYS}
+        rejected = [k for k in data if k not in self.ALLOWED_CONFIG_KEYS]
+        if rejected:
+            logger.debug(f"配置更新被拒绝的字段: {rejected}")
         if not filtered:
+            logger.warning("配置更新请求无有效字段")
             self._respond(400, {"error": "没有有效的配置字段"})
             return
         with _config_lock:
-            cfg = copy.deepcopy(load_config())  # 深拷贝，避免竞态修改共享引用
+            cfg = copy.deepcopy(load_config())
             cfg.update(filtered)
             save_config(cfg)
-        logger.info(f"配置已更新：{list(filtered.keys())}")
+        logger.info(f"配置已更新: {list(filtered.keys())}")
         self._respond(200, {"success": True, "config": cfg})
 
     def _handle_config_reset(self):
@@ -862,17 +885,24 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    logger.info("server.py 独立启动模式")
     cfg = load_config()
     port = cfg.get("port", 9527)
-    server = ThreadingHTTPServer(("127.0.0.1", port), X2MDHandler)
-    server.daemon_threads = True  # 随主线程退出，不阻塞关闭
-    logger.info(f"🚀 x2md 服务已启动，监听 http://127.0.0.1:{port}")
-    logger.info(f"📁 保存路径：{cfg.get('save_paths', [])}")
+    logger.info(f"绑定 127.0.0.1:{port}...")
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", port), X2MDHandler)
+    except OSError as e:
+        logger.error(f"端口绑定失败: {e}")
+        return
+    server.daemon_threads = True
+    logger.info(f"x2md 服务已启动，监听 http://127.0.0.1:{port}")
+    logger.info(f"保存路径: {cfg.get('save_paths', [])}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logger.info("服务已停止")
+        logger.info("收到 KeyboardInterrupt，停止服务")
         server.shutdown()
+    logger.info("server.py main() 退出")
 
 
 if __name__ == "__main__":

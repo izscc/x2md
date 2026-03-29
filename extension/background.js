@@ -1622,11 +1622,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "save_tweet") {
         (async () => {
             const serverBase = SERVER_BASE;   // 快照，防止并发修改
-            // 整体超时保护：防止 MV3 service worker 被杀后 callback 永远不返回
-            const OVERALL_TIMEOUT = 60000; // 60 秒整体超时
+            // 分阶段超时保护：MV3 service worker 可能在空闲30s后被杀
+            // 各阶段有独立超时（fetchFullTweetData/fetchNoteContent/dispatchMultiTargetSave 内部已有）
+            // 这里的总超时作为兜底，防止 callback 永远不返回
+            const OVERALL_TIMEOUT = 90000; // 90秒总兜底（各子阶段内部超时更短）
+            let _responded = false;
+            function safeSendResponse(data) {
+                if (_responded) return;
+                _responded = true;
+                clearTimeout(timeoutId);
+                sendResponse(data);
+            }
             const timeoutId = setTimeout(() => {
-                console.error("[x2md] save_tweet 整体超时（60s），强制返回错误");
-                sendResponse({ success: false, error: "操作超时，请检查网络连接和本地服务是否正常运行" });
+                console.error("[x2md] save_tweet 整体超时（90s），强制返回错误");
+                safeSendResponse({ success: false, error: "操作超时，请检查网络连接和本地服务是否正常运行" });
             }, OVERALL_TIMEOUT);
             try {
                 let data = message.data;
@@ -1784,8 +1793,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                     if (maxDurationMin > durationThresholdMin) {
                         debugLog(`发现超长视频 (${maxDurationMin.toFixed(1)} > ${durationThresholdMin} min)，要求前台确认`);
-                        clearTimeout(timeoutId);
-                        sendResponse({
+                        safeSendResponse({
                             require_video_confirm: true,
                             durationMin: maxDurationMin.toFixed(1),
                             payload: data
@@ -1815,13 +1823,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 // ── 多目标保存分发（复用共享函数，传入已获取的 cfg 避免重复请求）──
                 const dispatchResult = await dispatchMultiTargetSave(data, serverBase, cfg);
-                clearTimeout(timeoutId);
-                sendResponse(dispatchResult);
+                safeSendResponse(dispatchResult);
 
             } catch (err) {
-                clearTimeout(timeoutId);
                 console.error("[x2md] 后台处理或请求失败：", err);
-                sendResponse({ success: false, error: err.message || String(err) });
+                safeSendResponse({ success: false, error: err.message || String(err) });
             }
         })();
         return true;

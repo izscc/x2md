@@ -235,5 +235,6 @@
         module.exports = exported;
     }
 
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);

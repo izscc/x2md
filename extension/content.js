@@ -766,7 +766,10 @@ function captureFeishuChat() {
             const chatName = chatData.chatName || "飞书聊天记录";
             const markdown = convertFeishuChatToMarkdown(chatData.messages, chatData.userMap || {});
 
-            if (markdown && markdown.length >= 20) {
+            // 检测是否有实际消息内容（包含"**作者**"格式或至少有非空内容行）
+            const hasRealMessages = markdown && markdown.trim().length > 0
+                && (/\*\*[^*]+\*\*/.test(markdown) || markdown.split("\n").filter(l => l.trim()).length >= 2);
+            if (hasRealMessages) {
                 showToast("正在保存聊天记录（" + chatData.messageCount + " 条消息）…", "loading", null);
                 sendToBackground({
                     type: "article",
@@ -797,7 +800,10 @@ function captureFeishuChat() {
         // 策略2（兜底）：DOM 直接提取当前可见消息
         showToast("尝试从页面提取聊天记录…", "loading", null);
         const domData = extractFeishuChatFromDOM(document);
-        if (domData && domData.article_content && domData.article_content.length >= 20) {
+        const domContent = domData?.article_content?.trim() || "";
+        const domHasMessages = domContent.length > 0
+            && (/\*\*[^*]+\*\*/.test(domContent) || domContent.split("\n").filter(l => l.trim()).length >= 2);
+        if (domData && domHasMessages) {
             debugLog(" Feishu Chat（DOM 提取）");
             showToast("正在保存聊天记录…", "loading", null);
             sendToBackground(domData);
@@ -808,7 +814,10 @@ function captureFeishuChat() {
         console.error("[x2md] Feishu Chat 提取出错：", err);
         // 最后兜底尝试 DOM
         const domData = extractFeishuChatFromDOM(document);
-        if (domData && domData.article_content && domData.article_content.length >= 20) {
+        const domContent = domData?.article_content?.trim() || "";
+        const domHasMessages = domContent.length > 0
+            && (/\*\*[^*]+\*\*/.test(domContent) || domContent.split("\n").filter(l => l.trim()).length >= 2);
+        if (domData && domHasMessages) {
             showToast("正在保存聊天记录…", "loading", null);
             sendToBackground(domData);
         } else {
@@ -1198,20 +1207,23 @@ function ensureFloatingCopyButton() {
 }
 
 let _copyInProgress = false;
+const COPY_LOCK_TIMEOUT = 30000; // 30秒超时自动释放锁，防止异常导致永久锁死
+let _copyLockTimer = null;
 
 async function handleCopyFullContent() {
     if (_copyInProgress) return; // 防止重复点击
     _copyInProgress = true;
+    clearTimeout(_copyLockTimer);
+    _copyLockTimer = setTimeout(() => { _copyInProgress = false; }, COPY_LOCK_TIMEOUT);
 
+    try {
     const pageType = detectFeishuPageType(location);
-    if (!pageType) { _copyInProgress = false; return; }
+    if (!pageType) return;
 
     // 解除复制保护
     neutralizeFeishuCopyProtection(document);
 
     showToast("正在提取全部内容…", "loading", null);
-
-    try {
         let markdown = "";
         const pageUrl = location.href;
         const options = { pageUrl };
@@ -1268,7 +1280,6 @@ async function handleCopyFullContent() {
 
         if (!markdown || markdown.length < 20) {
             showToast("内容提取失败，请稍后重试", "error", 4000);
-            _copyInProgress = false;
             return;
         }
 
@@ -1288,6 +1299,7 @@ async function handleCopyFullContent() {
         showToast("复制失败：" + (err.message || "未知错误"), "error", 4000);
     } finally {
         _copyInProgress = false;
+        clearTimeout(_copyLockTimer);
     }
 }
 
@@ -1379,19 +1391,18 @@ function bindAllDebounced() {
 }
 
 // Discourse 点赞按钮：单击 = 保存到 OB（拦截点赞），双击 = 正常点赞（不保存）
-let _likeClickCount = 0;
-let _likeClickTimer = null;
-let _likeClickBtn = null;
-let _likePassThrough = false; // 标记：放行重放的点击，防止循环拦截
+// 使用 per-post 追踪代替全局标志，避免多帖子并发操作时标志竞态
+const _likePassThroughSet = new WeakSet(); // 记录正在放行的按钮
+const _likePendingClicks = new WeakMap();  // btn → { count, timer }
 
 document.addEventListener("click", (event) => {
     if (!isDiscourseTopicPage()) return;
     const btn = event.target?.closest?.(LINUX_DO_LIKE_SELECTOR);
     if (!btn) return;
 
-    // 放行标记：双击重放的点击不拦截
-    if (_likePassThrough) {
-        _likePassThrough = false;
+    // 放行标记：双击重放的点击不拦截（per-button）
+    if (_likePassThroughSet.has(btn)) {
+        _likePassThroughSet.delete(btn);
         return;
     }
 
@@ -1399,23 +1410,25 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
 
-    _likeClickCount++;
-    _likeClickBtn = btn;
+    let pending = _likePendingClicks.get(btn);
+    if (!pending) {
+        pending = { count: 0, timer: null };
+        _likePendingClicks.set(btn, pending);
+    }
+    pending.count++;
 
-    clearTimeout(_likeClickTimer);
-    _likeClickTimer = setTimeout(() => {
-        const clicks = _likeClickCount;
-        const targetBtn = _likeClickBtn;
-        _likeClickCount = 0;
-        _likeClickBtn = null;
+    clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+        const clicks = pending.count;
+        _likePendingClicks.delete(btn);
 
         if (clicks >= 2) {
             // 双击：恢复点赞，不保存
-            _likePassThrough = true;
-            targetBtn.click();
+            _likePassThroughSet.add(btn);
+            btn.click();
         } else {
             // 单击：保存到 OB，不点赞
-            captureLinuxDoPost(targetBtn);
+            captureLinuxDoPost(btn);
         }
     }, 300);
 }, true);

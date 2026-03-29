@@ -1022,6 +1022,7 @@
         }
         if (!chatTitle) {
             chatTitle = String(doc.title || "").replace(/\s*-\s*飞书.*$/, "").trim() || "飞书聊天记录";
+            console.debug("[x2md] Feishu Chat: 所有标题选择器均未命中，使用 document.title 兜底：" + chatTitle);
         }
 
         // 尝试多种消息容器选择器
@@ -1045,7 +1046,16 @@
             }
         }
 
-        if (messageElements.length === 0) return null;
+        if (messageElements.length === 0) {
+            // 所有消息选择器均未命中，记录诊断信息帮助排查飞书 DOM 变更
+            console.warn("[x2md] Feishu Chat DOM 提取失败：所有消息选择器均未命中。" +
+                "飞书可能已更新 DOM 结构。页面包含的 class 属性样本：",
+                Array.from(doc.querySelectorAll("[class]")).slice(0, 30).map(
+                    function(el) { return el.tagName.toLowerCase() + "." + el.className.split(/\s+/).slice(0, 3).join("."); }
+                )
+            );
+            return null;
+        }
 
         // 从每个消息元素中提取信息
         var contentParts = [];
@@ -1110,7 +1120,11 @@
             contentParts.push(line);
         }
 
-        if (contentParts.length === 0) return null;
+        if (contentParts.length === 0) {
+            console.warn("[x2md] Feishu Chat DOM 提取：找到 " + messageElements.length +
+                " 个消息元素，但未能从中提取到有效文本内容。内容选择器可能需要更新。");
+            return null;
+        }
 
         return {
             type: "article",
@@ -1184,27 +1198,57 @@
                             chatId = params.get("chatId") || params.get("chat_id") || params.get("id") || "";
                         }
 
-                        // 尝试从页面全局状态获取
-                        if (!chatId && window.__INITIAL_STATE__) {
-                            var state = window.__INITIAL_STATE__;
-                            chatId = state.chatId || state.chat_id || (state.chat && state.chat.id) || "";
+                        // 尝试从页面全局状态获取（多种可能的全局变量名）
+                        if (!chatId) {
+                            var stateObjects = [
+                                window.__INITIAL_STATE__,
+                                window.__STORE__?.getState?.(),
+                                window.__NEXT_DATA__?.props?.pageProps,
+                            ].filter(Boolean);
+                            for (var si = 0; si < stateObjects.length && !chatId; si++) {
+                                var state = stateObjects[si];
+                                chatId = state.chatId || state.chat_id
+                                    || (state.chat && (state.chat.id || state.chat.chatId))
+                                    || (state.im && (state.im.chatId || state.im.currentChatId))
+                                    || "";
+                            }
                         }
 
-                        // 尝试从 React fiber 获取
+                        // 尝试从 DOM 数据属性提取
+                        if (!chatId) {
+                            var chatEl = document.querySelector("[data-chat-id], [data-chatid], [data-container-id]");
+                            if (chatEl) {
+                                chatId = chatEl.getAttribute("data-chat-id")
+                                    || chatEl.getAttribute("data-chatid")
+                                    || chatEl.getAttribute("data-container-id")
+                                    || "";
+                            }
+                        }
+
+                        // 尝试从 React fiber 获取（兼容 React 16/17/18）
                         if (!chatId) {
                             var appRoot = document.querySelector("#root, #app, [id*='messenger']");
-                            if (appRoot && appRoot._reactRootContainer) {
+                            if (appRoot) {
                                 try {
-                                    var fiber = appRoot._reactRootContainer._internalRoot?.current;
-                                    // 遍历 fiber tree 找 chatId（简化版）
-                                    var queue = [fiber];
-                                    for (var qi = 0; qi < queue.length && qi < 200; qi++) {
-                                        var f = queue[qi];
-                                        if (!f) continue;
-                                        if (f.memoizedProps?.chatId) { chatId = f.memoizedProps.chatId; break; }
-                                        if (f.memoizedState?.chatId) { chatId = f.memoizedState.chatId; break; }
-                                        if (f.child) queue.push(f.child);
-                                        if (f.sibling) queue.push(f.sibling);
+                                    // React 16/17: _reactRootContainer; React 18: __reactFiber$xxx
+                                    var fiber = null;
+                                    if (appRoot._reactRootContainer) {
+                                        fiber = appRoot._reactRootContainer._internalRoot?.current;
+                                    } else {
+                                        var fiberKey = Object.keys(appRoot).find(function(k) { return k.startsWith("__reactFiber$"); });
+                                        if (fiberKey) fiber = appRoot[fiberKey];
+                                    }
+                                    if (fiber) {
+                                        var queue = [fiber];
+                                        for (var qi = 0; qi < queue.length && qi < 300; qi++) {
+                                            var f = queue[qi];
+                                            if (!f) continue;
+                                            var fChatId = f.memoizedProps?.chatId || f.memoizedProps?.chat_id
+                                                || f.memoizedState?.chatId || f.memoizedState?.chat_id;
+                                            if (fChatId) { chatId = fChatId; break; }
+                                            if (f.child) queue.push(f.child);
+                                            if (f.sibling) queue.push(f.sibling);
+                                        }
                                     }
                                 } catch(e) {}
                             }
@@ -1320,5 +1364,6 @@
         module.exports = exported;
     }
 
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -58,24 +58,47 @@
      * @returns {string} GFM markdown table 字符串
      */
     function convertTableToGfm(tableNode, cellConverter, options) {
-        const rows = [];
-        for (const tr of tableNode.querySelectorAll?.("tr") || []) {
-            const cells = [];
-            for (const cell of tr.querySelectorAll?.("td, th") || []) {
-                // 转换单元格内容，去除换行并转义管道符
-                cells.push(
-                    cellConverter(cell, options)
-                        .replace(/\n/g, " ")
-                        .replace(/\|/g, "\\|")
-                        .trim()
-                );
+        // 处理 colspan/rowspan：GFM 不支持合并单元格，展开为重复列/行
+        const trList = tableNode.querySelectorAll?.("tr") || [];
+        // 先构建一个二维网格，处理 rowspan 占位
+        const grid = [];
+        const rowspanTracker = []; // rowspanTracker[col] = { text, remaining }
+        for (const tr of trList) {
+            const row = [];
+            let colIdx = 0;
+            const cellList = tr.querySelectorAll?.("td, th") || [];
+            let cellPos = 0;
+            while (cellPos < cellList.length || (rowspanTracker[colIdx] && rowspanTracker[colIdx].remaining > 0)) {
+                // 先填充 rowspan 占位
+                if (rowspanTracker[colIdx] && rowspanTracker[colIdx].remaining > 0) {
+                    row.push(rowspanTracker[colIdx].text);
+                    rowspanTracker[colIdx].remaining--;
+                    colIdx++;
+                    continue;
+                }
+                if (cellPos >= cellList.length) break;
+                const cell = cellList[cellPos];
+                const text = cellConverter(cell, options)
+                    .replace(/\n/g, " ")
+                    .replace(/\|/g, "\\|")
+                    .trim();
+                const colspan = Math.max(1, parseInt(cell.getAttribute("colspan")) || 1);
+                const rowspan = Math.max(1, parseInt(cell.getAttribute("rowspan")) || 1);
+                for (let c = 0; c < colspan; c++) {
+                    row.push(text);
+                    if (rowspan > 1) {
+                        rowspanTracker[colIdx] = { text, remaining: rowspan - 1 };
+                    }
+                    colIdx++;
+                }
+                cellPos++;
             }
-            if (cells.length) rows.push(cells);
+            if (row.length) grid.push(row);
         }
-        if (!rows.length) return "";
-        const colCount = Math.max(...rows.map(r => r.length));
+        if (!grid.length) return "";
+        const colCount = Math.max(...grid.map(r => r.length));
         const lines = [];
-        rows.forEach((row, i) => {
+        grid.forEach((row, i) => {
             while (row.length < colCount) row.push("");
             lines.push("| " + row.join(" | ") + " |");
             if (i === 0) lines.push("| " + Array(colCount).fill("---").join(" | ") + " |");
@@ -138,5 +161,7 @@
         module.exports = exported;
     }
 
+    // 命名空间挂载，避免全局污染；同时保持向后兼容（直接访问函数名）
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);

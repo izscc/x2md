@@ -5,12 +5,15 @@
         return config.show_site_save_icon !== false;
     }
 
-    // 可配置 Discourse 域名列表，运行时从配置注入
-    let _siteDiscourseDomains = ["linux.do"];
+    // 复用 discourse.js 的域名列表，避免双份存储不同步
+    // getDiscourseDomains 由 discourse.js 通过全局/X2MD 导出
+    function _getDiscourseDomainsList() {
+        return (globalScope.X2MD?.getDiscourseDomains || globalScope.getDiscourseDomains || (() => ["linux.do"]))();
+    }
+    // 保留向后兼容（调用方可能仍调用此函数），但实际更新 discourse.js 的存储
     function setSiteDiscourseDomains(domains) {
-        if (Array.isArray(domains) && domains.length > 0) {
-            _siteDiscourseDomains = domains.map(d => d.toLowerCase().trim()).filter(Boolean);
-        }
+        const setter = globalScope.X2MD?.setDiscourseDomains || globalScope.setDiscourseDomains;
+        if (typeof setter === "function") setter(domains);
     }
 
     function detectFloatingSaveSite(locationLike = globalScope.location) {
@@ -18,7 +21,7 @@
         const pathname = String(locationLike?.pathname || "");
 
         // 检查所有已配置的 Discourse 域名（包括 linux.do 和自定义域名）
-        if (_siteDiscourseDomains.includes(hostname) && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname)) {
+        if (_getDiscourseDomainsList().includes(hostname) && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname)) {
             return hostname === "linux.do" ? "linux_do" : "discourse";
         }
 
@@ -102,5 +105,6 @@
         module.exports = exported;
     }
 
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);
