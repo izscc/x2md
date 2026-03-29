@@ -344,7 +344,7 @@
             article_content: articleContent,
             images: [],
             videos: [],
-            platform: "WeChat",
+            platform: "微信公众号",
         };
     }
 

@@ -349,7 +349,7 @@
 
     function getDiscoursePlatformName() {
         const host = String(globalScope.location?.hostname || "").toLowerCase();
-        if (host === "linux.do") return "LinuxDo";
+        if (host === "linux.do") return "LINUX DO";
         // 其他 Discourse 站点用域名作为平台名
         return host.replace(/\./g, "_") || "Discourse";
     }

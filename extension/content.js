@@ -722,7 +722,7 @@ function captureFeishuDocument() {
             article_content: articleContent,
             images: [],
             videos: [],
-            platform: "Feishu",
+            platform: "飞书",
         };
 
         showToast("正在保存飞书文档…", "loading", null);

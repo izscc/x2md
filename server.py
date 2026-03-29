@@ -265,27 +265,34 @@ def _guess_image_ext(url: str) -> str:
 
 
 def _normalize_publish_time(raw: str) -> str:
-    """将各平台不同格式的发布时间统一为 YYYY-MM-DD HH:MM 或 YYYY-MM-DD"""
+    """将各平台不同格式的发布时间统一为北京时间 YYYY-MM-DD HH:MM"""
     if not raw or not raw.strip():
         return ""
     raw = raw.strip()
+    from zoneinfo import ZoneInfo
+    beijing = ZoneInfo("Asia/Shanghai")
+
     # Twitter RFC 2822: "Wed Mar 25 10:00:00 +0000 2026"
     try:
         from email.utils import parsedate_to_datetime
         dt = parsedate_to_datetime(raw)
+        dt = dt.astimezone(beijing)
         return dt.strftime("%Y-%m-%d %H:%M")
     except Exception:
         pass
-    # ISO 8601 with timezone offset: "2026-03-25T10:00:00+08:00"
+    # ISO 8601 with timezone offset: "2026-03-25T10:00:00+08:00" / "...Z"
     try:
         dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        dt = dt.astimezone(beijing)
         return dt.strftime("%Y-%m-%d %H:%M")
     except (ValueError, AttributeError):
         pass
-    # 其他常见格式
+    # 其他常见格式（无时区信息，假定为 UTC）
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
-            dt = datetime.strptime(raw, fmt)
+            from datetime import timezone
+            dt = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(beijing)
             return dt.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             continue

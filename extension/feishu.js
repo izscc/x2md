@@ -166,7 +166,7 @@
             article_content: articleContent,
             images: [],
             videos: [],
-            platform: "Feishu",
+            platform: "飞书",
         };
     }
 
@@ -507,7 +507,7 @@
             article_content: articleContent,
             images: [],
             videos: [],
-            platform: "Feishu",
+            platform: "飞书",
         };
     }
 
