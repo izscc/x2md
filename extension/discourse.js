@@ -1,5 +1,14 @@
 (function (globalScope) {
     const LINUX_DO_HOST = "linux.do";
+    // 可配置 Discourse 域名列表，运行时从配置注入
+    let _discourseDomains = ["linux.do"];
+    function setDiscourseDomains(domains) {
+        if (Array.isArray(domains) && domains.length > 0) {
+            _discourseDomains = domains.map(d => d.toLowerCase().trim()).filter(Boolean);
+        }
+    }
+    function getDiscourseDomains() { return _discourseDomains; }
+
     const LINUX_DO_LIKE_SELECTOR = "button.btn-toggle-reaction-like.reaction-button";
     const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
     const BLOCK_TAGS = new Set(["p", "div", "section", "article", "blockquote", "ul", "ol", "li", "pre"]);
@@ -30,10 +39,15 @@
         }
     }
 
-    function isLinuxDoTopicPage(locationLike = globalScope.location) {
+    function isDiscourseTopicPage(locationLike = globalScope.location) {
         const hostname = String(locationLike?.hostname || "").toLowerCase();
         const pathname = String(locationLike?.pathname || "");
-        return hostname === LINUX_DO_HOST && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname);
+        return _discourseDomains.includes(hostname) && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname);
+    }
+
+    // 向后兼容别名
+    function isLinuxDoTopicPage(locationLike) {
+        return isDiscourseTopicPage(locationLike);
     }
 
     function buildLinuxDoPostTitle(topicTitle, postNumber, username) {
@@ -57,7 +71,7 @@
         return classList.includes("anchor") ||
             classList.includes("cooked-selection-barrier") ||
             classList.includes("codeblock-button-wrapper") ||
-            classList.includes("meta") && !!safeClosest(element, "a.lightbox") ||
+            (classList.includes("meta") && !!safeClosest(element, "a.lightbox")) ||
             tag === "svg" ||
             tag === "script" ||
             tag === "style";
@@ -89,6 +103,36 @@
 
         if (tag === "br") return "\n";
         if (tag === "hr") return "\n---\n";
+
+        // 视频标签 → iframe 或 Markdown 链接
+        if (tag === "video") {
+            const src = safeGetAttribute(node, "src") || node.querySelector?.("source")?.src || "";
+            if (src) {
+                const resolved = resolveLinuxDoUrl(src, options.pageUrl);
+                return `\n![video](${resolved})\n`;
+            }
+            return "";
+        }
+
+        // iframe 嵌入（YouTube / Bilibili / 其他）
+        if (tag === "iframe") {
+            const src = safeGetAttribute(node, "src") || "";
+            if (!src) return "";
+            const resolved = resolveLinuxDoUrl(src, options.pageUrl);
+            // YouTube
+            if (/youtube\.com\/embed\/|youtu\.be\//i.test(resolved)) {
+                const videoId = resolved.match(/(?:embed\/|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                if (videoId) {
+                    return `\n<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId[1]}" frameborder="0" allowfullscreen></iframe>\n`;
+                }
+            }
+            // Bilibili
+            if (/bilibili\.com\/(?:video|player)/i.test(resolved)) {
+                return `\n<iframe width="560" height="315" src="${resolved}" frameborder="0" allowfullscreen></iframe>\n`;
+            }
+            // 其他 iframe → 保留为链接
+            return `\n[嵌入内容](${resolved})\n`;
+        }
 
         if (tag === "pre") {
             let codeNode = null;
@@ -122,6 +166,31 @@
 
         // Discourse onebox 引用（aside.quote / aside.onebox）
         if (tag === "aside" && (classList.includes("quote") || classList.includes("onebox"))) {
+            // 检查 onebox 是否包含视频嵌入（YouTube/Bilibili）
+            if (classList.includes("onebox")) {
+                const iframeEl = node.querySelector?.("iframe");
+                if (iframeEl) {
+                    return convertLinuxDoNodeToMarkdown(iframeEl, options);
+                }
+                // 检查 data-onebox-src 或链接中的视频 URL
+                const oneboxSrc = safeGetAttribute(node, "data-onebox-src") || "";
+                const linkEl = node.querySelector?.("a[href]");
+                const linkHref = safeGetAttribute(linkEl, "href") || "";
+                const videoUrl = oneboxSrc || linkHref;
+                if (videoUrl && /youtube\.com\/watch|youtu\.be\/|bilibili\.com\/video/i.test(videoUrl)) {
+                    // YouTube watch URL → embed
+                    const ytMatch = videoUrl.match(/(?:watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                    if (ytMatch) {
+                        return `\n<iframe width="560" height="315" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen></iframe>\n`;
+                    }
+                    // Bilibili → embed
+                    const bvMatch = videoUrl.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/i);
+                    if (bvMatch) {
+                        return `\n<iframe width="560" height="315" src="https://player.bilibili.com/player.html?bvid=${bvMatch[1]}" frameborder="0" allowfullscreen></iframe>\n`;
+                    }
+                }
+            }
+
             const title = node.querySelector?.(".title, header");
             const titleText = title ? getNodeText(title).trim() : "";
             let inner = "";
@@ -135,26 +204,10 @@
             return "\n" + lines.map((l) => `> ${l}`).join("\n") + "\n";
         }
 
-        // Discourse 表格
+        // Discourse 表格（使用共享 GFM 转换函数）
         if (tag === "table") {
-            const rows = [];
-            for (const tr of node.querySelectorAll?.("tr") || []) {
-                const cells = [];
-                for (const cell of tr.querySelectorAll?.("td, th") || []) {
-                    cells.push(convertLinuxDoNodeToMarkdown(cell, options).replace(/\n/g, " ").trim());
-                }
-                if (cells.length) rows.push(cells);
-            }
-            if (rows.length) {
-                const colCount = Math.max(...rows.map(r => r.length));
-                const tableLines = [];
-                rows.forEach((row, i) => {
-                    while (row.length < colCount) row.push("");
-                    tableLines.push("| " + row.join(" | ") + " |");
-                    if (i === 0) tableLines.push("| " + Array(colCount).fill("---").join(" | ") + " |");
-                });
-                return "\n" + tableLines.join("\n") + "\n";
-            }
+            const result = convertTableToGfm(node, convertLinuxDoNodeToMarkdown, options);
+            if (result) return result;
         }
         if (tag === "tr" || tag === "td" || tag === "th" || tag === "thead" || tag === "tbody") {
             // 被 table handler 调用时单独处理
@@ -185,7 +238,7 @@
             const text = markdown.trim();
             if (!href || !text) return markdown;
             if (/!\[[^\]]*]\(/.test(text)) return markdown;
-            return `[${text}](${href})`;
+            return `[${escapeMdLinkText(text)}](${escapeMdLinkUrl(href)})`;
         }
 
         if ((tag === "strong" || tag === "b") && markdown.trim()) {
@@ -274,22 +327,112 @@
             article_content: articleContent,
             images: [],
             videos: [],
-            platform: "LINUX DO",
+            platform: getDiscoursePlatformName(),
         };
+    }
+
+    function getDiscoursePlatformName() {
+        const host = String(globalScope.location?.hostname || "").toLowerCase();
+        if (host === "linux.do") return "LINUX DO";
+        // 其他 Discourse 站点用域名作为平台名
+        return host.replace(/\./g, "_") || "Discourse";
+    }
+
+    function cookedHtmlToMarkdown(htmlString, pageUrl) {
+        // 使用 DOMParser 代替 innerHTML，避免直接执行脚本（安全加固）
+        let container;
+        if (typeof DOMParser !== "undefined") {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(`<div>${htmlString || ""}</div>`, "text/html");
+            container = doc.body.firstElementChild || doc.body;
+        } else {
+            // Node.js 测试环境等无 DOMParser 时的兜底
+            const div = document.createElement("div");
+            div.innerHTML = htmlString || "";
+            container = div;
+        }
+        return extractLinuxDoMarkdown(container, { pageUrl: pageUrl || "" });
+    }
+
+    async function fetchDiscourseReplies(topicId, hostname) {
+        const host = hostname || globalScope.location?.hostname || "linux.do";
+        const baseUrl = `https://${host}`;
+        const resp = await fetch(`${baseUrl}/t/${topicId}.json`, {
+            signal: AbortSignal.timeout(15000),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        // 第一批帖子（topic JSON 默认返回约20条）
+        const firstPosts = data.post_stream?.posts || [];
+        const allPostIds = data.post_stream?.stream || [];
+        const loadedIds = new Set(firstPosts.map(p => p.id));
+
+        // 分页获取剩余帖子（每批最多20个 post_id）
+        const missingIds = allPostIds.filter(id => !loadedIds.has(id));
+        const PAGE_SIZE = 20;
+        const extraPosts = [];
+        for (let i = 0; i < missingIds.length; i += PAGE_SIZE) {
+            const batch = missingIds.slice(i, i + PAGE_SIZE);
+            const params = batch.map(id => `post_ids[]=${id}`).join("&");
+            try {
+                const batchResp = await fetch(`${baseUrl}/t/${topicId}/posts.json?${params}`, {
+                    signal: AbortSignal.timeout(10000),
+                });
+                if (batchResp.ok) {
+                    const batchData = await batchResp.json();
+                    const batchPosts = batchData.post_stream?.posts || batchData.posts || [];
+                    extraPosts.push(...batchPosts);
+                }
+            } catch (e) {
+                console.warn(`[x2md] Discourse 分页获取失败 (batch ${i / PAGE_SIZE + 1}):`, e.message);
+                break; // 网络问题时停止继续获取，返回已有数据
+            }
+        }
+
+        const allPosts = [...firstPosts, ...extraPosts];
+        // posts[0] 是主帖，posts[1:] 是回复（按 post_number 排序）
+        allPosts.sort((a, b) => (a.post_number || 0) - (b.post_number || 0));
+        const replies = allPosts.slice(1).map(p => ({
+            floor: p.post_number,
+            author: p.username || "匿名",
+            content: cookedHtmlToMarkdown(p.cooked || "", `${baseUrl}/t/${topicId}`),
+            published: p.created_at || "",
+            likes: p.like_count || 0,
+            reply_to: p.reply_to_post_number || null,
+        }));
+        // 返回结构化对象，而非在数组上挂属性
+        return {
+            replies,
+            topicTags: Array.isArray(data.tags) ? data.tags : [],
+        };
+    }
+
+    // 向后兼容别名（默认使用 linux.do 作为 hostname）
+    function fetchLinuxDoReplies(topicId, hostname) {
+        return fetchDiscourseReplies(topicId, hostname || "linux.do");
     }
 
     const exported = {
         LINUX_DO_LIKE_SELECTOR,
         buildLinuxDoPostTitle,
         cleanLinuxDoPostUrl,
+        cookedHtmlToMarkdown,
         extractLinuxDoMarkdown,
         extractLinuxDoPostData,
+        fetchLinuxDoReplies,
+        fetchDiscourseReplies,
         isLinuxDoTopicPage,
+        isDiscourseTopicPage,
+        setDiscourseDomains,
+        getDiscourseDomains,
+        getDiscoursePlatformName,
     };
 
     if (typeof module !== "undefined" && module.exports) {
         module.exports = exported;
     }
 
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);

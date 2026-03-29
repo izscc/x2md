@@ -90,11 +90,39 @@
         const tag = getTagName(node);
         const classList = getClassList(node);
 
-        // 视频占位
+        // 语音消息
         if (tag === "mpvoice" || classList.includes("voice_player_inner")) {
             return "\n> [语音消息]\n";
         }
-        if (classList.includes("video_iframe") || tag === "iframe" && String(node.src || "").includes("v.qq.com")) {
+
+        // 视频号 / 内嵌视频：提取实际 URL 用于下载
+        if (tag === "mpvideosnap" || tag === "mp-common-videosnap" ||
+            classList.includes("video_channel") || classList.includes("channels_iframe")) {
+            const videoUrl = safeGetAttribute(node, "data-url") ||
+                safeGetAttribute(node, "data-src") ||
+                safeGetAttribute(node, "data-videourl") || "";
+            const desc = safeGetAttribute(node, "data-desc") ||
+                safeGetAttribute(node, "data-nickname") || "视频号视频";
+            if (videoUrl) {
+                // 用占位符，server 端会处理下载
+                return `\n[MEDIA_VIDEO_URL:${videoUrl}]\n`;
+            }
+            return `\n> [视频号: ${desc}]\n`;
+        }
+        if (classList.includes("video_iframe") || (tag === "iframe" && String(node.src || "").includes("v.qq.com"))) {
+            const src = safeGetAttribute(node, "data-src") || node.src || "";
+            if (src && src.startsWith("http")) {
+                return `\n[MEDIA_VIDEO_URL:${src}]\n`;
+            }
+            return "\n> [视频]\n";
+        }
+        // 微信原生 video 标签
+        if (tag === "video") {
+            const src = safeGetAttribute(node, "data-src") || node.src ||
+                safeGetAttribute(node, "src") || "";
+            if (src && src.startsWith("http")) {
+                return `\n[MEDIA_VIDEO_URL:${src}]\n`;
+            }
             return "\n> [视频]\n";
         }
         if (classList.includes("weapp_display_element") || classList.includes("weapp_text_link")) {
@@ -170,7 +198,7 @@
             if (text.includes("![](")) return text;
             // 微信内部跳转链接转为绝对路径
             const absHref = href.startsWith("/") ? `https://mp.weixin.qq.com${href}` : href;
-            return `[${text}](${absHref})`;
+            return `[${escapeMdLinkText(text)}](${escapeMdLinkUrl(absHref)})`;
         }
 
         // 加粗
@@ -226,26 +254,10 @@
             }
         }
 
-        // 表格处理：转换为 GFM pipe table
+        // 表格处理：转换为 GFM pipe table（使用共享函数）
         if (tag === "table") {
-            const rows = [];
-            for (const tr of node.querySelectorAll?.("tr") || []) {
-                const cells = [];
-                for (const cell of tr.querySelectorAll?.("td, th") || []) {
-                    cells.push(convertWechatNodeToMarkdown(cell, options).replace(/\n/g, " ").trim());
-                }
-                if (cells.length) rows.push(cells);
-            }
-            if (rows.length) {
-                const colCount = Math.max(...rows.map(r => r.length));
-                const lines = [];
-                rows.forEach((row, i) => {
-                    while (row.length < colCount) row.push("");
-                    lines.push("| " + row.join(" | ") + " |");
-                    if (i === 0) lines.push("| " + Array(colCount).fill("---").join(" | ") + " |");
-                });
-                return "\n" + lines.join("\n") + "\n";
-            }
+            const result = convertTableToGfm(node, convertWechatNodeToMarkdown, options);
+            if (result) return result;
         }
         if (tag === "tr" || tag === "td" || tag === "th" || tag === "thead" || tag === "tbody") {
             return markdown;
@@ -322,16 +334,173 @@
         return "";
     }
 
+    function extractWechatVideos(doc = document) {
+        const videos = [];
+        const seen = new Set();
+        // 视频号元素
+        const videoEls = doc.querySelectorAll?.(
+            "mpvideosnap, mp-common-videosnap, .video_channel, .channels_iframe, " +
+            ".video_iframe iframe, video, iframe[src*='v.qq.com'], iframe[src*='channels']"
+        ) || [];
+        for (const el of videoEls) {
+            const url = safeGetAttribute(el, "data-url") || safeGetAttribute(el, "data-src") ||
+                safeGetAttribute(el, "data-videourl") || el.src || "";
+            if (url && url.startsWith("http") && !seen.has(url)) {
+                seen.add(url);
+                videos.push(url);
+            }
+        }
+        // 从页面脚本中提取视频 URL（微信经常在 script 里放视频地址）
+        const scripts = doc.querySelectorAll?.("script") || [];
+        for (const script of scripts) {
+            const text = script.textContent || "";
+            const matches = text.matchAll(/(?:video_src|mpvideo_src|url_info\.url)\s*[:=]\s*["']([^"']+\.mp4[^"']*)/gi);
+            for (const m of matches) {
+                let vUrl = m[1].replace(/\\x26/g, "&").replace(/&amp;/g, "&");
+                if (vUrl.startsWith("http") && !seen.has(vUrl)) {
+                    seen.add(vUrl);
+                    videos.push(vUrl);
+                }
+            }
+        }
+        return videos;
+    }
+
+    function detectWechatPaywall(doc = document) {
+        // 付费文章检测
+        const payBar = doc.querySelector?.("#js_pay_bar, .pay_content_area, .pay_tips_area, .js_pay_preview_wap");
+        const payBtn = doc.querySelector?.(".js_pay_btn, .pay_btn, .weui-btn[data-type='pay']");
+        return !!(payBar || payBtn);
+    }
+
+    /**
+     * 尝试移除微信付费文章的遮罩层，暴露完整内容。
+     * 付费文章通过 CSS 隐藏/截断内容区域并覆盖付费提示遮罩。
+     * 此函数移除这些限制，让已加载到 DOM 中的完整内容可见并可提取。
+     */
+    function removeWechatPaywall(doc = document) {
+        // 1. 移除付费遮罩层（覆盖在内容区上方的半透明渐变遮罩）
+        const overlaySelectors = [
+            "#js_pay_bar",
+            ".pay_content_area",
+            ".pay_tips_area",
+            ".js_pay_preview_wap",
+            ".pay_wall_wrap",
+            ".pay-wall__content",
+            ".pay_wall_mask",        // 渐变遮罩
+            ".pay_content_mask",     // 内容遮罩
+            ".rich_media_pay_area",  // 付费区域包装
+        ];
+        overlaySelectors.forEach(sel => {
+            doc.querySelectorAll?.(sel).forEach(el => {
+                el.style.display = "none";
+                el.remove();
+            });
+        });
+
+        // 2. 移除内容区域的高度限制和 overflow:hidden
+        const contentArea = doc.querySelector?.("#js_content");
+        if (contentArea) {
+            contentArea.style.maxHeight = "none";
+            contentArea.style.height = "auto";
+            contentArea.style.overflow = "visible";
+            contentArea.style.webkitLineClamp = "unset";
+            contentArea.style.webkitBoxOrient = "unset";
+        }
+
+        // 3. 移除 #js_content_cutoff（微信用这个 div 标记截断位置）
+        const cutoff = doc.querySelector?.("#js_content_cutoff");
+        if (cutoff) {
+            cutoff.style.display = "none";
+            cutoff.remove();
+        }
+
+        // 4. 显示所有被 display:none 隐藏的付费内容区段
+        //    微信付费文章将付费内容 section 设为 display:none
+        const hiddenSections = doc.querySelectorAll?.("#js_content > section[style*='display'], #js_content > div[style*='display']") || [];
+        hiddenSections.forEach(section => {
+            if (section.style.display === "none") {
+                section.style.display = "";
+            }
+        });
+
+        // 5. 移除 .rich_media_area_extra 上的截断样式
+        const extraArea = doc.querySelector?.(".rich_media_area_extra");
+        if (extraArea) {
+            extraArea.style.maxHeight = "none";
+            extraArea.style.overflow = "visible";
+        }
+
+        // 6. 注入 CSS 覆盖微信的付费墙样式
+        const style = doc.createElement?.("style");
+        if (style) {
+            style.textContent = `
+                #js_content { max-height: none !important; overflow: visible !important; }
+                .pay_content_mask, .pay_wall_mask, #js_pay_bar, .pay_content_area,
+                .pay_tips_area, .js_pay_preview_wap, .pay_wall_wrap, .rich_media_pay_area {
+                    display: none !important;
+                }
+                #js_content > section, #js_content > div, #js_content > p {
+                    display: block !important;
+                    visibility: visible !important;
+                    opacity: 1 !important;
+                }
+            `;
+            (doc.head || doc.documentElement)?.appendChild(style);
+        }
+    }
+
     function extractWechatDocumentData(doc = document, options = {}) {
         const pageUrl = options.pageUrl || doc.location?.href || globalScope.location?.href || "";
         const root = doc.querySelector?.("#js_content");
         if (!root) return null;
 
+        const isPaid = detectWechatPaywall(doc);
+
+        // 付费文章：先尝试移除遮罩层，暴露完整内容
+        if (isPaid) {
+            removeWechatPaywall(doc);
+        }
+
         const articleContent = extractWechatMarkdown(root, { pageUrl });
-        if (!articleContent) return null;
+        if (!articleContent && !isPaid) return null;
 
         const title = extractWechatTitle(doc);
         const author = extractWechatAuthor(doc);
+
+        // 提取 og:article:tag 标签
+        const tags = [];
+        doc.querySelectorAll?.('meta[property="og:article:tag"], meta[property="article:tag"]').forEach(el => {
+            const tag = safeGetAttribute(el, "content");
+            if (tag && tag.trim()) tags.push(tag.trim());
+        });
+
+        // 提取图片 URL（用于飞书 Bitable 等需要独立图片列表的场景）
+        const images = [];
+        const imgSeen = new Set();
+        root.querySelectorAll?.("img").forEach(img => {
+            const src = safeGetAttribute(img, "data-src") || img.currentSrc || img.src || "";
+            const width = parseInt(safeGetAttribute(img, "data-w") || safeGetAttribute(img, "width") || "0", 10);
+            if (src && src.startsWith("http") && (width === 0 || width >= 20) && !imgSeen.has(src)) {
+                imgSeen.add(src);
+                images.push(resolveWechatImageUrl(src));
+            }
+        });
+
+        // 提取视频
+        const videos = extractWechatVideos(doc);
+
+        // 付费文章：标记标签，提示已尝试解除遮罩
+        let finalContent = articleContent || "";
+        if (isPaid) {
+            tags.push("付费文章");
+            if (!finalContent) {
+                finalContent = "> 这是一篇付费文章，遮罩层已移除但未提取到内容（内容可能需要服务端解密）。";
+            } else {
+                // 已移除遮罩并成功提取到内容，添加来源说明
+                finalContent = "> 本文为付费文章，已尝试移除遮罩层提取完整内容。\n\n" + finalContent;
+            }
+        }
 
         return {
             type: "article",
@@ -341,19 +510,23 @@
             author_url: "",
             published: extractWechatPublished(doc),
             article_title: title,
-            article_content: articleContent,
-            images: [],
-            videos: [],
-            platform: "WeChat",
+            article_content: finalContent,
+            images,
+            videos,
+            platform: "微信公众号",
+            tags,
         };
     }
 
     const exported = {
         cleanWechatUrl,
         convertWechatNodeToMarkdown,
+        detectWechatPaywall,
         extractWechatDocumentData,
         extractWechatMarkdown,
+        extractWechatVideos,
         isWechatArticlePage,
+        removeWechatPaywall,
         resolveWechatImageUrl,
     };
 
@@ -361,5 +534,6 @@
         module.exports = exported;
     }
 
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);

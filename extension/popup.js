@@ -11,16 +11,30 @@ chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
 chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
     if (chrome.runtime.lastError) { return; }
     const list = document.getElementById("path-list");
+    const hint = document.getElementById("status-hint");
     if (!resp || !resp.success) {
-        list.innerHTML = '<div class="path-item" style="color:#f4212e">无法读取配置</div>';
+        list.textContent = "";
+        const errDiv = document.createElement("div");
+        errDiv.className = "path-item";
+        errDiv.style.color = "#f4212e";
+        errDiv.textContent = "无法读取配置";
+        list.appendChild(errDiv);
         return;
+    }
+    // 动态更新端口显示
+    if (resp.config && resp.config.port && hint) {
+        hint.textContent = `localhost:${resp.config.port}`;
     }
     const paths = (resp.config && resp.config.save_paths) || [];
     if (!paths.length) {
-        list.innerHTML = '<div class="path-item">未配置保存路径</div>';
+        list.textContent = "";
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "path-item";
+        emptyDiv.textContent = "未配置保存路径";
+        list.appendChild(emptyDiv);
         return;
     }
-    list.innerHTML = "";
+    list.textContent = "";
     paths.forEach(p => {
         const div = document.createElement("div");
         div.className = "path-item";

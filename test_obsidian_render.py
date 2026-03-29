@@ -66,7 +66,7 @@ def test_fm_delimiters():
         "url": "https://x.com/test/status/1", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     lines = content.split("\n")
     assert lines[0] == "---", f"First line should be '---', got '{lines[0]}'"
     # 找第二个 ---
@@ -87,11 +87,11 @@ def test_fm_quotes():
         "url": "https://x.com/test/status/2", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     for line in content.split("\n"):
-        if line.startswith("title:"):
+        if line.startswith("标题:"):
             # 双引号包裹的 title 内部不应有未转义的双引号
-            val = line[len("title:"):].strip()
+            val = line[len("标题:"):].strip()
             # val 应该是 "'He said 'hello' to me'"
             assert val.startswith('"') and val.endswith('"'), f"title not quoted: {val}"
             inner = val[1:-1]
@@ -108,9 +108,9 @@ def test_fm_no_newline():
         "url": "https://x.com/test/status/3", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     for line in content.split("\n"):
-        if line.startswith("title:"):
+        if line.startswith("标题:"):
             assert "\n" not in line.strip(), "Title contains newline"
             break
 test_fm_no_newline()
@@ -123,8 +123,8 @@ def test_fm_all_fields():
         "url": "https://x.com/tester/status/4", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
-    required = ['title:', '源:', '作者主页:', '创建时间:', '发布时间:', '平台:', '类别:', '阅读状态:', '整理:']
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    required = ['标题:', 'tags:', '源:', '作者主页:', '创建时间:', '发布时间:', '平台:', '类别:', '阅读状态:', '整理:']
     for field in required:
         assert field in content, f"Missing: {field}"
 test_fm_all_fields()
@@ -137,7 +137,7 @@ def test_fm_wikilink():
         "url": "https://x.com/a/status/5", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert '类别: "[[剪报]]"' in content, "类别 should use [[wiki-link]]"
 test_fm_wikilink()
 
@@ -149,7 +149,7 @@ def test_fm_booleans():
         "url": "https://x.com/a/status/6", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "阅读状态: false" in content, "阅读状态 should be boolean false"
     assert "整理: false" in content, "整理 should be boolean false"
 test_fm_booleans()
@@ -170,7 +170,7 @@ def test_twitter_tweet():
         "images": ["https://pbs.twimg.com/media/abc.jpg?name=small"],
         "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert '平台: "Twitter/X"' in content
     assert "**test**" in content, "Bold should be preserved"
     assert "![1](https://pbs.twimg.com/media/abc.jpg?name=orig)" in content, \
@@ -188,8 +188,8 @@ def test_twitter_local_img():
         "images": ["https://pbs.twimg.com/media/xyz.jpg"],
         "videos": [],
     }
-    _, content, tasks = server.build_markdown(data, CFG_WITH_DOWNLOAD)
-    assert "assets/" in content, "Should reference local path"
+    _, content, tasks, _ = server.build_markdown(data, CFG_WITH_DOWNLOAD)
+    assert "![[" in content, "Should use Obsidian wiki-link format"
     assert len(tasks) >= 1, "Should have image download task"
     assert tasks[0][0].endswith("name=orig"), "Download URL should be normalized"
 test_twitter_local_img()
@@ -207,8 +207,8 @@ def test_x_article():
         "article_content": "# Introduction\n\nThis is a long article.\n\n## Section 2\n\nMore content here.",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
-    assert 'title: "My Amazing Article"' in content, "Article title in FM"
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    assert '标题: "My Amazing Article"' in content, "Article title in FM"
     assert "# Introduction" in content, "H1 preserved"
     assert "## Section 2" in content, "H2 preserved"
     assert "This is a long article." in content
@@ -227,8 +227,8 @@ def test_article_images():
         "article_content": "Intro\n\n![pic](https://pbs.twimg.com/media/test.jpg)\n\nEnd",
         "images": [], "videos": [],
     }
-    _, content, tasks = server.build_markdown(data, CFG_WITH_DOWNLOAD)
-    assert "assets/" in content, "Inline image should be localized"
+    _, content, tasks, _ = server.build_markdown(data, CFG_WITH_DOWNLOAD)
+    assert "![[" in content, "Inline image should be localized as wiki-link"
     assert len(tasks) >= 1, "Should have image task"
 test_article_images()
 
@@ -243,7 +243,7 @@ def test_linuxdo():
         "images": ["https://linux.do/uploads/default/abc.png"],
         "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert '平台: "LinuxDo"' in content
     assert "**加粗文字**" in content
     assert "![1](https://linux.do/uploads/default/abc.png)" in content
@@ -263,7 +263,7 @@ def test_feishu():
         "images": [], "videos": [],
         "author_url": "",
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert '平台: "Feishu"' in content
     assert '飞书知识库文档标题' in content
     assert "# 第一章" in content
@@ -285,12 +285,12 @@ def test_wechat():
         "images": [], "videos": [],
         "author_url": "",
     }
-    _, content, tasks = server.build_markdown(data, CFG_WITH_DOWNLOAD)
+    _, content, tasks, _ = server.build_markdown(data, CFG_WITH_DOWNLOAD)
     assert '平台: "WeChat"' in content
     assert "正文段落" in content
     assert "> 引用内容" in content
-    # 图片应被本地化
-    assert "assets/" in content
+    # 图片应被本地化为 wiki-link 格式
+    assert "![[" in content
 test_wechat()
 
 
@@ -308,7 +308,7 @@ def test_video_link():
         "platform": "Twitter/X",
         "images": [], "videos": ["https://video.twimg.com/ext/abc.mp4"],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "[视频：点击播放](https://video.twimg.com/ext/abc.mp4)" in content
 test_video_link()
 
@@ -323,9 +323,9 @@ def test_video_download():
         "images": [], "videos": ["https://video.twimg.com/ext/def.mp4"],
         "download_video": True,
     }
-    _, content, tasks = server.build_markdown(data, CFG_NO_DOWNLOAD)
-    assert "assets/" in content, "Video should reference local path"
-    assert any("video" in t[2] for t in tasks), "Should have video download task"
+    _, content, _, vid_tasks = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    assert "![[" in content, "Video should use wiki-link format for local path"
+    assert any("video" in t[2] for t in vid_tasks), "Should have video download task"
 test_video_download()
 
 
@@ -339,7 +339,7 @@ def test_video_placeholder():
         "platform": "Twitter/X",
         "images": [], "videos": [vid_url],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "[MEDIA_VIDEO_URL:" not in content, \
         f"Placeholder should be replaced everywhere (including title)"
     assert vid_url in content, "Video URL should appear in content"
@@ -373,7 +373,7 @@ def test_thread():
             },
         ],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "Thread start" in content
     assert "---" in content, "Thread should have separator"
     assert "Second tweet" in content
@@ -395,7 +395,7 @@ def test_thread_empty_text():
             {"text": "", "images": [], "videos": []},  # 完全为空应跳过
         ],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "only.jpg" in content
 test_thread_empty_text()
 
@@ -415,13 +415,13 @@ def test_no_overwrite():
         "url": "https://x.com/dup/status/600", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    fn, c1, _ = server.build_markdown(data, cfg)
+    fn, c1, _, _ = server.build_markdown(data, cfg)
     fp1 = os.path.join(d, fn + ".md")
     with open(fp1, "w", encoding="utf-8") as f:
         f.write(c1)
 
     data["text"] = "Second"
-    fn2, c2, _ = server.build_markdown(data, cfg)
+    fn2, c2, _, _ = server.build_markdown(data, cfg)
     fp2 = os.path.join(d, fn2 + ".md")
     if os.path.exists(fp2):
         ts = datetime.now().strftime("%H%M%S")
@@ -527,7 +527,7 @@ def test_ob_blank_line():
         "url": "https://x.com/a/status/700", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     # 找到 FM 结束的 ---
     lines = content.split("\n")
     fm_end_idx = None
@@ -549,7 +549,7 @@ def test_ob_image_format():
         "images": ["https://pbs.twimg.com/media/test.jpg"],
         "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     # Obsidian 标准 Markdown 图片格式: ![alt](url)
     img_pattern = re.compile(r'!\[.*?\]\(.+?\)')
     assert img_pattern.search(content), "No valid image reference found"
@@ -564,12 +564,9 @@ def test_ob_local_path():
         "images": ["https://pbs.twimg.com/media/local.jpg"],
         "videos": [],
     }
-    _, content, tasks = server.build_markdown(data, CFG_WITH_DOWNLOAD)
-    # Obsidian 本地引用不应有 ./
-    assert "./" not in content or "://" in content.split("./")[0][-10:], \
-        "Local path should not start with ./"
-    # 应该直接是 assets/filename
-    assert re.search(r'!\[.*?\]\(assets/', content), "Should use assets/ relative path"
+    _, content, tasks, _ = server.build_markdown(data, CFG_WITH_DOWNLOAD)
+    # Obsidian 本地引用使用 wiki-link 格式 ![[filename]]
+    assert "![[" in content, "Should use Obsidian wiki-link format ![[filename]]"
 test_ob_local_path()
 
 
@@ -580,7 +577,7 @@ def test_ob_tags_array():
         "url": "https://x.com/a/status/703", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "tags: []" in content, "tags should be empty array"
 test_ob_tags_array()
 
@@ -597,7 +594,7 @@ def test_ob_multiline_images():
         ],
         "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     # 每张图片应该在自己的行上
     img_lines = [l for l in content.split("\n") if l.startswith("![")]
     assert len(img_lines) == 3, f"Expected 3 image lines, got {len(img_lines)}"
@@ -612,7 +609,7 @@ def test_ob_markdown_preserved():
         "url": "https://x.com/a/status/705", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "**bold**" in content
     assert "*italic*" in content
     assert "`code`" in content
@@ -629,7 +626,7 @@ def test_ob_code_block():
         "article_content": "Intro\n\n```python\ndef hello():\n    print('world')\n```\n\nEnd",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "```python" in content
     assert "def hello():" in content
     assert "```" in content
@@ -649,7 +646,7 @@ def test_ob_feishu_type():
         "images": [], "videos": [],
         "author_url": "",
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     # article 模式下正文应直接输出 article_content
     assert "# 标题" in content
     assert "正文" in content
@@ -720,7 +717,7 @@ def test_empty_tweet():
         "url": "https://x.com/e/status/900", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    fn, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    fn, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert fn, "Filename should not be empty"
     assert "---" in content, "FM should still exist"
 test_empty_tweet()
@@ -734,7 +731,7 @@ def test_long_text():
         "url": "https://x.com/l/status/901", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    fn, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    fn, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert long_text in content, "Full text should be preserved"
     assert len(fn) <= 60, f"Filename too long: {len(fn)}"
 test_long_text()
@@ -749,7 +746,7 @@ def test_special_url():
         "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert "?ref=abc&lang=zh" in content, "URL should preserve query params"
 test_special_url()
 
@@ -762,7 +759,7 @@ def test_no_published():
         "images": [], "videos": [],
         "published": "",
     }
-    _, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    _, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     assert '发布时间: ""' in content
 test_no_published()
 
@@ -775,10 +772,10 @@ def test_special_title():
         "url": "https://x.com/sp/status/904", "platform": "Twitter/X",
         "images": [], "videos": [],
     }
-    fn, content, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
+    fn, content, _, _ = server.build_markdown(data, CFG_NO_DOWNLOAD)
     # FM 中 title 的双引号应被替换为单引号
     for line in content.split("\n"):
-        if line.startswith("title:"):
+        if line.startswith("标题:"):
             inner = line[len('title: "'):-1]
             assert '"' not in inner, f"Unescaped quote in title: {inner}"
             break
@@ -806,12 +803,174 @@ sample_data = {
         {"text": "这是线程的第二条推文", "images": ["https://pbs.twimg.com/media/thread2.jpg"], "videos": []},
     ],
 }
-fn, md, tasks = server.build_markdown(sample_data, CFG_NO_DOWNLOAD)
+fn, md, tasks, _ = server.build_markdown(sample_data, CFG_NO_DOWNLOAD)
 print(f"文件名: {fn}.md")
 print(f"图片/视频下载任务数: {len(tasks)}")
 print()
 print(md)
 print("-" * 60)
+
+
+# ═══════════════════════════════════════════════
+# 11. 评论/回复 Obsidian 渲染验证
+# ═══════════════════════════════════════════════
+print("\n=== 11. 评论/回复 Obsidian 渲染验证 ===")
+
+COMMENTS_CFG = {**CFG_NO_DOWNLOAD, "enable_comments": True, "comments_display": "details", "max_comments": 200, "comment_floor_range": ""}
+OB_COMMENTS = [
+    {"floor": 2, "author": "reviewer", "content": "这是一条评论\n包含多行", "published": "2026-03-25T10:00:00+08:00"},
+    {"floor": 3, "author": "commenter", "content": "另一条评论", "published": ""},
+]
+
+
+@test("Obsidian: details 模式评论渲染")
+def test_ob_comments_details():
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文内容",
+        "url": "https://x.com/testuser/status/456", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": OB_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    # Obsidian 支持 <details>/<summary> 标签
+    assert "<details>" in content
+    assert "<summary>评论/回复</summary>" in content
+    assert "**#2 reviewer**" in content
+    assert "2026-03-25 10:00" in content  # 时间被规范化
+    assert "这是一条评论" in content
+    assert "**#3 commenter**" in content
+    assert "</details>" in content
+    # 主内容仍在
+    assert "主推文内容" in content
+test_ob_comments_details()
+
+
+@test("Obsidian: heading 模式评论渲染")
+def test_ob_comments_heading():
+    cfg = {**COMMENTS_CFG, "comments_display": "heading"}
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文内容",
+        "url": "https://x.com/testuser/status/456", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": OB_COMMENTS,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "## 评论/回复" in content
+    assert "### #2 reviewer (2026-03-25 10:00)" in content
+    assert "### #3 commenter" in content
+    # heading 模式不应有 <details>
+    assert "<details>" not in content
+test_ob_comments_heading()
+
+
+@test("Obsidian: 评论含图片引用")
+def test_ob_comments_with_images():
+    comments_with_img = [
+        {"floor": 2, "author": "img_user", "content": "看这个图 ![图片](https://example.com/img.jpg)", "published": ""},
+    ]
+    data = {
+        "author": "TestUser", "handle": "@testuser", "text": "主推文",
+        "url": "https://x.com/testuser/status/789", "platform": "Twitter/X",
+        "type": "tweet", "images": [], "videos": [],
+        "comments": comments_with_img,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    assert "![图片](https://example.com/img.jpg)" in content
+test_ob_comments_with_images()
+
+
+@test("Obsidian: LinuxDo 评论渲染")
+def test_ob_linuxdo_comments():
+    linuxdo_comments = [
+        {"floor": 2, "author": "linux_user", "content": "很好的教程，感谢分享！", "published": "2026-03-25T09:00:00+08:00"},
+        {"floor": 5, "author": "another", "content": "学到了", "published": "2026-03-25T12:30:00+08:00"},
+    ]
+    data = {
+        "author": "original_poster", "handle": "",
+        "text": "", "article_content": "# 技术教程\n\n这是一篇教程",
+        "article_title": "Linux DO 教程",
+        "url": "https://linux.do/t/topic/12345", "platform": "LinuxDo",
+        "type": "article", "images": [], "videos": [],
+        "comments": linuxdo_comments,
+    }
+    _, content, _, _ = server.build_markdown(data, COMMENTS_CFG)
+    assert "技术教程" in content
+    assert "**#2 linux_user**" in content
+    assert "感谢分享" in content
+    assert "**#5 another**" in content
+test_ob_linuxdo_comments()
+
+
+# ═══════════════════════════════════════════════
+# 12. iframe 嵌入 Obsidian 渲染验证
+# ═══════════════════════════════════════════════
+print("\n=== 12. iframe 嵌入 Obsidian 渲染验证 ===")
+
+
+@test("Obsidian: YouTube iframe 嵌入渲染正确")
+def test_ob_youtube_iframe():
+    cfg = {**server.DEFAULT_CONFIG, "embed_mode": "iframe"}
+    data = {
+        "author": "YouTuber", "handle": "@youtuber",
+        "text": "Great video!",
+        "url": "https://x.com/youtuber/status/111",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+        "download_video": True,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "<iframe" in content
+    assert "youtube.com/embed/dQw4w9WgXcQ" in content
+    assert 'width="560"' in content
+    assert 'height="315"' in content
+    assert "allowfullscreen" in content
+test_ob_youtube_iframe()
+
+
+@test("Obsidian: Bilibili iframe 嵌入渲染正确")
+def test_ob_bilibili_iframe():
+    cfg = {**server.DEFAULT_CONFIG, "embed_mode": "iframe"}
+    data = {
+        "author": "BiliUser", "handle": "@biliuser",
+        "text": "精彩视频！",
+        "url": "https://x.com/biliuser/status/222",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.bilibili.com/video/BV1xx411c7mD"],
+        "download_video": True,
+    }
+    _, content, _, _ = server.build_markdown(data, cfg)
+    assert "<iframe" in content
+    assert "player.bilibili.com" in content
+    assert "BV1xx411c7mD" in content
+test_ob_bilibili_iframe()
+
+
+@test("Obsidian: embed_mode=local 不生成 iframe")
+def test_ob_local_no_iframe():
+    cfg = {**server.DEFAULT_CONFIG, "embed_mode": "local"}
+    data = {
+        "author": "LocalUser", "handle": "@localuser",
+        "text": "Video test",
+        "url": "https://x.com/localuser/status/333",
+        "platform": "Twitter/X",
+        "images": [],
+        "videos": ["https://www.youtube.com/watch?v=test123"],
+        "download_video": True,
+    }
+    _, content, _, video_tasks = server.build_markdown(data, cfg)
+    assert "<iframe" not in content
+    assert len(video_tasks) == 1
+    assert "![[" in content  # wiki-link 本地路径引用
+test_ob_local_no_iframe()
+
+
+@test("Obsidian: 新配置字段在白名单中")
+def test_ob_new_config_whitelist():
+    assert "discourse_domains" in server.X2MDHandler.ALLOWED_CONFIG_KEYS
+    assert "embed_mode" in server.X2MDHandler.ALLOWED_CONFIG_KEYS
+test_ob_new_config_whitelist()
 
 
 # ═══════════════════════════════════════════════

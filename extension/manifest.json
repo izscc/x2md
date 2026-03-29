@@ -1,14 +1,15 @@
 {
     "manifest_version": 3,
     "name": "X2MD - 网页内容转Markdown",
-    "version": "1.2.4",
-    "description": "支持 X、LINUX DO、飞书知识库、飞书云文档、微信公众号的一键保存 Markdown",
+    "version": "1.6.0",
+    "description": "支持 X/Twitter、LINUX DO、Discourse多域名、飞书（知识库/云文档/聊天记录）、微信公众号的一键保存 Markdown，多目标保存（Obsidian/飞书多维表格/Notion/HTML），支持评论提取、iframe嵌入",
     "permissions": [
         "storage",
         "notifications",
         "cookies",
         "tabs",
-        "scripting"
+        "scripting",
+        "downloads"
     ],
     "host_permissions": [
         "*://*.twitter.com/*",
@@ -16,11 +17,26 @@
         "https://linux.do/*",
         "https://*.feishu.cn/wiki/*",
         "https://*.feishu.cn/docx/*",
+        "https://*.feishu.cn/docs/*",
+        "https://*.feishu.cn/minutes/*",
+        "https://*.feishu.cn/sheets/*",
+        "https://*.feishu.cn/mindnotes/*",
+        "https://*.feishu.cn/messenger/*",
+        "https://*.larksuite.com/wiki/*",
+        "https://*.larksuite.com/messenger/*",
+        "https://*.larksuite.com/docx/*",
+        "https://*.larksuite.com/minutes/*",
         "https://mp.weixin.qq.com/*",
         "http://127.0.0.1/*",
         "https://cdn.syndication.twimg.com/*",
         "https://publish.twitter.com/*",
-        "https://abs.twimg.com/*"
+        "https://abs.twimg.com/*",
+        "https://open.feishu.cn/*",
+        "https://open.larksuite.com/*",
+        "https://api.notion.com/*"
+    ],
+    "optional_host_permissions": [
+        "https://*/*"
     ],
     "background": {
         "service_worker": "background.js"
@@ -33,6 +49,15 @@
                 "https://linux.do/*",
                 "https://*.feishu.cn/wiki/*",
                 "https://*.feishu.cn/docx/*",
+                "https://*.feishu.cn/docs/*",
+                "https://*.feishu.cn/minutes/*",
+                "https://*.feishu.cn/sheets/*",
+                "https://*.feishu.cn/mindnotes/*",
+                "https://*.feishu.cn/messenger/*",
+                "https://*.larksuite.com/wiki/*",
+                "https://*.larksuite.com/messenger/*",
+                "https://*.larksuite.com/docx/*",
+                "https://*.larksuite.com/minutes/*",
                 "https://mp.weixin.qq.com/*"
             ],
             "js": [

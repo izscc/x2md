@@ -8,10 +8,13 @@ x2md 首次运行向导
 import os
 import sys
 import json
+import logging
 import platform
+import traceback
 import tkinter as tk
 from tkinter import filedialog
 
+logger = logging.getLogger("x2md_wizard")
 
 # ─────────────────────────────────────────────
 # 路径工具
@@ -67,7 +70,11 @@ class SetupWizard:
     """首次运行 4 步设置向导"""
 
     def __init__(self):
+        logger.info("初始化设置向导...")
+        logger.debug(f"tkinter 版本: {tk.TkVersion}")
+        logger.debug(f"平台: {platform.system()}, 字体: {FONT_FAMILY}")
         self.root = tk.Tk()
+        logger.debug("tk.Tk() 创建成功")
         self.root.title("X2MD 设置向导")
         self.root.geometry("720x680")
         self.root.minsize(600, 500)
@@ -144,6 +151,7 @@ class SetupWizard:
             w.destroy()
 
     def _show_step(self, step):
+        logger.info(f"向导切换到步骤 {step + 1}/4")
         self.current_step = step
         self._clear()
         self._draw_progress()
@@ -202,14 +210,14 @@ class SetupWizard:
                  font=FONT(24, "bold"), fg=C["text"], bg=C["bg"]).pack(pady=(0, 6))
 
         tk.Label(self.content_frame,
-                 text="一键保存推特/X 内容到 Obsidian Markdown",
+                 text="一键保存网页内容到 Markdown，多平台多目标",
                  font=FONT(13), fg=C["muted"], bg=C["bg"]).pack(pady=(0, 20))
 
         features = [
-            "📄  推文 → Markdown 文件，自动保存到指定文件夹",
+            "📄  X/Twitter、LINUX DO、飞书、微信公众号一键转 Markdown",
             "🎞️  视频自动下载，Obsidian 内嵌播放",
-            "📰  X Article / Note 长文完整抓取",
-            "🧵  Thread 长推文一键保存完整线程",
+            "💾  多目标保存：Obsidian / 飞书多维表格 / Notion / HTML",
+            "🖼️  图片本地下载，按平台分类文件夹",
         ]
         card = self._make_card(self.content_frame)
         card.pack(fill="x", padx=30, pady=10)
@@ -311,7 +319,7 @@ class SetupWizard:
             anchor="w", pady=(8, 2))
 
         tk.Label(self.content_frame,
-                 text="X2MD 需要安装配套的 Chrome 扩展才能在推特页面上抓取内容",
+                 text="X2MD 需要安装配套的 Chrome 扩展才能在网页上抓取内容",
                  font=FONT(12), fg=C["muted"], bg=C["bg"]).pack(
             anchor="w", pady=(0, 14))
 
@@ -320,7 +328,7 @@ class SetupWizard:
             ("❷", "打开右上角的「开发者模式」开关"),
             ("❸", "点击左上角「加载已解压的扩展程序」按钮"),
             ("❹", "选择 X2MD 安装目录下的 extension 文件夹"),
-            ("❺", "扩展安装完成！在推特页面上点击推文的书签按钮即可保存"),
+            ("❺", "安装完成！在 X/Twitter、LINUX DO、飞书、微信公众号页面使用保存按钮即可"),
         ]
 
         for num, text in steps:
@@ -382,7 +390,7 @@ class SetupWizard:
         tk.Frame(card, bg=C["surface"], height=8).pack()
 
         tk.Label(self.content_frame,
-                 text="点击「启动服务」后，X2MD 将在系统托盘后台运行\n在 Chrome 中使用扩展即可开始保存推文",
+                 text="点击「启动服务」后，X2MD 将在系统托盘后台运行\n在 Chrome 中使用扩展即可开始保存内容",
                  font=FONT(12), fg=C["muted"], bg=C["bg"],
                  justify="center").pack(pady=(0, 8))
 
@@ -396,10 +404,20 @@ class SetupWizard:
         """保存配置 → 标记完成 → 关闭窗口"""
         md = self.md_path.get().strip()
         vid = self.video_path.get().strip()
+        logger.info(f"向导完成, md_path={md}, video_path={vid}")
 
         # 自动创建目录
-        os.makedirs(md, exist_ok=True)
-        os.makedirs(vid, exist_ok=True)
+        try:
+            os.makedirs(md, exist_ok=True)
+            logger.debug(f"Markdown 目录已确保存在: {md}")
+        except Exception as e:
+            logger.error(f"创建 Markdown 目录失败: {md}, 错误: {e}")
+
+        try:
+            os.makedirs(vid, exist_ok=True)
+            logger.debug(f"视频目录已确保存在: {vid}")
+        except Exception as e:
+            logger.error(f"创建视频目录失败: {vid}, 错误: {e}")
 
         # 读取已有配置
         config = {}
@@ -407,8 +425,9 @@ class SetupWizard:
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     config = json.load(f)
-            except Exception:
-                pass
+                logger.debug("已读取现有配置文件")
+            except Exception as e:
+                logger.warning(f"读取现有配置失败: {e}")
 
         # 写入配置
         config.update({
@@ -420,25 +439,49 @@ class SetupWizard:
             "setup_completed": True,
         })
 
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            logger.info(f"配置已保存到: {CONFIG_FILE}")
+        except Exception as e:
+            logger.error(f"保存配置失败: {e}\n{traceback.format_exc()}")
 
         self.completed = True
         self.root.destroy()
+        logger.info("向导窗口已关闭")
 
     # ── 公开入口 ──────────────────────────────────
     def run(self) -> bool:
         """运行向导，返回是否完成"""
-        self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
+        logger.info("开始向导主循环")
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.mainloop()
+        logger.info(f"向导主循环结束, completed={self.completed}")
         return self.completed
+
+    def _on_close(self):
+        """用户关闭窗口"""
+        logger.info("用户关闭了向导窗口")
+        self.root.destroy()
 
 
 def run_wizard() -> bool:
     """运行设置向导的快捷函数"""
-    return SetupWizard().run()
+    logger.info("run_wizard() 被调用")
+    try:
+        result = SetupWizard().run()
+        logger.info(f"run_wizard() 返回: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"向导运行异常: {e}\n{traceback.format_exc()}")
+        return False
 
 
 if __name__ == "__main__":
+    # 独立运行时配置基本日志
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    )
     ok = run_wizard()
-    print("✅ 向导完成" if ok else "❌ 向导已取消")
+    print("向导完成" if ok else "向导已取消")

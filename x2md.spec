@@ -6,8 +6,14 @@ x2md PyInstaller 打包配置
 
 import sys
 import os
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
+
+# 收集 tzdata 时区数据文件（Windows 无系统时区数据，依赖此包）
+tzdata_datas = collect_data_files('tzdata')
+# 收集 certifi CA 证书
+certifi_datas = collect_data_files('certifi')
 
 a = Analysis(
     ['tray_app.py'],
@@ -16,7 +22,7 @@ a = Analysis(
     datas=[
         ('extension', 'extension'),       # Chrome 扩展文件夹
         ('config.json', '.'),              # 默认配置
-    ],
+    ] + tzdata_datas + certifi_datas,
     hiddenimports=[
         'server',
         'setup_wizard',
@@ -27,6 +33,15 @@ a = Analysis(
         'PIL.ImageDraw',
         'PIL.ImageFont',
         'certifi',
+        # zoneinfo：server.py 中用于北京时间转换（函数内 lazy import，PyInstaller 无法自动检测）
+        'zoneinfo',
+        'zoneinfo._common',
+        'zoneinfo._tzpath',
+        # tzdata：Windows 无系统时区数据，需要此包提供
+        'tzdata',
+        # tkinter：setup_wizard.py 使用
+        'tkinter',
+        'tkinter.filedialog',
     ],
     hookspath=[],
     hooksconfig={},
@@ -95,7 +110,7 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'X2MD',
             'CFBundleDisplayName': 'X2MD',
-            'CFBundleShortVersionString': '1.2.4',
+            'CFBundleShortVersionString': '1.6.0',
             'LSUIElement': True,  # 无 Dock 图标，仅菜单栏显示
         },
     )

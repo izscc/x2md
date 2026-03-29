@@ -32,7 +32,7 @@
         const style = safeGetComputedStyle(element, options);
         const fontWeight = style.fontWeight;
         const numericWeight = parseInt(fontWeight, 10);
-        return fontWeight === "bold" || Number.isFinite(numericWeight) && numericWeight >= 700;
+        return fontWeight === "bold" || (Number.isFinite(numericWeight) && numericWeight >= 700);
     }
 
     function isBlockElement(element, options = {}) {
@@ -178,7 +178,7 @@
             if (text.includes("![](") || text.includes("[MEDIA_VIDEO_URL:") || text.includes("[[VIDEO_HOLDER_")) {
                 return markdown;
             }
-            return `[${text}](${href})`;
+            return `[${escapeMdLinkText(text)}](${escapeMdLinkUrl(href)})`;
         }
 
         if (isBoldElement(element, options) && markdown.trim()) {
@@ -235,5 +235,6 @@
         module.exports = exported;
     }
 
+    globalScope.X2MD = Object.assign(globalScope.X2MD || {}, exported);
     Object.assign(globalScope, exported);
 })(typeof globalThis !== "undefined" ? globalThis : this);
