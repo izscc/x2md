@@ -376,9 +376,9 @@
         };
     }
 
-    // 向后兼容别名
-    function fetchLinuxDoReplies(topicId) {
-        return fetchDiscourseReplies(topicId);
+    // 向后兼容别名（默认使用 linux.do 作为 hostname）
+    function fetchLinuxDoReplies(topicId, hostname) {
+        return fetchDiscourseReplies(topicId, hostname || "linux.do");
     }
 
     const exported = {

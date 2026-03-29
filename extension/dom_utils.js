@@ -83,14 +83,53 @@
         return "\n" + lines.join("\n") + "\n";
     }
 
+    /**
+     * 将 GFM pipe table 转换为 HTML <table> 字符串
+     * @param {string} gfmTable - GFM markdown table 字符串
+     * @returns {string} HTML table 字符串
+     */
+    function convertGfmTableToHtml(gfmTable) {
+        const lines = gfmTable.trim().split("\n").filter(l => l.trim().startsWith("|"));
+        if (lines.length < 2) return "";
+        const parseRow = (line) => line.split("|").slice(1, -1).map(c => c.replace(/\\\|/g, "|").trim());
+        const headers = parseRow(lines[0]);
+        // lines[1] is separator, skip it
+        const bodyRows = lines.slice(2).map(parseRow);
+        let html = "<table>\n<thead>\n<tr>\n";
+        headers.forEach(h => { html += `  <th>${h}</th>\n`; });
+        html += "</tr>\n</thead>\n<tbody>\n";
+        bodyRows.forEach(row => {
+            html += "<tr>\n";
+            row.forEach(cell => { html += `  <td>${cell}</td>\n`; });
+            html += "</tr>\n";
+        });
+        html += "</tbody>\n</table>";
+        return html;
+    }
+
+    /**
+     * 将 GFM 表格同时输出为 Markdown + HTML 双格式
+     * @param {string} gfmTable - GFM markdown table 字符串
+     * @param {boolean} includeHtml - 是否同时输出 HTML 版本
+     * @returns {string} Markdown table，可选附带 HTML 版本
+     */
+    function renderTableDualFormat(gfmTable, includeHtml) {
+        if (!gfmTable || !gfmTable.trim()) return "";
+        if (!includeHtml) return gfmTable;
+        const htmlTable = convertGfmTableToHtml(gfmTable);
+        return gfmTable + "\n\n" + htmlTable;
+    }
+
     const exported = {
         cleanZeroWidth,
+        convertGfmTableToHtml,
         convertTableToGfm,
         escapeMdLinkText,
         escapeMdLinkUrl,
         getClassList,
         getNodeText,
         getTagName,
+        renderTableDualFormat,
         safeClosest,
         safeGetAttribute,
     };

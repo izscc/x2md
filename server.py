@@ -6,6 +6,7 @@ x2md 本地服务器
 转换为 Obsidian 兼容的 Markdown 文件并保存到指定目录。
 """
 
+import copy
 import json
 import os
 import re
@@ -23,6 +24,8 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 try:
     from zoneinfo import ZoneInfo
     BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+    # 验证 ZoneInfo 对象确实可用（某些打包环境下创建成功但使用时才报错）
+    datetime.now(BEIJING_TZ).strftime("%Y-%m-%d")
 except Exception:
     BEIJING_TZ = timezone(timedelta(hours=8))
 
@@ -81,9 +84,9 @@ DEFAULT_CONFIG = {
     "enable_platform_folders": True,
     "platform_folder_names": {
         "Twitter/X": "Twitter",
-        "LinuxDo": "LinuxDo",
-        "Feishu": "Feishu",
-        "WeChat": "WeChat",
+        "LINUX DO": "LINUX DO",
+        "飞书": "飞书",
+        "微信公众号": "微信公众号",
     },
     # 图片下载到本地（V1.2 新增）
     "download_images": True,
@@ -357,11 +360,12 @@ def _make_video_iframe(url: str) -> str:
     return f"[视频：点击播放]({url})"
 
 
-def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
+def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list, list]:
     """
     将接收到的推文/文章数据构建为 Markdown 字符串。
-    返回 (文件名不含后缀, markdown内容, 图片下载任务列表)
-    图片下载任务: [(url, save_dir, filename), ...]
+    返回 (文件名不含后缀, markdown内容, 图片下载任务列表, 视频下载任务列表)
+    图片下载任务: [(url, subfolder, filename), ...]
+    视频下载任务: [(url, subfolder, filename), ...]
     """
     author = data.get("author", "unknown")
     handle = data.get("handle", "")
@@ -407,7 +411,7 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     summary_src = re.sub(r'\[\[VIDEO_HOLDER_\d+\]\]', '', summary_src)
     summary_src = summary_src.strip()
     max_len = cfg.get("max_filename_length", 60)
-    summary_short = sanitize_filename(summary_src[:30] if summary_src else "untitled", max_len)
+    summary_short = sanitize_filename(summary_src if summary_src else "untitled", max_len)
     author_clean = sanitize_filename(handle.lstrip("@") if handle else author, 20)
     handle_clean = sanitize_filename(handle.lstrip("@") if handle else "", 20)
     timestamp_str = now.strftime("%Y%m%d_%H%M%S")
@@ -430,7 +434,9 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     title = re.sub(r'\[MEDIA_VIDEO_URL:[^\]]*\]', '', title)
     title = re.sub(r'\[\[VIDEO_HOLDER_\d+\]\]', '', title)
     title = " ".join(title.split()).strip()
-    title = title[:80] + ("…" if len(title) > 80 else "")
+    if not title:
+        title = summary_src if summary_src else "untitled"
+    title = title[:200] + ("…" if len(title) > 200 else "")
     title = title.replace('"', "'")
 
     author_url = data.get("author_url") or ""
@@ -457,6 +463,9 @@ tags: {tags_yaml}
     # 原则：仅保留原文内容，不包含作者名和时间（那些已在 Front Matter 里）
     lines = []
     image_subfolder = cfg.get("image_subfolder", "assets").lstrip("./")  # 去除用户可能手动添加的 ./ 前缀
+    # 防止路径穿越攻击（如 ../../etc）
+    image_subfolder = re.sub(r'\.\.[\\/]', '', image_subfolder)
+    image_subfolder = sanitize_filename(image_subfolder, 50) or "assets"
 
     vid_map = {}
     video_tasks = []  # (url, subfolder, filename) — 与图片同结构，在 _handle_save 中处理
@@ -594,6 +603,8 @@ tags: {tags_yaml}
                         _inlined_videos.add(v_url)
 
     body = "\n".join(lines)
+    # 规范化：消除连续3+空行为2行（1个空行），防止排版碎裂
+    body = re.sub(r'\n{3,}', '\n\n', body)
 
     # ── 评论/回复渲染 ────────────────────────────────
     comments = data.get("comments", [])
@@ -678,7 +689,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.2.4"})
+            self._respond(200, {"status": "ok", "version": "1.5.0"})
 
         elif path == "/config":
             # 返回当前配置
@@ -726,7 +737,8 @@ class X2MDHandler(BaseHTTPRequestHandler):
         try:
             filename, content, image_tasks, video_tasks = build_markdown(data, cfg)
         except Exception as e:
-            logger.error(f"Markdown 构建失败：{e}")
+            import traceback
+            logger.error(f"Markdown 构建失败：{e}\n{traceback.format_exc()}")
             self._respond(500, {"error": str(e)})
             return
 
@@ -802,6 +814,10 @@ class X2MDHandler(BaseHTTPRequestHandler):
         "enable_wechat_video_channel",
         "enable_comments", "comments_display", "max_comments", "comment_floor_range",
         "discourse_domains", "embed_mode",
+        # 保存目标开关
+        "save_to_obsidian", "save_to_feishu", "save_to_notion", "export_html",
+        # 外观
+        "theme",
         # 飞书 Bitable
         "feishu_api_domain", "feishu_app_id", "feishu_app_secret",
         "feishu_app_token", "feishu_table_id",
@@ -823,10 +839,10 @@ class X2MDHandler(BaseHTTPRequestHandler):
             self._respond(400, {"error": "没有有效的配置字段"})
             return
         with _config_lock:
-            cfg = dict(load_config())  # 深拷贝，避免竞态修改共享引用
+            cfg = copy.deepcopy(load_config())  # 深拷贝，避免竞态修改共享引用
             cfg.update(filtered)
-        save_config(cfg)
-        logger.info(f"配置已更新：{filtered}")
+            save_config(cfg)
+        logger.info(f"配置已更新：{list(filtered.keys())}")
         self._respond(200, {"success": True, "config": cfg})
 
     def _handle_config_reset(self):

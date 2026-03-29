@@ -27,12 +27,79 @@ const SYNC_FIELDS = [
     "enable_comments", "comments_display", "max_comments", "comment_floor_range",
     "discourse_domains", "embed_mode",
     "enable_wechat_video_channel",
+    // 保存目标开关
+    "save_to_obsidian", "save_to_feishu", "save_to_notion", "export_html",
+    // 外观
+    "theme",
+    // 飞书 Bitable
+    "feishu_api_domain", "feishu_app_id", "feishu_app_token", "feishu_table_id",
+    "feishu_upload_md", "feishu_upload_html",
+    // Notion Database
+    "notion_database_id",
+    "notion_prop_title", "notion_prop_url", "notion_prop_author",
+    "notion_prop_tags", "notion_prop_saved_date", "notion_prop_type",
+    // HTML 导出
+    "html_export_folder",
+    // 飞书一键复制
+    "enable_copy_unlock",
 ];
 
 // 从本地存储恢复用户自定义端口
 chrome.storage.local.get("x2md_port", (data) => {
     if (data.x2md_port) SERVER_BASE = `http://127.0.0.1:${data.x2md_port}`;
 });
+
+// ── 高性能缓存层（Cache-First + Background Revalidate）──────────
+// MV3 Service Worker 生命周期短暂，内存缓存易丢失，使用 chrome.storage.local 持久化
+const CONFIG_CACHE_KEY = "x2md_config_cache";
+const CONFIG_CACHE_TTL = 60 * 1000; // 60秒内直接使用缓存
+let _configMemCache = null; // 内存快速缓存
+let _configMemCacheTime = 0;
+
+async function getCachedConfig() {
+    // 内存缓存命中（最快路径）
+    const now = Date.now();
+    if (_configMemCache && (now - _configMemCacheTime) < CONFIG_CACHE_TTL) {
+        return _configMemCache;
+    }
+    // 持久化缓存命中
+    try {
+        const stored = await chrome.storage.local.get(CONFIG_CACHE_KEY);
+        const cached = stored[CONFIG_CACHE_KEY];
+        if (cached && cached.data && (now - cached.time) < CONFIG_CACHE_TTL) {
+            _configMemCache = cached.data;
+            _configMemCacheTime = cached.time;
+            return cached.data;
+        }
+    } catch { /* fall through */ }
+    // 缓存未命中：从服务器获取
+    return refreshConfigCache();
+}
+
+async function refreshConfigCache() {
+    try {
+        const resp = await fetch(`${SERVER_BASE}/config`, { signal: AbortSignal.timeout(3000) });
+        if (resp.ok) {
+            const data = await resp.json();
+            const now = Date.now();
+            _configMemCache = data;
+            _configMemCacheTime = now;
+            await chrome.storage.local.set({ [CONFIG_CACHE_KEY]: { data, time: now } });
+            return data;
+        }
+    } catch { /* server offline */ }
+    // 服务器不可达：返回过期缓存或 null
+    try {
+        const stored = await chrome.storage.local.get(CONFIG_CACHE_KEY);
+        return stored[CONFIG_CACHE_KEY]?.data || null;
+    } catch { return null; }
+}
+
+function invalidateConfigCache() {
+    _configMemCache = null;
+    _configMemCacheTime = 0;
+    chrome.storage.local.remove(CONFIG_CACHE_KEY).catch(() => {});
+}
 
 // 动态注册额外 Discourse 域名的内容脚本
 async function registerDiscourseContentScripts(domains) {
@@ -64,12 +131,11 @@ async function registerDiscourseContentScripts(domains) {
     }
 }
 
-// 启动时从服务器获取配置并注册额外域名
+// 启动时从缓存或服务器获取配置并注册额外域名
 (async () => {
     try {
-        const resp = await fetch(`${SERVER_BASE}/config`, { signal: AbortSignal.timeout(3000) });
-        const cfg = await resp.json();
-        if (cfg.discourse_domains) {
+        const cfg = await getCachedConfig();
+        if (cfg && cfg.discourse_domains) {
             registerDiscourseContentScripts(cfg.discourse_domains);
         }
     } catch { /* 服务未启动，跳过 */ }
@@ -952,6 +1018,18 @@ function convertMarkdownToNotionBlocks(markdown) {
         if (line.startsWith("## ")) { blocks.push({ type: "heading_2", heading_2: { rich_text: parseNotionRichText(line.slice(3)) } }); i++; continue; }
         if (line.startsWith("### ")) { blocks.push({ type: "heading_3", heading_3: { rich_text: parseNotionRichText(line.slice(4)) } }); i++; continue; }
 
+        // 视频占位符 [MEDIA_VIDEO_URL:xxx] → video 或 embed 块
+        const videoPlaceholder = line.match(/^\[MEDIA_VIDEO_URL:(https?:\/\/[^\]]+)\]$/);
+        if (videoPlaceholder) {
+            const vUrl = videoPlaceholder[1];
+            if (/\.(mp4|webm|mov)(\?|$)/i.test(vUrl)) {
+                blocks.push({ type: "video", video: { type: "external", external: { url: vUrl } } });
+            } else {
+                blocks.push({ type: "embed", embed: { url: vUrl } });
+            }
+            i++; continue;
+        }
+
         const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
         if (imgMatch && !imgMatch[2].startsWith("data:")) {
             blocks.push({ type: "image", image: { type: "external", external: { url: imgMatch[2] } } }); i++; continue;
@@ -960,6 +1038,11 @@ function convertMarkdownToNotionBlocks(markdown) {
             let quoteText = line.slice(2);
             while (i + 1 < lines.length && lines[i + 1].startsWith("> ")) { i++; quoteText += "\n" + lines[i].slice(2); }
             blocks.push({ type: "quote", quote: { rich_text: parseNotionRichText(quoteText) } }); i++; continue;
+        }
+        // Checkbox / Todo: - [x] 或 - [ ]
+        const todoMatch = line.match(/^[-*+] \[([ xX])\] (.+)/);
+        if (todoMatch) {
+            blocks.push({ type: "to_do", to_do: { rich_text: parseNotionRichText(todoMatch[2]), checked: todoMatch[1].toLowerCase() === "x" } }); i++; continue;
         }
         if (line.match(/^[-*+] /)) {
             blocks.push({ type: "bulleted_list_item", bulleted_list_item: { rich_text: parseNotionRichText(line.replace(/^[-*+] /, "")) } }); i++; continue;
@@ -1005,9 +1088,9 @@ function convertMarkdownToNotionBlocks(markdown) {
             blocks.push({ type: "toggle", toggle: { rich_text: parseNotionRichText(summaryText || "详情"), children: [{ type: "paragraph", paragraph: { rich_text: parseNotionRichText(toggleContent.trim()) } }] } });
             i++; continue;
         }
-        // <iframe> → bookmark
+        // <iframe> → embed（支持视频/地图等嵌入内容）
         const iframeMatch = line.match(/<iframe[^>]+src="([^"]+)"/);
-        if (iframeMatch) { blocks.push({ type: "bookmark", bookmark: { url: iframeMatch[1] } }); i++; continue; }
+        if (iframeMatch) { blocks.push({ type: "embed", embed: { url: iframeMatch[1] } }); i++; continue; }
         // 裸 URL → bookmark
         if (/^https?:\/\/\S+$/.test(line.trim())) { blocks.push({ type: "bookmark", bookmark: { url: line.trim() } }); i++; continue; }
         // 普通段落
@@ -1106,10 +1189,17 @@ function convertMarkdownToHtml(md) {
     const MAX_MD_LEN = 500000;
     let html = md.length > MAX_MD_LEN ? md.slice(0, MAX_MD_LEN) + "\n\n---\n\n（内容过长，已截断）" : md;
 
-    // 微信 [MEDIA_VIDEO_URL:xxx] 占位符 → 视频链接
+    // [MEDIA_VIDEO_URL:xxx] 占位符 → 视频播放器或嵌入 iframe
     html = html.replace(/\[MEDIA_VIDEO_URL:([^\]]+)\]/g, (_, url) => {
-        if (url.startsWith("http")) return `<p><a href="${url}">[视频链接]</a></p>`;
-        return `<p><em>[视频]</em></p>`;
+        if (!url.startsWith("http")) return `<p><em>[视频]</em></p>`;
+        if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
+            return `<p><video controls src="${url}" style="max-width:100%"></video></p>`;
+        }
+        // YouTube, Twitter 等嵌入内容用 iframe
+        if (/youtube\.com|youtu\.be|twitter\.com|x\.com|bilibili\.com/i.test(url)) {
+            return `<p><iframe src="${url}" width="100%" height="400" frameborder="0" allowfullscreen></iframe></p>`;
+        }
+        return `<p><a href="${url}" target="_blank">[视频链接]</a></p>`;
     });
     // Obsidian wiki-link 嵌入 ![[filename]] → 提示文字（HTML 无法访问本地 vault 文件）
     html = html.replace(/!\[\[([^\]]+)\]\]/g, (_, filename) => {
@@ -1595,11 +1685,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === "get_config") {
         (async () => {
-            const serverBase = SERVER_BASE;   // 快照
             try {
-                const resp = await fetch(`${serverBase}/config`);
-                if (!resp.ok) throw new Error(`Obsidian 服务端响应异常 (HTTP ${resp.status})`);
-                const cfg = await resp.json();
+                const cfg = await getCachedConfig();
+                if (!cfg) throw new Error("无法获取配置（服务端可能未启动）");
                 // 如果开启了同步，用 sync 中的扩展配置覆盖（save_paths 等本地专属字段不同步）
                 const syncData = await chrome.storage.sync.get("x2md_sync").catch(() => ({}));
                 if (syncData.x2md_sync && syncData.x2md_sync.sync_enabled) {
@@ -1651,6 +1739,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (message.config.discourse_domains) {
                     registerDiscourseContentScripts(message.config.discourse_domains);
                 }
+                // 使配置缓存失效（下次获取走服务器）
+                invalidateConfigCache();
                 sendResponse({ success: json.success !== false, config: json.config });
             } catch (err) {
                 sendResponse({ success: false, error: err.message });
@@ -1665,6 +1755,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const resp = await fetch(`${SERVER_BASE}/config/reset`, { method: "POST" });
                 const json = await resp.json();
                 await chrome.storage.sync.remove("x2md_sync").catch(() => {});
+                invalidateConfigCache();
                 sendResponse({ success: json.success !== false });
             } catch (err) {
                 sendResponse({ success: false, error: err.message });

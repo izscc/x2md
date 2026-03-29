@@ -5,12 +5,21 @@
         return config.show_site_save_icon !== false;
     }
 
+    // 可配置 Discourse 域名列表，运行时从配置注入
+    let _siteDiscourseDomains = ["linux.do"];
+    function setSiteDiscourseDomains(domains) {
+        if (Array.isArray(domains) && domains.length > 0) {
+            _siteDiscourseDomains = domains.map(d => d.toLowerCase().trim()).filter(Boolean);
+        }
+    }
+
     function detectFloatingSaveSite(locationLike = globalScope.location) {
         const hostname = String(locationLike?.hostname || "").toLowerCase();
         const pathname = String(locationLike?.pathname || "");
 
-        if (hostname === "linux.do" && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname)) {
-            return "linux_do";
+        // 检查所有已配置的 Discourse 域名（包括 linux.do 和自定义域名）
+        if (_siteDiscourseDomains.includes(hostname) && /^\/t\/[^/]+\/\d+(?:\/\d+)?\/?$/.test(pathname)) {
+            return hostname === "linux.do" ? "linux_do" : "discourse";
         }
 
         if ((hostname.endsWith(".feishu.cn") || hostname.endsWith(".larksuite.com")) &&
@@ -46,6 +55,15 @@
             };
         }
 
+        if (siteKey === "discourse") {
+            return {
+                label: "MD",
+                title: "保存当前 Discourse 内容为 Markdown",
+                background: "#f97316",
+                shadow: "rgba(249, 115, 22, 0.35)",
+            };
+        }
+
         if (siteKey === "wechat") {
             return {
                 label: "MD",
@@ -63,6 +81,7 @@
         detectFloatingSaveSite,
         getFloatingSaveSiteConfig,
         isFloatingSaveIconEnabled,
+        setSiteDiscourseDomains,
     };
 
     if (typeof module !== "undefined" && module.exports) {
