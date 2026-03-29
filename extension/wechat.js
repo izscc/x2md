@@ -373,12 +373,95 @@
         return !!(payBar || payBtn);
     }
 
+    /**
+     * 尝试移除微信付费文章的遮罩层，暴露完整内容。
+     * 付费文章通过 CSS 隐藏/截断内容区域并覆盖付费提示遮罩。
+     * 此函数移除这些限制，让已加载到 DOM 中的完整内容可见并可提取。
+     */
+    function removeWechatPaywall(doc = document) {
+        // 1. 移除付费遮罩层（覆盖在内容区上方的半透明渐变遮罩）
+        const overlaySelectors = [
+            "#js_pay_bar",
+            ".pay_content_area",
+            ".pay_tips_area",
+            ".js_pay_preview_wap",
+            ".pay_wall_wrap",
+            ".pay-wall__content",
+            ".pay_wall_mask",        // 渐变遮罩
+            ".pay_content_mask",     // 内容遮罩
+            ".rich_media_pay_area",  // 付费区域包装
+        ];
+        overlaySelectors.forEach(sel => {
+            doc.querySelectorAll?.(sel).forEach(el => {
+                el.style.display = "none";
+                el.remove();
+            });
+        });
+
+        // 2. 移除内容区域的高度限制和 overflow:hidden
+        const contentArea = doc.querySelector?.("#js_content");
+        if (contentArea) {
+            contentArea.style.maxHeight = "none";
+            contentArea.style.height = "auto";
+            contentArea.style.overflow = "visible";
+            contentArea.style.webkitLineClamp = "unset";
+            contentArea.style.webkitBoxOrient = "unset";
+        }
+
+        // 3. 移除 #js_content_cutoff（微信用这个 div 标记截断位置）
+        const cutoff = doc.querySelector?.("#js_content_cutoff");
+        if (cutoff) {
+            cutoff.style.display = "none";
+            cutoff.remove();
+        }
+
+        // 4. 显示所有被 display:none 隐藏的付费内容区段
+        //    微信付费文章将付费内容 section 设为 display:none
+        const hiddenSections = doc.querySelectorAll?.("#js_content > section[style*='display'], #js_content > div[style*='display']") || [];
+        hiddenSections.forEach(section => {
+            if (section.style.display === "none") {
+                section.style.display = "";
+            }
+        });
+
+        // 5. 移除 .rich_media_area_extra 上的截断样式
+        const extraArea = doc.querySelector?.(".rich_media_area_extra");
+        if (extraArea) {
+            extraArea.style.maxHeight = "none";
+            extraArea.style.overflow = "visible";
+        }
+
+        // 6. 注入 CSS 覆盖微信的付费墙样式
+        const style = doc.createElement?.("style");
+        if (style) {
+            style.textContent = `
+                #js_content { max-height: none !important; overflow: visible !important; }
+                .pay_content_mask, .pay_wall_mask, #js_pay_bar, .pay_content_area,
+                .pay_tips_area, .js_pay_preview_wap, .pay_wall_wrap, .rich_media_pay_area {
+                    display: none !important;
+                }
+                #js_content > section, #js_content > div, #js_content > p {
+                    display: block !important;
+                    visibility: visible !important;
+                    opacity: 1 !important;
+                }
+            `;
+            (doc.head || doc.documentElement)?.appendChild(style);
+        }
+    }
+
     function extractWechatDocumentData(doc = document, options = {}) {
         const pageUrl = options.pageUrl || doc.location?.href || globalScope.location?.href || "";
         const root = doc.querySelector?.("#js_content");
         if (!root) return null;
 
         const isPaid = detectWechatPaywall(doc);
+
+        // 付费文章：先尝试移除遮罩层，暴露完整内容
+        if (isPaid) {
+            removeWechatPaywall(doc);
+        }
+
         const articleContent = extractWechatMarkdown(root, { pageUrl });
         if (!articleContent && !isPaid) return null;
 
@@ -407,12 +490,16 @@
         // 提取视频
         const videos = extractWechatVideos(doc);
 
-        // 付费文章：添加提示
+        // 付费文章：标记标签，提示已尝试解除遮罩
         let finalContent = articleContent || "";
         if (isPaid) {
             tags.push("付费文章");
-            if (!finalContent) finalContent = "> 这是一篇付费文章，以下为免费预览部分。";
-            else finalContent += "\n\n---\n\n> 以下内容为付费部分，未能获取。\n";
+            if (!finalContent) {
+                finalContent = "> 这是一篇付费文章，遮罩层已移除但未提取到内容（内容可能需要服务端解密）。";
+            } else {
+                // 已移除遮罩并成功提取到内容，添加来源说明
+                finalContent = "> 本文为付费文章，已尝试移除遮罩层提取完整内容。\n\n" + finalContent;
+            }
         }
 
         return {
@@ -439,6 +526,7 @@
         extractWechatMarkdown,
         extractWechatVideos,
         isWechatArticlePage,
+        removeWechatPaywall,
         resolveWechatImageUrl,
     };
 

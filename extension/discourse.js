@@ -356,7 +356,9 @@
 
     async function fetchDiscourseReplies(topicId, hostname) {
         const host = hostname || globalScope.location?.hostname || "linux.do";
-        const resp = await fetch(`https://${host}/t/${topicId}.json`);
+        const resp = await fetch(`https://${host}/t/${topicId}.json`, {
+            signal: AbortSignal.timeout(15000),
+        });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const posts = data.post_stream?.posts || [];

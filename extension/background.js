@@ -902,19 +902,147 @@ async function handleSaveToFeishu(data, _retried) {
     }
 }
 
+// 飞书字段类型映射
+const FEISHU_FIELD_TYPES = {
+    TEXT: 1,        // 文本
+    NUMBER: 2,      // 数字
+    DATE: 5,        // 日期
+    URL: 15,        // 超链接
+    ATTACHMENT: 17, // 附件
+};
+
+// 保存到飞书时使用的必需字段（与 handleSaveToFeishu 中的 fields 对象保持一致）
+const FEISHU_REQUIRED_FIELDS = [
+    { name: "标题", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
+    { name: "链接", type: FEISHU_FIELD_TYPES.URL, desc: "超链接" },
+    { name: "作者", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
+    { name: "保存时间", type: FEISHU_FIELD_TYPES.DATE, desc: "日期" },
+    { name: "类型", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
+    { name: "正文", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
+    { name: "附件", type: FEISHU_FIELD_TYPES.ATTACHMENT, desc: "附件" },
+];
+
+function getFeishuFieldTypeName(typeCode) {
+    const map = { 1: "文本", 2: "数字", 3: "单选", 4: "多选", 5: "日期", 7: "复选框", 11: "人员", 13: "电话", 15: "超链接", 17: "附件", 18: "单向关联", 21: "查找引用", 22: "公式", 23: "双向关联" };
+    return map[typeCode] || `未知(${typeCode})`;
+}
+
+async function createFeishuField(baseUrl, appToken, tableId, token, fieldName, fieldType) {
+    const resp = await fetchWithRetry(`${baseUrl}/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/fields`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ field_name: fieldName, type: fieldType }),
+    }, 1);
+    const result = await resp.json();
+    if (result.code !== 0) throw new Error(`创建字段「${fieldName}」失败: ${result.msg}`);
+    return result.data?.field;
+}
+
 async function handleTestFeishu(data) {
     const baseUrl = FEISHU_API_DOMAINS[data.feishu_api_domain] || FEISHU_API_DOMAINS.feishu;
     try {
+        // 步骤1: 获取 token
         const token = await getFeishuAccessToken(data.feishu_app_id, data.feishu_app_secret, data.feishu_api_domain);
+
+        // 步骤2: 获取表格字段列表
         const resp = await fetchWithRetry(`${baseUrl}/open-apis/bitable/v1/apps/${data.feishu_app_token}/tables/${data.feishu_table_id}/fields`, {
             headers: { Authorization: `Bearer ${token}` },
         }, 1);
         const result = await resp.json();
         if (result.code !== 0) throw new Error(`表格访问失败: ${result.msg}`);
-        const fields = (result.data?.items || []).map(f => f.field_name);
-        const required = ["标题", "链接", "作者", "保存时间"];
-        const missing = required.filter(f => !fields.includes(f));
-        return { success: true, fieldCount: fields.length, fields, missingFields: missing };
+
+        const existingFields = result.data?.items || [];
+        const fieldMap = {};
+        existingFields.forEach(f => {
+            fieldMap[f.field_name] = { type: f.type, typeName: getFeishuFieldTypeName(f.type) };
+        });
+
+        // 步骤3: 验证字段配置
+        const missingFields = [];
+        const wrongTypeFields = [];
+
+        FEISHU_REQUIRED_FIELDS.forEach(required => {
+            const existing = fieldMap[required.name];
+            if (!existing) {
+                missingFields.push(required);
+            } else if (existing.type !== required.type) {
+                wrongTypeFields.push({
+                    name: required.name,
+                    expected: required.desc,
+                    actual: existing.typeName,
+                });
+            }
+        });
+
+        // 步骤4: 如果有缺失字段，自动创建
+        const createdFields = [];
+        if (missingFields.length > 0) {
+            for (const field of missingFields) {
+                try {
+                    await createFeishuField(baseUrl, data.feishu_app_token, data.feishu_table_id, token, field.name, field.type);
+                    createdFields.push(field.name);
+                } catch (e) {
+                    // 自动创建失败时记录但不中断
+                    console.warn(`[x2md] 自动创建飞书字段「${field.name}」失败:`, e.message);
+                }
+            }
+        }
+
+        // 步骤5: 测试访问记录
+        const recordsResp = await fetchWithRetry(`${baseUrl}/open-apis/bitable/v1/apps/${data.feishu_app_token}/tables/${data.feishu_table_id}/records?page_size=1`, {
+            headers: { Authorization: `Bearer ${token}` },
+        }, 1);
+        const recordsData = await recordsResp.json();
+        const recordCount = recordsData.data?.total || 0;
+
+        // 构建结果消息
+        const domainName = data.feishu_api_domain === "lark" ? "Lark 国际版" : "飞书国内版";
+        const allFieldNames = existingFields.map(f => f.field_name);
+        const remainingMissing = missingFields.filter(f => !createdFields.includes(f.name));
+
+        let message = `连接成功！\n\n`;
+        message += `配置信息：\n`;
+        message += `  API 版本：${domainName}\n`;
+        message += `  应用认证：通过\n`;
+        message += `  表格访问：正常\n`;
+        message += `  现有记录：${recordCount} 条\n\n`;
+
+        if (createdFields.length > 0) {
+            message += `已自动创建缺失字段（${createdFields.length}个）：\n`;
+            message += `  ${createdFields.join("、")}\n\n`;
+        }
+
+        if (wrongTypeFields.length > 0) {
+            message += `字段类型不匹配（${wrongTypeFields.length}个）：\n`;
+            wrongTypeFields.forEach(f => {
+                message += `  「${f.name}」期望: ${f.expected}, 实际: ${f.actual}\n`;
+            });
+            message += `请在飞书多维表格中修正字段类型。\n\n`;
+        }
+
+        if (remainingMissing.length > 0) {
+            message += `仍缺失字段（${remainingMissing.length}个，自动创建失败）：\n`;
+            remainingMissing.forEach(f => {
+                message += `  「${f.name}」(类型: ${f.desc})\n`;
+            });
+            message += `请手动在飞书多维表格中创建。\n\n`;
+        }
+
+        if (wrongTypeFields.length === 0 && remainingMissing.length === 0) {
+            message += `字段验证通过（${FEISHU_REQUIRED_FIELDS.length}个必需字段）\n`;
+        }
+
+        message += `\n当前表格字段：${allFieldNames.concat(createdFields).join("、")}`;
+
+        return {
+            success: wrongTypeFields.length === 0 && remainingMissing.length === 0,
+            message,
+            fieldCount: allFieldNames.length + createdFields.length,
+            fields: allFieldNames.concat(createdFields),
+            createdFields,
+            missingFields: remainingMissing.map(f => f.name),
+            wrongTypeFields: wrongTypeFields.map(f => f.name),
+        };
     } catch (err) {
         return { success: false, error: err.message };
     }

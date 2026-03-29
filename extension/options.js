@@ -427,9 +427,26 @@ function testFeishuConnection() {
             feishu_table_id: tableId,
         }
     }, (resp) => {
-        if (resp && resp.success) {
+        if (resp && resp.message) {
+            // 新版详细响应
+            const hasWarnings = (resp.wrongTypeFields?.length > 0) || (resp.missingFields?.length > 0);
+            if (resp.success) {
+                statusEl.className = hasWarnings ? "status-msg warning" : "status-msg success";
+            } else {
+                statusEl.className = "status-msg error";
+            }
+            statusEl.style.whiteSpace = "pre-wrap";
+            let msg = resp.message;
+            if (resp.createdFields?.length > 0) {
+                msg = "✅ " + msg;
+            } else if (resp.success && !hasWarnings) {
+                msg = "✅ " + msg;
+            }
+            statusEl.textContent = msg;
+        } else if (resp && resp.success) {
+            // 兼容旧版简单响应
             statusEl.className = "status-msg success";
-            let msg = `连接成功！检测到 ${resp.fieldCount || 0} 个字段`;
+            let msg = `✅ 连接成功！检测到 ${resp.fieldCount || 0} 个字段`;
             if (resp.missingFields && resp.missingFields.length > 0) {
                 msg += `\n⚠️ 缺少字段：${resp.missingFields.join("、")}`;
                 statusEl.className = "status-msg warning";
@@ -437,8 +454,9 @@ function testFeishuConnection() {
             statusEl.textContent = msg;
         } else {
             statusEl.className = "status-msg error";
-            statusEl.textContent = "连接失败：" + (resp?.error || "未知错误");
+            statusEl.textContent = "❌ 连接失败：" + (resp?.error || "未知错误");
         }
+        statusEl.style.display = "block";
     });
 }
 
