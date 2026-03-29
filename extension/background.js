@@ -871,12 +871,17 @@ async function handleSaveToFeishu(data, _retried) {
             } catch (_) { /* 单张图片失败不影响整体 */ }
         }
 
+        // 构建字段（与 FEISHU_REQUIRED_FIELDS 9 个必需字段对齐）
+        const tags = Array.isArray(data.tags) ? data.tags : [];
+        const commentCount = Array.isArray(data.comments) ? data.comments.length : 0;
         const fields = {
             "标题": title,
             "链接": { link: data.url || "", text: data.url || "" },
             "作者": data.author || "",
+            "分类": data.platform || (data.type === "article" ? "文章" : data.type === "thread" ? "Thread" : "推文"),
+            "标签": tags.join("、"),
             "保存时间": Date.now(),
-            "类型": data.type === "article" ? "文章" : data.type === "thread" ? "Thread" : "推文",
+            "评论数": commentCount,
         };
         if (!data.feishu_upload_md) {
             fields["正文"] = sanitizeFeishuTextContent(data.article_content || data.text || "");
@@ -911,15 +916,17 @@ const FEISHU_FIELD_TYPES = {
     ATTACHMENT: 17, // 附件
 };
 
-// 保存到飞书时使用的必需字段（与 handleSaveToFeishu 中的 fields 对象保持一致）
+// 飞书多维表格必需字段（9 个，与上游 FEISHU-FIELD-VALIDATION.md 保持一致）
 const FEISHU_REQUIRED_FIELDS = [
     { name: "标题", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
     { name: "链接", type: FEISHU_FIELD_TYPES.URL, desc: "超链接" },
     { name: "作者", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
+    { name: "分类", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
+    { name: "标签", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
     { name: "保存时间", type: FEISHU_FIELD_TYPES.DATE, desc: "日期" },
-    { name: "类型", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
-    { name: "正文", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
+    { name: "评论数", type: FEISHU_FIELD_TYPES.NUMBER, desc: "数字" },
     { name: "附件", type: FEISHU_FIELD_TYPES.ATTACHMENT, desc: "附件" },
+    { name: "正文", type: FEISHU_FIELD_TYPES.TEXT, desc: "文本" },
 ];
 
 function getFeishuFieldTypeName(typeCode) {
