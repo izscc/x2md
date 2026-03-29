@@ -13,7 +13,10 @@
             return "linux_do";
         }
 
-        if (hostname.endsWith(".feishu.cn") && (/^\/wiki\/[^/]+/.test(pathname) || /^\/docx\/[^/]+/.test(pathname))) {
+        if ((hostname.endsWith(".feishu.cn") || hostname.endsWith(".larksuite.com")) &&
+            (/^\/wiki\/[^/]+/.test(pathname) || /^\/docx\/[^/]+/.test(pathname) ||
+             /^\/docs\/[^/]+/.test(pathname) || /^\/minutes\/[^/]+/.test(pathname) ||
+             /^\/sheets\/[^/]+/.test(pathname) || /^\/mindnotes\/[^/]+/.test(pathname))) {
             return "feishu";
         }
 

@@ -1,4 +1,196 @@
 (function (globalScope) {
+
+    // ─────────────────────────────────────────────
+    // 飞书权限绕过：解除"仅阅读/禁止复制"的前端限制
+    // ─────────────────────────────────────────────
+
+    function neutralizeFeishuCopyProtection(doc) {
+        doc = doc || globalScope.document;
+        if (!doc || doc.__x2md_protection_neutralized) return;
+        doc.__x2md_protection_neutralized = true;
+
+        // 1. CSS：强制恢复文字可选中，隐藏复制保护提示/遮罩
+        var style = doc.createElement("style");
+        style.id = "__x2md_copy_unlock";
+        style.textContent = [
+            "* { -webkit-user-select: text !important; user-select: text !important; }",
+            ".copy-forbidden-toast, .copy-protection-mask, .copy-tip-container,",
+            ".gpf-biz-action-manager-forbidden-placeholder,",
+            ".suite-permission-toast, .permission-denied-dialog,",
+            "[class*='copy-forbidden'], [class*='copy-protection'],",
+            "[class*='permission-toast'], [class*='no-copy'] {",
+            "  display: none !important; visibility: hidden !important; pointer-events: none !important;",
+            "}",
+        ].join("\n");
+        (doc.head || doc.documentElement).appendChild(style);
+
+        // 2. JS事件：在捕获阶段拦截飞书的复制保护监听器
+        var protectedEvents = ["copy", "cut", "contextmenu", "selectstart", "beforecopy"];
+        protectedEvents.forEach(function (eventType) {
+            doc.addEventListener(eventType, function (e) {
+                e.stopPropagation();
+            }, true);
+        });
+
+        // 3. 页面上下文注入：清除飞书在 document 上挂的 on* 保护
+        var script = doc.createElement("script");
+        script.textContent = "(function(){" +
+            "document.oncopy=null;document.oncut=null;document.onselectstart=null;document.oncontextmenu=null;" +
+            // 覆盖 ClipboardEvent 阻止逻辑：让 navigator.clipboard 正常工作
+            "try{var _dp=Event.prototype.preventDefault;Event.prototype.preventDefault=function(){" +
+            "if(this instanceof ClipboardEvent||this.type==='copy'||this.type==='cut'||this.type==='selectstart')return;" +
+            "_dp.call(this);};}catch(e){}" +
+            "})();";
+        (doc.head || doc.documentElement).appendChild(script);
+        script.remove();
+    }
+
+    // ─────────────────────────────────────────────
+    // 飞书页面类型检测（扩展：支持 wiki/docx/minutes/sheets/mindnotes）
+    // ─────────────────────────────────────────────
+
+    function detectFeishuPageType(locationLike) {
+        locationLike = locationLike || globalScope.location;
+        var hostname = String(locationLike.hostname || "").toLowerCase();
+        var pathname = String(locationLike.pathname || "");
+
+        if (!hostname.endsWith(".feishu.cn") && !hostname.endsWith(".larksuite.com")) return null;
+
+        if (/^\/wiki\/[^/]+/.test(pathname)) return "wiki";
+        if (/^\/docx\/[^/]+/.test(pathname)) return "docx";
+        if (/^\/minutes\/[^/]+/.test(pathname)) return "minutes";
+        if (/^\/sheets\/[^/]+/.test(pathname)) return "sheets";
+        if (/^\/mindnotes\/[^/]+/.test(pathname)) return "mindnotes";
+        if (/^\/docs\/[^/]+/.test(pathname)) return "docs";  // 旧版飞书文档
+        if (/^\/drive\/[^/]+/.test(pathname)) return "drive";
+
+        return null;
+    }
+
+    function isFeishuContentPage(locationLike) {
+        return detectFeishuPageType(locationLike) !== null;
+    }
+
+    // ─────────────────────────────────────────────
+    // 飞书智能纪要 (minutes) 提取
+    // ─────────────────────────────────────────────
+
+    function extractFeishuMinutesData(doc, options) {
+        doc = doc || globalScope.document;
+        options = options || {};
+        var pageUrl = options.pageUrl || doc.location?.href || globalScope.location?.href || "";
+
+        // 智能纪要标题
+        var title = "";
+        var titleSelectors = [
+            ".minutes-title", ".vc-minutes-title", "[class*='minutes-title']",
+            ".header-title", "h1", "title"
+        ];
+        for (var i = 0; i < titleSelectors.length; i++) {
+            var el = doc.querySelector(titleSelectors[i]);
+            if (el) {
+                var t = cleanZeroWidth(getNodeText(el)).trim();
+                if (t && t !== "飞书智能纪要" && t !== "飞书") { title = t; break; }
+            }
+        }
+        if (!title) title = String(doc.title || "").replace(/\s*-\s*飞书.*$/, "").trim();
+
+        // 纪要内容：多种容器尝试
+        var contentParts = [];
+
+        // 方法A：结构化段落（发言人 + 内容）
+        var speakerBlocks = doc.querySelectorAll(
+            "[class*='transcript-item'], [class*='speaker-block'], " +
+            "[class*='subtitle-item'], [class*='minutes-content'] > div"
+        );
+        if (speakerBlocks.length > 0) {
+            for (var j = 0; j < speakerBlocks.length; j++) {
+                var block = speakerBlocks[j];
+                var speaker = "";
+                var speakerEl = block.querySelector("[class*='speaker-name'], [class*='name'], [class*='avatar'] + span");
+                if (speakerEl) speaker = cleanZeroWidth(getNodeText(speakerEl)).trim();
+                var text = cleanZeroWidth(getNodeText(block)).trim();
+                if (speaker && text.startsWith(speaker)) {
+                    text = text.slice(speaker.length).trim();
+                }
+                if (text) {
+                    contentParts.push(speaker ? ("**" + speaker + "**：" + text) : text);
+                }
+            }
+        }
+
+        // 方法B：AI总结区域
+        var summarySelectors = [
+            "[class*='ai-summary'], [class*='minutes-summary'], [class*='smart-summary']",
+            "[class*='key-points'], [class*='action-items']"
+        ];
+        for (var k = 0; k < summarySelectors.length; k++) {
+            var summaryEl = doc.querySelector(summarySelectors[k]);
+            if (summaryEl) {
+                var summaryText = cleanZeroWidth(getNodeText(summaryEl)).trim();
+                if (summaryText.length > 20) {
+                    contentParts.unshift("## AI 总结\n\n" + summaryText);
+                }
+            }
+        }
+
+        // 方法C：兜底 - 全页面正文区域
+        if (contentParts.length === 0) {
+            var bodySelectors = [
+                ".minutes-body", ".vc-minutes-body", "[class*='minutes-content']",
+                ".main-content", "#content", "main"
+            ];
+            for (var m = 0; m < bodySelectors.length; m++) {
+                var bodyEl = doc.querySelector(bodySelectors[m]);
+                if (bodyEl) {
+                    var bodyText = cleanZeroWidth(getNodeText(bodyEl)).trim();
+                    if (bodyText.length > 50) {
+                        contentParts.push(bodyText);
+                        break;
+                    }
+                }
+            }
+        }
+
+        var articleContent = contentParts.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+        if (!articleContent || articleContent.length < 30) return null;
+
+        return {
+            type: "article",
+            url: cleanFeishuUrl(pageUrl),
+            author: extractFeishuAuthor(doc),
+            handle: "",
+            author_url: "",
+            published: "",
+            article_title: title,
+            article_content: articleContent,
+            images: [],
+            videos: [],
+            platform: "Feishu",
+        };
+    }
+
+    // ─────────────────────────────────────────────
+    // 飞书通用页面滚动收集（兼容 minutes 等非 docx 页面）
+    // ─────────────────────────────────────────────
+
+    function findFeishuScrollContainer(doc) {
+        doc = doc || globalScope.document;
+        var candidates = [
+            ".bear-web-x-container",
+            ".minutes-body", ".vc-minutes-body",
+            "[class*='minutes-content']",
+            ".main-content",
+            "main",
+            "#content",
+        ];
+        for (var i = 0; i < candidates.length; i++) {
+            var el = doc.querySelector(candidates[i]);
+            if (el && el.scrollHeight > el.clientHeight + 100) return el;
+        }
+        return null;
+    }
+
     function cleanFeishuUrl(url) {
         if (!url) return "";
         try {
@@ -31,7 +223,8 @@
     function isFeishuWikiOrDocxPage(locationLike = globalScope.location) {
         const hostname = String(locationLike?.hostname || "").toLowerCase();
         const pathname = String(locationLike?.pathname || "");
-        return hostname.endsWith(".feishu.cn") && (/^\/wiki\/[^/]+/.test(pathname) || /^\/docx\/[^/]+/.test(pathname));
+        return (hostname.endsWith(".feishu.cn") || hostname.endsWith(".larksuite.com")) &&
+            (/^\/wiki\/[^/]+/.test(pathname) || /^\/docx\/[^/]+/.test(pathname));
     }
 
     function shouldSkipFeishuInlineNode(node) {
@@ -562,16 +755,21 @@
     const exported = {
         cleanFeishuUrl,
         convertFeishuApiDataToMarkdown,
+        detectFeishuPageType,
         extractFeishuAuthor,
         extractFeishuBlockMarkdown,
         extractFeishuDocToken,
         extractFeishuDocumentData,
         extractFeishuInlineMarkdown,
         extractFeishuMarkdownFromBlocks,
+        extractFeishuMinutesData,
         extractFeishuTitle,
         extractFeishuUpdated,
         fetchFeishuDocViaApi,
+        findFeishuScrollContainer,
+        isFeishuContentPage,
         isFeishuWikiOrDocxPage,
+        neutralizeFeishuCopyProtection,
     };
 
     if (typeof module !== "undefined" && module.exports) {

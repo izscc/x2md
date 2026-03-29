@@ -54,6 +54,7 @@ function applyConfigToUI(cfg) {
     document.getElementById("videoSavePath").value = cfg.video_save_path || "";
     document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
     document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
+    document.getElementById("enableCopyUnlock").checked = !!cfg.enable_copy_unlock;
 
     // 平台分类文件夹（V1.2）
     document.getElementById("enablePlatformFolders").checked = cfg.enable_platform_folders !== false;
@@ -324,6 +325,7 @@ function saveConfig() {
     const videoSavePath = document.getElementById("videoSavePath").value.trim();
     const videoDurationThreshold = parseFloat(document.getElementById("videoDurationThreshold").value) || 5;
     const showSiteSaveIcon = document.getElementById("showSiteSaveIcon").checked;
+    const enableCopyUnlock = document.getElementById("enableCopyUnlock").checked;
     const syncEnabled = document.getElementById("syncEnabled").checked;
 
     // 平台分类文件夹（V1.2）
@@ -369,6 +371,7 @@ function saveConfig() {
         video_save_path: videoSavePath,
         video_duration_threshold: videoDurationThreshold,
         show_site_save_icon: showSiteSaveIcon,
+        enable_copy_unlock: enableCopyUnlock,
         sync_enabled: syncEnabled,
         enable_platform_folders: enablePlatformFolders,
         platform_folder_names: platformFolderNames,

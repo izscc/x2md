@@ -444,6 +444,7 @@ let runtimeConfig = null;
 function requestRuntimeConfig() {
     if (runtimeConfig) {
         ensureFloatingSaveButton();
+        ensureFloatingCopyButton();
         return;
     }
 
@@ -454,6 +455,7 @@ function requestRuntimeConfig() {
             setDiscourseDomains(runtimeConfig.discourse_domains);
         }
         ensureFloatingSaveButton();
+        ensureFloatingCopyButton();
     });
 }
 
@@ -514,13 +516,15 @@ function findCurrentLinuxDoPost() {
 /**
  * 飞书虚拟渲染应对：滚动收集所有 block 元素。
  * 飞书用 IntersectionObserver 按需渲染，视口外的 block 会被替换为 placeholder。
- * 我们通过滚动 .bear-web-x-container 逐步让每个区域进入视口，
+ * 我们通过滚动容器逐步让每个区域进入视口，
  * 对每个出现的 block 按 data-block-id 去重收集，最终返回完整的 block 数组。
  */
 async function scrollAndCollectFeishuBlocks() {
-    const container = document.querySelector(".bear-web-x-container");
+    // 使用通用容器查找（支持 docx/wiki/minutes 等多种页面）
+    const container = findFeishuScrollContainer(document) ||
+        document.querySelector(".bear-web-x-container");
     if (!container) {
-        console.log("[x2md] 未找到 .bear-web-x-container，跳过滚动收集");
+        console.log("[x2md] 未找到可滚动容器，跳过滚动收集");
         return null;
     }
 
@@ -528,11 +532,22 @@ async function scrollAndCollectFeishuBlocks() {
     const originalScrollTop = container.scrollTop;
 
     function collect() {
-        const blocks = document.querySelectorAll("#docx .block[data-block-type]");
-        for (const block of blocks) {
-            const id = block.getAttribute("data-block-id");
-            if (!id || seen.has(id)) continue;
-            seen.set(id, block.cloneNode(true));
+        // 扩大选择器范围：兼容 docx blocks + 通用内容块
+        const selectors = [
+            "#docx .block[data-block-type]",
+            ".block[data-block-type]",
+            "[class*='transcript-item']",
+            "[class*='subtitle-item']",
+        ];
+        for (const sel of selectors) {
+            const blocks = document.querySelectorAll(sel);
+            for (const block of blocks) {
+                const id = block.getAttribute("data-block-id") ||
+                    block.getAttribute("data-id") ||
+                    ("pos_" + block.getBoundingClientRect().top.toFixed(0));
+                if (!id || seen.has(id)) continue;
+                seen.set(id, block.cloneNode(true));
+            }
         }
     }
 
@@ -547,13 +562,10 @@ async function scrollAndCollectFeishuBlocks() {
         container.scrollTop = pos;
         await new Promise((r) => setTimeout(r, 100));
         collect();
-        // 检查是否真的滚到了（scrollHeight 可能在增长）
         const maxScroll = container.scrollHeight - container.clientHeight;
         if (container.scrollTop >= maxScroll - 10) {
             stuckCount++;
-            // scrollHeight 可能因为新渲染而增长，给它一点时间
             await new Promise((r) => setTimeout(r, 150));
-            // 更新 pos 到当前实际位置，防止 scrollHeight 增长后漏掉
             pos = container.scrollTop;
         } else {
             stuckCount = 0;
@@ -583,11 +595,45 @@ async function scrollAndCollectFeishuBlocks() {
 }
 
 function captureFeishuDocument() {
-    showToast("正在通过 API 读取飞书文档…", "loading", null);
+    // 第一步：解除复制保护（在所有策略之前执行）
+    neutralizeFeishuCopyProtection(document);
+
     const pageUrl = location.href;
     const options = { pageUrl };
+    const pageType = detectFeishuPageType(location);
 
-    // 策略1：通过飞书内部 JSON API 直接读取（无需滚动）
+    // 智能纪要走单独路径（没有 docx block 结构）
+    if (pageType === "minutes") {
+        showToast("正在提取飞书智能纪要…", "loading", null);
+        // 先尝试直接提取
+        const minutesData = extractFeishuMinutesData(document, options);
+        if (minutesData && minutesData.article_content.length >= 100) {
+            showToast("正在保存智能纪要…", "loading", null);
+            sendToBackground(minutesData);
+            return;
+        }
+        // 不够长：滚动加载更多内容后重试
+        showToast("正在滚动加载完整纪要…", "loading", null);
+        scrollAndCollectFeishuBlocks().then(() => {
+            const retryData = extractFeishuMinutesData(document, options);
+            if (retryData && retryData.article_content.length >= 50) {
+                showToast("正在保存智能纪要…", "loading", null);
+                sendToBackground(retryData);
+            } else {
+                showToast("智能纪要提取失败", "error", 4000);
+            }
+        }).catch((err) => {
+            console.error("[x2md] Minutes 滚动提取出错：", err);
+            showToast("智能纪要提取失败", "error", 4000);
+        });
+        return;
+    }
+
+    // ─── docx / wiki 文档：三策略流程（已修复优先级） ───
+
+    showToast("正在通过 API 读取飞书文档…", "loading", null);
+
+    // 策略1：通过飞书内部 JSON API 直接读取（最完整，不受滚动/权限影响）
     fetchFeishuDocViaApi(pageUrl).then((apiData) => {
         if (apiData) {
             const apiContent = convertFeishuApiDataToMarkdown(apiData);
@@ -595,19 +641,13 @@ function captureFeishuDocument() {
                 console.log("[x2md] Feishu 文档（JSON API 读取成功，长度=" + apiContent.length + "）");
                 return finishFeishuCapture(apiContent);
             }
-            console.log("[x2md] Feishu JSON API 返回内容太短，尝试 DOM 提取");
+            console.log("[x2md] Feishu JSON API 返回内容太短（" + (apiContent?.length || 0) + "），降级到滚动收集");
         } else {
-            console.log("[x2md] Feishu JSON API 不可用，尝试 DOM 提取");
+            console.log("[x2md] Feishu JSON API 不可用（可能权限限制），降级到滚动收集");
         }
 
-        // 策略2：直接从当前 DOM 提取（不滚动，拿到多少算多少）
-        const domData = extractFeishuDocumentData(document, options);
-        if (domData && domData.article_content && domData.article_content.length >= 50) {
-            console.log("[x2md] Feishu 文档（DOM 直接提取，长度=" + domData.article_content.length + "）");
-            return finishFeishuCapture(domData.article_content);
-        }
-
-        // 策略3：滚动收集（最后兜底）
+        // 策略2（原策略3）：直接跳到滚动收集 — 跳过 DOM 直读
+        // 原因：DOM 直读受虚拟滚动限制，只能拿到一屏内容，极易误判为"成功"
         showToast("正在滚动页面加载全部内容…", "loading", null);
         scrollAndCollectFeishuBlocks().then((collectedBlocks) => {
             let scrollContent = null;
@@ -616,8 +656,16 @@ function captureFeishuDocument() {
             }
 
             if (scrollContent && scrollContent.length >= 50) {
-                console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks）");
+                console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks，长度=" + scrollContent.length + "）");
                 return finishFeishuCapture(scrollContent);
+            }
+
+            // 策略3（兜底）：如果滚动收集也失败了，尝试 DOM 直读（聊胜于无）
+            console.log("[x2md] 滚动收集失败，最后尝试 DOM 直读");
+            const domData = extractFeishuDocumentData(document, options);
+            if (domData && domData.article_content && domData.article_content.length >= 30) {
+                console.log("[x2md] Feishu 文档（DOM 兜底提取，长度=" + domData.article_content.length + "）");
+                return finishFeishuCapture(domData.article_content);
             }
 
             showToast("飞书文档提取失败", "error", 4000);
@@ -956,11 +1004,222 @@ function ensureFloatingSaveButton() {
 }
 
 // ─────────────────────────────────────────────
+// 一键复制按钮（飞书文档解锁复制）
+// ─────────────────────────────────────────────
+const COPY_FLOATING_BUTTON_ID = "__x2md_copy_button";
+
+function ensureFloatingCopyButton() {
+    const pageType = typeof detectFeishuPageType === "function" ? detectFeishuPageType(location) : null;
+    const enabled = runtimeConfig && runtimeConfig.enable_copy_unlock;
+    let btn = document.getElementById(COPY_FLOATING_BUTTON_ID);
+
+    if (!pageType || !enabled) {
+        btn?.remove();
+        return;
+    }
+
+    if (btn) return; // 已存在
+
+    btn = document.createElement("button");
+    btn.id = COPY_FLOATING_BUTTON_ID;
+    btn.type = "button";
+    btn.textContent = "\uD83D\uDCCB"; // 📋
+    btn.title = "一键复制全部内容（Markdown 格式）";
+    Object.assign(btn.style, {
+        position: "fixed",
+        top: "148px",
+        right: "24px",
+        width: "42px",
+        height: "42px",
+        border: "none",
+        borderRadius: "999px",
+        background: "#8b5cf6",
+        color: "#fff",
+        fontSize: "18px",
+        cursor: "pointer",
+        zIndex: "2147483646",
+        boxShadow: "0 10px 24px rgba(139, 92, 246, 0.35)",
+        transition: "transform .15s ease, opacity .15s ease",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+    });
+    btn.addEventListener("mouseenter", () => { btn.style.transform = "translateY(-1px)"; });
+    btn.addEventListener("mouseleave", () => { btn.style.transform = "translateY(0)"; });
+    btn.addEventListener("click", handleCopyFullContent);
+    document.body.appendChild(btn);
+}
+
+let _copyInProgress = false;
+
+async function handleCopyFullContent() {
+    if (_copyInProgress) return; // 防止重复点击
+    _copyInProgress = true;
+
+    const pageType = detectFeishuPageType(location);
+    if (!pageType) { _copyInProgress = false; return; }
+
+    // 解除复制保护
+    neutralizeFeishuCopyProtection(document);
+
+    showToast("正在提取全部内容…", "loading", null);
+
+    try {
+        let markdown = "";
+        const pageUrl = location.href;
+        const options = { pageUrl };
+
+        if (pageType === "minutes") {
+            // 智能纪要
+            let data = extractFeishuMinutesData(document, options);
+            if (!data || !data.article_content || data.article_content.length < 100) {
+                await scrollAndCollectFeishuBlocks();
+                data = extractFeishuMinutesData(document, options);
+            }
+            if (data && data.article_content) {
+                const safeTitle = data.article_title ? data.article_title.replace(/#/g, "\\#") : "";
+                const title = safeTitle ? `# ${safeTitle}\n\n` : "";
+                markdown = title + data.article_content;
+            }
+        } else {
+            // docx / wiki / docs / sheets / mindnotes
+            // 策略1: API
+            let content = null;
+            try {
+                const apiData = await fetchFeishuDocViaApi(pageUrl);
+                if (apiData) {
+                    content = convertFeishuApiDataToMarkdown(apiData);
+                    if (content && content.length < 50) content = null;
+                }
+            } catch (e) {
+                console.log("[x2md copy] API fallback:", e);
+            }
+
+            // 策略2: 滚动收集
+            if (!content) {
+                const blocks = await scrollAndCollectFeishuBlocks();
+                if (blocks && blocks.length > 0) {
+                    content = extractFeishuMarkdownFromBlocks(blocks, options);
+                    if (content && content.length < 50) content = null;
+                }
+            }
+
+            // 策略3: DOM 兜底
+            if (!content) {
+                const domData = extractFeishuDocumentData(document, options);
+                if (domData && domData.article_content) {
+                    content = domData.article_content;
+                }
+            }
+
+            if (content) {
+                let title = extractFeishuTitle(document);
+                if (title) title = title.replace(/#/g, "\\#");
+                markdown = (title ? `# ${title}\n\n` : "") + content;
+            }
+        }
+
+        if (!markdown || markdown.length < 20) {
+            showToast("内容提取失败，请稍后重试", "error", 4000);
+            _copyInProgress = false;
+            return;
+        }
+
+        // 处理图片：确保所有图片都是 ![](url) 格式（保留原始链接）
+        // 处理视频：将视频链接转为 iframe 嵌入
+        markdown = postProcessMarkdownForClipboard(markdown, pageUrl);
+
+        // 写入剪贴板（带 fallback，因为 async 操作后 user gesture 可能已过期）
+        const copied = await copyTextToClipboard(markdown);
+        if (copied) {
+            showToast("已复制全部内容到剪贴板（Markdown 格式）", "success", 3000);
+        } else {
+            showToast("剪贴板写入失败，请重试", "error", 4000);
+        }
+    } catch (err) {
+        console.error("[x2md copy] 复制失败：", err);
+        showToast("复制失败：" + (err.message || "未知错误"), "error", 4000);
+    } finally {
+        _copyInProgress = false;
+    }
+}
+
+async function copyTextToClipboard(text) {
+    // 优先使用 Clipboard API
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch { /* user gesture 可能已过期，降级到 execCommand */ }
+
+    // Fallback: textarea + execCommand（异步操作后 user gesture 失效时使用）
+    try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        return ok;
+    } catch {
+        return false;
+    }
+}
+
+function postProcessMarkdownForClipboard(md, pageUrl) {
+    // 0. 将残留的 <img> HTML 标签转为 Markdown 图片语法
+    md = md.replace(/<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*\/?>/gi,
+        (match, src, alt) => `![${alt || ""}](${src})`
+    );
+    // 补充：alt 在 src 之前的情况
+    md = md.replace(/<img[^>]+alt=["']([^"']*)["'][^>]+src=["']([^"']+)["'][^>]*\/?>/gi,
+        (match, alt, src) => `![${alt || ""}](${src})`
+    );
+
+    // 1. 确保图片链接是完整 URL，并转义 URL 中的括号（防止 Markdown 语法断裂）
+    md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+        if (url.startsWith("//")) url = "https:" + url;
+        else if (url.startsWith("/")) {
+            try {
+                const base = new URL(pageUrl);
+                url = base.origin + url;
+            } catch { /* keep as-is */ }
+        }
+        // 转义 URL 中的括号，防止 Markdown 渲染断裂
+        url = url.replace(/\(/g, "%28").replace(/\)/g, "%29");
+        return `![${alt}](${url})`;
+    });
+
+    // 2. 查找页面中的视频元素，提取视频 URL 并转为 iframe
+    const videos = document.querySelectorAll("video[src], video source[src]");
+    const videoUrls = new Set();
+    videos.forEach(v => {
+        const src = v.src || v.getAttribute("src");
+        if (src) videoUrls.add(src);
+    });
+
+    // 将页面视频 URL 追加为 iframe（使用固定像素宽度，OB 兼容性更好）
+    for (const vUrl of videoUrls) {
+        if (!md.includes(vUrl)) {
+            md += `\n\n<iframe src="${vUrl}" width="640" height="360" frameborder="0" allowfullscreen></iframe>\n`;
+        }
+    }
+
+    // 3. 将已有的裸视频链接转为 iframe
+    md = md.replace(/(?:^|\n)(https?:\/\/[^\s]+\.mp4[^\s]*)(?:\n|$)/gm, (match, url) => {
+        return `\n<iframe src="${url}" width="640" height="360" frameborder="0" allowfullscreen></iframe>\n`;
+    });
+
+    return md;
+}
+
+// ─────────────────────────────────────────────
 // MutationObserver：监听动态加载的推文
 // ─────────────────────────────────────────────
 function bindAll() {
     document.querySelectorAll(BOOKMARK_SELECTORS).forEach(attachBookmarkListener);
     ensureFloatingSaveButton();
+    ensureFloatingCopyButton();
 }
 
 let _bindAllTimer = null;

@@ -716,6 +716,33 @@
             </div>
         </div>
 
+        <!-- 一键复制（飞书文档解锁） -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">📋</div>
+                <div>
+                    <h2>飞书文档一键复制</h2>
+                    <p>在飞书仅阅读/禁止复制的文档页面显示复制按钮，一键复制全部内容到剪贴板</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">启用功能</div>
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <input type="checkbox" id="enableCopyUnlock"
+                            style="width:16px; height:16px; cursor:pointer;" />
+                        <label for="enableCopyUnlock"
+                            style="margin-left: 8px; font-size:13px; cursor:pointer;">在飞书文档页面显示一键复制按钮（默认关闭）</label>
+                    </div>
+                </div>
+                <div class="form-hint" style="margin-top:8px;">
+                    开启后，飞书知识库、云文档、智能纪要等页面右上角会出现 📋 复制按钮。<br>
+                    点击后自动提取全部内容（含图片链接和视频 iframe），复制为 Markdown 格式。<br>
+                    粘贴到 Obsidian 后，图片可通过链接预览，视频以 iframe 方式嵌入。
+                </div>
+            </div>
+        </div>
+
         <!-- 账号同步 -->
         <div class="card">
             <div class="card-header">
