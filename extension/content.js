@@ -459,9 +459,18 @@ function requestRuntimeConfig() {
     });
 }
 
+// 重复保存保护：记录本次会话已保存的 post-id，防止重复保存
+const _savedPostIds = new Set();
+
 async function captureLinuxDoPostElement(post) {
     if (!post) {
         showToast("未找到对应帖子内容", "error", 3500);
+        return;
+    }
+
+    const postId = post.getAttribute("data-post-id");
+    if (postId && _savedPostIds.has(postId)) {
+        showToast("该内容已保存过，无需重复保存", "info", 2000);
         return;
     }
 
@@ -498,6 +507,9 @@ async function captureLinuxDoPostElement(post) {
     console.log(`[x2md] ${siteName} 帖子：`, { url: data.url, author: data.author, title: data.article_title });
     showToast(`正在保存 ${siteName} 帖子…`, "loading", null);
     sendToBackground(data);
+
+    // 标记已保存，防止重复
+    if (postId) _savedPostIds.add(postId);
 }
 
 function captureLinuxDoPost(btn) {
