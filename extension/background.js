@@ -181,6 +181,7 @@ async function discoverGraphQLOperationIdsFromPage(pageUrl) {
                     "x-twitter-active-user": "yes",
                     "x-twitter-client-language": "zh-cn",
                 },
+                signal: AbortSignal.timeout(8000),
             });
             if (!htmlResp.ok) {
                 return { TweetDetail: [], TweetResultByRestId: [] };
@@ -199,7 +200,7 @@ async function discoverGraphQLOperationIdsFromPage(pageUrl) {
             let discovered = { TweetDetail: [], TweetResultByRestId: [] };
 
             for (const scriptUrl of scriptUrls) {
-                const scriptResp = await fetch(scriptUrl);
+                const scriptResp = await fetch(scriptUrl, { signal: AbortSignal.timeout(5000) });
                 if (!scriptResp.ok) continue;
 
                 const scriptText = await scriptResp.text();
@@ -444,6 +445,7 @@ async function fetchViaGraphQL(tweetId, options = {}) {
             const resp = await fetch(url, {
                 credentials: "include",
                 headers,
+                signal: AbortSignal.timeout(10000),
             });
 
             if (!resp.ok) {
@@ -621,7 +623,7 @@ function parseLegacyTweet(result, userLegacy) {
 async function fetchViaOEmbed(tweetUrl) {
     try {
         const apiUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(tweetUrl)}&omit_script=true`;
-        const resp = await fetch(apiUrl);
+        const resp = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) });
         if (!resp.ok) return null;
         const json = await resp.json();
 
@@ -859,7 +861,7 @@ async function handleSaveToFeishu(data, _retried) {
             try {
                 const imgUrl = images[i];
                 if (!imgUrl || !imgUrl.startsWith("http")) continue;
-                const imgResp = await fetch(imgUrl);
+                const imgResp = await fetch(imgUrl, { signal: AbortSignal.timeout(10000) });
                 if (!imgResp.ok) continue;
                 const imgBlob = await imgResp.blob();
                 const ext = (imgUrl.match(/\.(jpe?g|png|gif|webp|svg)/i) || [".jpg"])[0];
@@ -1352,7 +1354,7 @@ async function dispatchMultiTargetSave(data, serverBase, existingCfg = null) {
     let cfg = existingCfg || {};
     if (!existingCfg) {
         try {
-            const cfgResp = await fetch(`${serverBase}/config`);
+            const cfgResp = await fetch(`${serverBase}/config`, { signal: AbortSignal.timeout(3000) });
             if (cfgResp.ok) cfg = await cfgResp.json();
             try {
                 const syncData = await chrome.storage.sync.get("x2md_sync");
@@ -1379,6 +1381,7 @@ async function dispatchMultiTargetSave(data, serverBase, existingCfg = null) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(data),
+                signal: AbortSignal.timeout(30000),
             });
             const json = await resp.json();
             saveResults.push({ target: "obsidian", success: json.success !== false, result: json });
@@ -1458,6 +1461,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "save_tweet") {
         (async () => {
             const serverBase = SERVER_BASE;   // 快照，防止并发修改
+            // 整体超时保护：防止 MV3 service worker 被杀后 callback 永远不返回
+            const OVERALL_TIMEOUT = 60000; // 60 秒整体超时
+            const timeoutId = setTimeout(() => {
+                console.error("[x2md] save_tweet 整体超时（60s），强制返回错误");
+                sendResponse({ success: false, error: "操作超时，请检查网络连接和本地服务是否正常运行" });
+            }, OVERALL_TIMEOUT);
             try {
                 let data = message.data;
 
@@ -1584,7 +1593,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 let durationThresholdMin = 5;
                 let cfg = {};
                 try {
-                    const cfgResp = await fetch(`${serverBase}/config`);
+                    const cfgResp = await fetch(`${serverBase}/config`, { signal: AbortSignal.timeout(3000) });
                     if (!cfgResp.ok) throw new Error(`HTTP ${cfgResp.status}`);
                     cfg = await cfgResp.json();
                     // 合并 chrome.storage.sync 中的扩展配置
@@ -1614,6 +1623,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                     if (maxDurationMin > durationThresholdMin) {
                         debugLog(`发现超长视频 (${maxDurationMin.toFixed(1)} > ${durationThresholdMin} min)，要求前台确认`);
+                        clearTimeout(timeoutId);
                         sendResponse({
                             require_video_confirm: true,
                             durationMin: maxDurationMin.toFixed(1),
@@ -1644,9 +1654,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 // ── 多目标保存分发（复用共享函数，传入已获取的 cfg 避免重复请求）──
                 const dispatchResult = await dispatchMultiTargetSave(data, serverBase, cfg);
+                clearTimeout(timeoutId);
                 sendResponse(dispatchResult);
 
             } catch (err) {
+                clearTimeout(timeoutId);
                 console.error("[x2md] 后台处理或请求失败：", err);
                 sendResponse({ success: false, error: err.message || String(err) });
             }
@@ -1717,7 +1729,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const resp = await fetch(`${serverBase}/config`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(message.config)
+                    body: JSON.stringify(message.config),
+                    signal: AbortSignal.timeout(5000),
                 });
                 const json = await resp.json();
                 // 如果开启了同步，将可同步字段写入 chrome.storage.sync
@@ -1752,7 +1765,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "reset_config") {
         (async () => {
             try {
-                const resp = await fetch(`${SERVER_BASE}/config/reset`, { method: "POST" });
+                const resp = await fetch(`${SERVER_BASE}/config/reset`, { method: "POST", signal: AbortSignal.timeout(3000) });
                 const json = await resp.json();
                 await chrome.storage.sync.remove("x2md_sync").catch(() => {});
                 invalidateConfigCache();
