@@ -93,13 +93,13 @@ def test_feishu_image_localize():
         "platform": "Feishu",
     }
     _, content, img_tasks, _ = server.build_markdown(data, cfg)
-    # 图片应被本地化替换为 assets/ 路径
-    assert "assets/" in content
+    # 图片应被本地化替换为 wiki-link 格式
+    assert "![[" in content and "_img_1" in content
     assert len(img_tasks) == 1
     assert img_tasks[0][0] == "https://example.com/img.png"
 
 
-@test("飞书: feishu-image:// 协议不被本地化")
+@test("飞书: feishu-image:// 协议转为说明文本")
 def test_feishu_image_protocol_skip():
     cfg = {**server.DEFAULT_CONFIG, "download_images": True}
     data = {
@@ -112,11 +112,12 @@ def test_feishu_image_protocol_skip():
         "article_content": "![](feishu-image://token123)",
         "images": [],
         "videos": [],
-        "platform": "Feishu",
+        "platform": "飞书",
     }
     _, content, img_tasks, _ = server.build_markdown(data, cfg)
-    # feishu-image:// 应保留原样，不生成下载任务
-    assert "feishu-image://token123" in content
+    # feishu-image:// 应替换为说明文本，不生成下载任务
+    assert "飞书图片" in content
+    assert "feishu-image://token123" not in content
     assert len(img_tasks) == 0
 
 
@@ -612,11 +613,11 @@ def test_ob_image_relative_path():
         "videos": [],
     }
     _, content, img_tasks, _ = server.build_markdown(data, cfg)
-    assert "![1](assets/" in content
+    assert "![[" in content and "_img_1" in content
     assert len(img_tasks) == 1
 
 
-@test("Obsidian: 视频本地引用格式 ![video_N](assets/...)")
+@test("Obsidian: 视频本地引用格式 ![[video_file]]")
 def test_ob_video_local_ref():
     cfg = {**server.DEFAULT_CONFIG, "embed_mode": "local"}
     data = {
@@ -629,9 +630,8 @@ def test_ob_video_local_ref():
         "download_video": True,
     }
     _, content, _, vid_tasks = server.build_markdown(data, cfg)
-    assert "![video_1](assets/" in content
-    # video_1 出现在 alt text 和文件名中，检查只有一个 ![video_1] 引用
-    assert content.count("![video_1]") == 1, "视频引用应只出现一次"
+    assert "![[" in content and "_video_1.mp4" in content
+    assert content.count("_video_1.mp4]]") == 1, "视频引用应只出现一次"
 
 
 @test("Obsidian: 文件名不含非法字符")
@@ -823,23 +823,27 @@ def test_parse_floor_range_bad_input():
 print("\n=== 10. SYNC_FIELDS 一致性验证 ===")
 
 
-@test("background.js 两处 SYNC_FIELDS 包含新字段（通过文件读取验证）")
+@test("background.js SYNC_FIELDS 包含新字段（通过文件读取验证）")
 def test_sync_fields_in_background():
     bg_path = os.path.join(os.path.dirname(__file__), "extension", "background.js")
     with open(bg_path, "r", encoding="utf-8") as f:
         bg_content = f.read()
 
-    # 查找所有 SYNC_FIELDS 数组
+    # 查找 SYNC_FIELDS 数组定义（只有一处定义，被多处引用）
     sync_blocks = re.findall(r'SYNC_FIELDS\s*=\s*\[([^\]]+)\]', bg_content)
-    assert len(sync_blocks) >= 2, f"预期至少 2 处 SYNC_FIELDS，实际 {len(sync_blocks)}"
+    assert len(sync_blocks) >= 1, f"预期至少 1 处 SYNC_FIELDS 定义，实际 {len(sync_blocks)}"
+
+    # 确认 SYNC_FIELDS 被实际使用（至少引用 2 次）
+    usage_count = bg_content.count("SYNC_FIELDS")
+    assert usage_count >= 3, f"SYNC_FIELDS 应至少被引用 3 次（1 定义 + 2 使用），实际 {usage_count}"
 
     new_fields = ["discourse_domains", "embed_mode",
-                  "enable_comments", "comments_display", "max_comments", "comment_floor_range"]
+                  "enable_comments", "comments_display", "max_comments", "comment_floor_range",
+                  "enable_wechat_video_channel"]
 
-    for i, block in enumerate(sync_blocks):
-        for field in new_fields:
-            assert f'"{field}"' in block, \
-                f"第 {i+1} 处 SYNC_FIELDS 缺少 \"{field}\""
+    for field in new_fields:
+        assert f'"{field}"' in sync_blocks[0], \
+            f"SYNC_FIELDS 缺少 \"{field}\""
 
 
 @test("options.js 读写新配置字段")

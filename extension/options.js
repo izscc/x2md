@@ -38,6 +38,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("testFeishu").addEventListener("click", testFeishuConnection);
     document.getElementById("testNotion").addEventListener("click", testNotionConnection);
 
+    // 重置按钮
+    document.getElementById("btnResetAll").addEventListener("click", resetAllConfig);
+
     // 折叠面板
     setupCollapsible();
 
@@ -85,7 +88,6 @@ function updateTargetVisibility() {
     const html = document.getElementById("exportHtml").checked;
 
     document.getElementById("obsidianSection").style.display = obsidian ? "" : "none";
-    document.getElementById("serviceSection").style.display = obsidian ? "" : "none";
     document.getElementById("feishuBitableSection").style.display = feishu ? "" : "none";
     document.getElementById("notionSection").style.display = notion ? "" : "none";
     document.getElementById("htmlExportSection").style.display = html ? "" : "none";
@@ -95,15 +97,51 @@ function updateTargetVisibility() {
 function loadConfig() {
     chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
         if (chrome.runtime.lastError) {
-            showToast("扩展通信失败，请刷新页面重试", true);
+            // 服务不可达时尝试从本地缓存恢复
+            loadConfigFromLocal();
             return;
         }
         if (resp && resp.success && resp.config) {
             currentConfig = resp.config;
             applyConfigToUI(resp.config);
+            // 同时写入本地缓存（备份）
+            saveConfigToLocal(resp.config);
+        } else {
+            // 服务端无配置时尝试本地缓存
+            loadConfigFromLocal();
+        }
+    });
+}
+
+function saveConfigToLocal(cfg) {
+    try {
+        chrome.storage.local.set({ x2md_config_backup: cfg });
+    } catch (_) { /* 静默失败 */ }
+}
+
+function loadConfigFromLocal() {
+    chrome.storage.local.get("x2md_config_backup", (result) => {
+        if (result && result.x2md_config_backup) {
+            currentConfig = result.x2md_config_backup;
+            applyConfigToUI(result.x2md_config_backup);
+            showToast("已从本地缓存恢复设置（服务未连接）");
         } else {
             showToast("无法读取配置，请确认服务已启动", true);
         }
+    });
+}
+
+function resetAllConfig() {
+    if (!confirm("确定要重置所有设置为默认值吗？此操作不可撤销。")) return;
+    chrome.storage.local.remove("x2md_config_backup");
+    chrome.runtime.sendMessage({ action: "reset_config" }, (resp) => {
+        if (chrome.runtime.lastError || !resp || !resp.success) {
+            showToast("已清除本地缓存，刷新页面后将使用默认配置");
+        } else {
+            showToast("所有设置已恢复为默认值");
+        }
+        // 刷新页面以加载默认配置
+        setTimeout(() => location.reload(), 800);
     });
 }
 
@@ -152,6 +190,7 @@ function applyConfigToUI(cfg) {
     document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
     document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
     document.getElementById("enableCopyUnlock").checked = !!cfg.enable_copy_unlock;
+    document.getElementById("enableWechatVideoChannel").checked = !!cfg.enable_wechat_video_channel;
 
     // 平台分类文件夹
     document.getElementById("enablePlatformFolders").checked = cfg.enable_platform_folders !== false;
@@ -525,6 +564,7 @@ function saveConfig() {
         video_duration_threshold: parseFloat(document.getElementById("videoDurationThreshold").value) || 5,
         show_site_save_icon: document.getElementById("showSiteSaveIcon").checked,
         enable_copy_unlock: document.getElementById("enableCopyUnlock").checked,
+        enable_wechat_video_channel: document.getElementById("enableWechatVideoChannel").checked,
         sync_enabled: syncEnabled,
         // 平台
         enable_platform_folders: document.getElementById("enablePlatformFolders").checked,
@@ -554,10 +594,13 @@ function saveConfig() {
         }
         if (resp && resp.success) {
             currentConfig = newConfig;
+            saveConfigToLocal(newConfig);
             updateSyncStatus(syncEnabled);
             showToast("设置已保存");
         } else {
-            showToast("保存失败，服务是否在线？", true);
+            // 即使服务不在线，也保存到本地
+            saveConfigToLocal(newConfig);
+            showToast("服务未连接，设置已保存到本地缓存", true);
         }
     });
 }

@@ -26,6 +26,7 @@ const SYNC_FIELDS = [
     "overwrite_existing",
     "enable_comments", "comments_display", "max_comments", "comment_floor_range",
     "discourse_domains", "embed_mode",
+    "enable_wechat_video_channel",
 ];
 
 // 从本地存储恢复用户自定义端口
@@ -785,6 +786,23 @@ async function handleSaveToFeishu(data, _retried) {
             htmlToken = await uploadFeishuFile(baseUrl, token, blob, `${sanitizeFeishuFilename(title)}.html`);
         }
 
+        // 上传图片到飞书（最多10张，避免超时）
+        const imageTokens = [];
+        const images = Array.isArray(data.images) ? data.images.slice(0, 10) : [];
+        for (let i = 0; i < images.length; i++) {
+            try {
+                const imgUrl = images[i];
+                if (!imgUrl || !imgUrl.startsWith("http")) continue;
+                const imgResp = await fetch(imgUrl);
+                if (!imgResp.ok) continue;
+                const imgBlob = await imgResp.blob();
+                const ext = (imgUrl.match(/\.(jpe?g|png|gif|webp|svg)/i) || [".jpg"])[0];
+                const imgName = `${sanitizeFeishuFilename(title)}_img_${i + 1}${ext.startsWith(".") ? ext : "." + ext}`;
+                const imgToken = await uploadFeishuFile(baseUrl, token, imgBlob, imgName);
+                if (imgToken) imageTokens.push({ file_token: imgToken });
+            } catch (_) { /* 单张图片失败不影响整体 */ }
+        }
+
         const fields = {
             "标题": title,
             "链接": { link: data.url || "", text: data.url || "" },
@@ -797,6 +815,7 @@ async function handleSaveToFeishu(data, _retried) {
         }
         if (mdToken) fields["附件"] = [{ file_token: mdToken }];
         if (htmlToken) fields["HTML附件"] = [{ file_token: htmlToken }];
+        if (imageTokens.length > 0) fields["图片"] = imageTokens;
 
         if (existing) {
             await updateFeishuRecord(baseUrl, data.feishu_app_token, data.feishu_table_id, token, existing.record_id, fields);
@@ -1087,6 +1106,18 @@ function convertMarkdownToHtml(md) {
     const MAX_MD_LEN = 500000;
     let html = md.length > MAX_MD_LEN ? md.slice(0, MAX_MD_LEN) + "\n\n---\n\n（内容过长，已截断）" : md;
 
+    // 微信 [MEDIA_VIDEO_URL:xxx] 占位符 → 视频链接
+    html = html.replace(/\[MEDIA_VIDEO_URL:([^\]]+)\]/g, (_, url) => {
+        if (url.startsWith("http")) return `<p><a href="${url}">[视频链接]</a></p>`;
+        return `<p><em>[视频]</em></p>`;
+    });
+    // Obsidian wiki-link 嵌入 ![[filename]] → 提示文字（HTML 无法访问本地 vault 文件）
+    html = html.replace(/!\[\[([^\]]+)\]\]/g, (_, filename) => {
+        const ext = filename.split(".").pop().toLowerCase();
+        if (["mp4", "webm", "mov"].includes(ext)) return `<p><em>[视频: ${filename}]</em></p>`;
+        if (["mp3", "wav", "ogg", "m4a"].includes(ext)) return `<p><em>[音频: ${filename}]</em></p>`;
+        return `<p><em>[图片: ${filename}]</em></p>`;
+    });
     // 代码块（```lang ... ```）—— 先修复未关闭的代码块
     const openFences = (html.match(/```/g) || []).length;
     if (openFences % 2 !== 0) html += "\n```";
@@ -1621,6 +1652,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     registerDiscourseContentScripts(message.config.discourse_domains);
                 }
                 sendResponse({ success: json.success !== false, config: json.config });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
+    if (message.action === "reset_config") {
+        (async () => {
+            try {
+                const resp = await fetch(`${SERVER_BASE}/config/reset`, { method: "POST" });
+                const json = await resp.json();
+                await chrome.storage.sync.remove("x2md_sync").catch(() => {});
+                sendResponse({ success: json.success !== false });
             } catch (err) {
                 sendResponse({ success: false, error: err.message });
             }

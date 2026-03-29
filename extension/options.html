@@ -143,6 +143,7 @@ body {
 select.form-input { cursor: pointer; }
 .form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
 .section-divider { height: 1px; background: var(--border); margin: 12px 0; }
+.sub-title { font-size: 12px; font-weight: 600; color: var(--accent); margin: 14px 0 8px; letter-spacing: 0.5px; }
 
 /* ═══ Checkbox 行 ═══ */
 .check-row {
@@ -265,7 +266,7 @@ select.form-input { cursor: pointer; }
     <button class="btn-refresh" id="btnRefresh">刷新</button>
   </div>
 
-  <!-- ═══ 外观设置 ═══ -->
+  <!-- ═══ 1. 外观设置 ═══ -->
   <div class="card">
     <div class="card-header" data-toggle="appearance">
       <span class="card-header-icon">🎨</span>
@@ -284,7 +285,7 @@ select.form-input { cursor: pointer; }
     </div>
   </div>
 
-  <!-- ═══ 保存目标 ═══ -->
+  <!-- ═══ 2. 保存目标 ═══ -->
   <div class="card">
     <div class="card-header" data-toggle="save-targets">
       <span class="card-header-icon">💾</span>
@@ -300,35 +301,28 @@ select.form-input { cursor: pointer; }
     </div>
   </div>
 
-  <!-- ═══ 保存路径（Obsidian） ═══ -->
+  <!-- ═══ 3. 文件与路径（合并：命名 + 路径 + 平台文件夹 + 重复处理） ═══ -->
   <div class="card" id="obsidianSection">
-    <div class="card-header" data-toggle="obsidian-paths">
+    <div class="card-header" data-toggle="file-settings">
       <span class="card-header-icon">📁</span>
-      <h2>Obsidian 保存路径</h2>
+      <h2>文件与路径</h2>
       <span class="arrow">▼</span>
     </div>
-    <div class="card-body" id="obsidian-paths">
-      <div class="form-hint" style="margin-bottom:8px;">支持添加多个路径，保存时同步写入所有路径。</div>
-      <div class="path-list" id="pathList"></div>
-      <button class="btn-add" id="btnAdd"><span>＋</span> 添加保存路径</button>
-    </div>
-  </div>
+    <div class="card-body" id="file-settings">
 
-  <!-- ═══ 服务设置 ═══ -->
-  <div class="card" id="serviceSection">
-    <div class="card-header" data-toggle="service-settings">
-      <span class="card-header-icon">⚙️</span>
-      <h2>服务设置</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="service-settings">
+      <!-- 服务端口 -->
+      <div class="sub-title">服务连接</div>
       <div class="form-row">
         <div class="form-label">服务端口</div>
         <input class="form-input" type="number" id="portInput" placeholder="9527" min="1024" max="65535" style="max-width:120px;" />
       </div>
+
       <div class="section-divider"></div>
+
+      <!-- 文件命名 -->
+      <div class="sub-title">文件命名</div>
       <div class="form-row">
-        <div class="form-label">文件命名</div>
+        <div class="form-label">命名模板</div>
         <div style="flex:1">
           <input class="form-input" type="text" id="filenameFormat" placeholder="{date}_{author}_{summary}" style="width:100%" />
           <div class="tag-group">
@@ -338,15 +332,189 @@ select.form-input { cursor: pointer; }
           </div>
         </div>
       </div>
-      <div class="section-divider"></div>
       <div class="form-row">
         <div class="form-label">文件名限长</div>
         <input class="form-input" type="number" id="maxLen" placeholder="60" min="20" max="200" style="max-width:120px;" />
       </div>
+      <div class="form-row" style="margin-top:4px;">
+        <div class="form-label"></div>
+        <label class="check-row" style="flex:1;">
+          <input type="checkbox" id="overwriteExisting">
+          <span>同名文件覆盖（关闭时自动添加时间戳后缀）</span>
+        </label>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- 保存路径 -->
+      <div class="sub-title">Obsidian 保存路径</div>
+      <div class="form-hint" style="margin-bottom:8px;">支持添加多个路径，保存时同步写入所有路径。</div>
+      <div class="path-list" id="pathList"></div>
+      <button class="btn-add" id="btnAdd"><span>＋</span> 添加保存路径</button>
+
+      <div class="section-divider"></div>
+
+      <!-- 平台分类文件夹 -->
+      <div class="sub-title">平台分类文件夹</div>
+      <label class="check-row">
+        <input type="checkbox" id="enablePlatformFolders" checked>
+        <span>按平台自动归类到子文件夹</span>
+      </label>
+      <div class="form-hint" style="margin:6px 0;">
+        开启后文件保存到 <code>保存路径/平台名/文件名.md</code>。<br>
+        <strong>注意：</strong>各平台文件夹名必须互不相同，也不能与下方"媒体子文件夹"同名。
+      </div>
+      <div style="display:grid; grid-template-columns:100px 1fr; gap:6px; align-items:center;">
+        <span style="font-size:12px; color:var(--text-muted);">Twitter/X:</span>
+        <input class="form-input platform-folder-input" data-platform="Twitter/X" value="Twitter" style="padding:6px 10px;" />
+        <span style="font-size:12px; color:var(--text-muted);">LINUX DO:</span>
+        <input class="form-input platform-folder-input" data-platform="LINUX DO" value="LINUX DO" style="padding:6px 10px;" />
+        <span style="font-size:12px; color:var(--text-muted);">飞书:</span>
+        <input class="form-input platform-folder-input" data-platform="飞书" value="飞书" style="padding:6px 10px;" />
+        <span style="font-size:12px; color:var(--text-muted);">微信公众号:</span>
+        <input class="form-input platform-folder-input" data-platform="微信公众号" value="微信公众号" style="padding:6px 10px;" />
+      </div>
     </div>
   </div>
 
-  <!-- ═══ 飞书多维表格设置 ═══ -->
+  <!-- ═══ 4. 媒体与嵌入（合并：图片 + 视频 + 嵌入模式 + 微信视频号） ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="media-settings">
+      <span class="card-header-icon">🎞️</span>
+      <h2>媒体与嵌入</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="media-settings">
+
+      <!-- 图片下载 -->
+      <div class="sub-title">图片下载</div>
+      <label class="check-row">
+        <input type="checkbox" id="downloadImages" checked>
+        <span>自动下载图片到本地（推荐开启）</span>
+      </label>
+      <div class="form-row" style="margin-top:8px;">
+        <div class="form-label">媒体子文件夹</div>
+        <input class="form-input" type="text" id="imageSubfolder" value="assets" style="max-width:200px;" />
+      </div>
+      <div class="form-hint">
+        图片和视频下载到 Markdown 文件同级的子文件夹中，Obsidian 使用 <code>![[文件名]]</code> 引用。
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- 视频下载 -->
+      <div class="sub-title">视频下载</div>
+      <label class="check-row">
+        <input type="checkbox" id="enableVideoDownload" checked>
+        <span>自动下载视频到本地</span>
+      </label>
+      <div class="form-row" style="margin-top:8px;">
+        <div class="form-label">视频保存路径</div>
+        <input class="form-input" type="text" id="videoSavePath" placeholder="留空则保存在媒体子文件夹内" />
+      </div>
+      <div class="form-row">
+        <div class="form-label">时长警告(分钟)</div>
+        <div style="flex:1">
+          <input class="form-input" type="number" id="videoDurationThreshold" placeholder="5" min="1" max="60" style="max-width:100px;" />
+          <div class="form-hint">超过此时长的视频会弹窗确认再下载。</div>
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- 微信视频号 -->
+      <div class="sub-title">微信视频号</div>
+      <label class="check-row">
+        <input type="checkbox" id="enableWechatVideoChannel">
+        <span>保存微信公众号中的视频号视频</span>
+      </label>
+      <div class="form-hint">
+        关闭时，文章中嵌入的视频号视频仅显示占位提示，不会下载。开启后视频会被下载保存。
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- 嵌入模式 -->
+      <div class="sub-title">视频嵌入模式</div>
+      <div class="form-row">
+        <div class="form-label">嵌入方式</div>
+        <div style="flex:1;">
+          <select class="form-input" id="embedMode" style="max-width:300px;">
+            <option value="iframe">iframe 嵌入（需联网，Obsidian 可播放）</option>
+            <option value="local">本地下载引用（离线可用）</option>
+          </select>
+          <div class="form-hint">仅对 YouTube/Bilibili 等可嵌入视频生效。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 5. 内容提取（合并：评论 + Discourse + 站点保存 + 飞书复制） ═══ -->
+  <div class="card">
+    <div class="card-header" data-toggle="content-settings">
+      <span class="card-header-icon">💬</span>
+      <h2>内容提取与快捷操作</h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="card-body" id="content-settings">
+
+      <!-- 站点快捷保存 -->
+      <div class="sub-title">快捷操作</div>
+      <label class="check-row">
+        <input type="checkbox" id="showSiteSaveIcon" checked>
+        <span>在支持的页面显示悬浮保存按钮</span>
+      </label>
+      <div class="form-hint">适用于 linux.do / 飞书 / 微信公众号页面。</div>
+      <label class="check-row" style="margin-top:6px;">
+        <input type="checkbox" id="enableCopyUnlock">
+        <span>飞书文档一键复制按钮</span>
+      </label>
+      <div class="form-hint">开启后，飞书知识库页面右上角出现复制按钮，自动提取全部内容为 Markdown。</div>
+
+      <div class="section-divider"></div>
+
+      <!-- 评论提取 -->
+      <div class="sub-title">评论/回复提取</div>
+      <label class="check-row">
+        <input type="checkbox" id="enableComments">
+        <span>保存时同时提取评论/回复</span>
+      </label>
+      <div id="commentSubControls" class="sub-panel">
+        <div class="form-row">
+          <div class="form-label">显示模式</div>
+          <select class="form-input comment-sub" id="commentsDisplay" style="max-width:200px;" disabled>
+            <option value="details">折叠（details）</option>
+            <option value="heading">标题（## 评论/回复）</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-label">最大评论数</div>
+          <input class="form-input comment-sub" type="number" id="maxComments" placeholder="200" min="1" max="99999" style="max-width:120px;" disabled />
+        </div>
+        <div class="form-row">
+          <div class="form-label">楼层范围</div>
+          <div style="flex:1;">
+            <input class="form-input comment-sub" type="text" id="commentFloorRange" placeholder="留空=全部，如 1-10 或 2,5,8" style="width:100%;" disabled />
+          </div>
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- Discourse 站点 -->
+      <div class="sub-title">Discourse 站点管理</div>
+      <div class="form-hint" style="margin-bottom:8px;">
+        添加自建 Discourse 论坛域名。linux.do 为内置域名，无需手动添加。
+      </div>
+      <div id="discourseDomainList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;"></div>
+      <div style="display:flex; gap:8px;">
+        <input class="form-input" type="text" id="newDiscourseDomain" placeholder="输入域名，如 meta.discourse.org" style="flex:1;" />
+        <button class="btn-add" id="btnAddDomain" style="width:auto; padding:7px 14px;"><span>＋</span> 添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 6. 飞书多维表格设置（条件显示） ═══ -->
   <div class="card" id="feishuBitableSection" style="display:none;">
     <div class="card-header" data-toggle="feishu-bitable">
       <span class="card-header-icon">📊</span>
@@ -383,7 +551,7 @@ select.form-input { cursor: pointer; }
     </div>
   </div>
 
-  <!-- ═══ Notion Database 设置 ═══ -->
+  <!-- ═══ 7. Notion Database 设置（条件显示） ═══ -->
   <div class="card" id="notionSection" style="display:none;">
     <div class="card-header" data-toggle="notion-settings">
       <span class="card-header-icon">📝</span>
@@ -425,7 +593,7 @@ select.form-input { cursor: pointer; }
     </div>
   </div>
 
-  <!-- ═══ HTML 导出设置 ═══ -->
+  <!-- ═══ 8. HTML 导出设置（条件显示） ═══ -->
   <div class="card" id="htmlExportSection" style="display:none;">
     <div class="card-header" data-toggle="html-export">
       <span class="card-header-icon">🌐</span>
@@ -434,7 +602,7 @@ select.form-input { cursor: pointer; }
     </div>
     <div class="card-body" id="html-export">
       <div class="form-hint" style="margin-bottom:10px;">
-        将内容导出为离线 HTML 文件，包含完整样式、代码高亮、图片灯箱功能。文件保存到浏览器下载目录。
+        将内容导出为离线 HTML 文件，包含完整样式、代码高亮。文件保存到浏览器下载目录。
       </div>
       <div class="field">
         <label>导出文件夹（相对于浏览器下载目录）</label>
@@ -443,204 +611,7 @@ select.form-input { cursor: pointer; }
     </div>
   </div>
 
-  <!-- ═══ 媒体下载 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="media-settings">
-      <span class="card-header-icon">🎞️</span>
-      <h2>媒体下载设置</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="media-settings">
-      <label class="check-row">
-        <input type="checkbox" id="enableVideoDownload" checked>
-        <span>视频自动下载（开启后视频会被下载到指定路径）</span>
-      </label>
-      <div class="section-divider"></div>
-      <div class="form-row">
-        <div class="form-label">视频保存路径</div>
-        <input class="form-input" type="text" id="videoSavePath" placeholder="/Users/.../视频" />
-      </div>
-      <div class="section-divider"></div>
-      <div class="form-row">
-        <div class="form-label">警告阈值(分钟)</div>
-        <div style="flex:1">
-          <input class="form-input" type="number" id="videoDurationThreshold" placeholder="5" min="1" max="60" style="max-width:100px;" />
-          <div class="form-hint">视频时长超过此分钟数时弹窗确认。</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ 平台分类文件夹 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="platform-folders">
-      <span class="card-header-icon">📂</span>
-      <h2>平台分类文件夹</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="platform-folders">
-      <label class="check-row">
-        <input type="checkbox" id="enablePlatformFolders" checked>
-        <span>按平台自动归类到子文件夹</span>
-      </label>
-      <div class="form-hint" style="margin-top:6px;">例如：<code>保存路径/Twitter/文件名.md</code></div>
-      <div class="section-divider"></div>
-      <div style="display:grid; grid-template-columns:100px 1fr; gap:6px; align-items:center;">
-        <span style="font-size:12px; color:var(--text-muted);">Twitter/X:</span>
-        <input class="form-input platform-folder-input" data-platform="Twitter/X" value="Twitter" style="padding:6px 10px;" />
-        <span style="font-size:12px; color:var(--text-muted);">LINUX DO:</span>
-        <input class="form-input platform-folder-input" data-platform="LINUX DO" value="LINUX DO" style="padding:6px 10px;" />
-        <span style="font-size:12px; color:var(--text-muted);">飞书:</span>
-        <input class="form-input platform-folder-input" data-platform="飞书" value="飞书" style="padding:6px 10px;" />
-        <span style="font-size:12px; color:var(--text-muted);">微信公众号:</span>
-        <input class="form-input platform-folder-input" data-platform="微信公众号" value="微信公众号" style="padding:6px 10px;" />
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ 图片本地下载 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="image-settings">
-      <span class="card-header-icon">🖼️</span>
-      <h2>图片本地下载</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="image-settings">
-      <label class="check-row">
-        <input type="checkbox" id="downloadImages" checked>
-        <span>自动下载图片到本地（推荐开启）</span>
-      </label>
-      <div class="form-row" style="margin-top:8px;">
-        <div class="form-label">子文件夹名</div>
-        <input class="form-input" type="text" id="imageSubfolder" value="assets" style="max-width:200px;" />
-      </div>
-      <div class="form-hint">图片下载到 Markdown 文件同级的子文件夹中。</div>
-    </div>
-  </div>
-
-  <!-- ═══ 重复文件处理 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="overwrite-settings">
-      <span class="card-header-icon">🔁</span>
-      <h2>重复文件处理</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="overwrite-settings">
-      <label class="check-row">
-        <input type="checkbox" id="overwriteExisting">
-        <span>再次保存同一来源时覆盖已有文件</span>
-      </label>
-      <div class="form-hint" style="margin-top:6px;">关闭时同名文件自动添加时间戳后缀。</div>
-    </div>
-  </div>
-
-  <!-- ═══ 站点快捷保存 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="site-icon">
-      <span class="card-header-icon">📌</span>
-      <h2>站点快捷保存</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="site-icon">
-      <label class="check-row">
-        <input type="checkbox" id="showSiteSaveIcon" checked>
-        <span>在 linux.do / 飞书 / 微信公众号页面显示悬浮保存按钮</span>
-      </label>
-    </div>
-  </div>
-
-  <!-- ═══ Discourse 站点管理 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="discourse-sites">
-      <span class="card-header-icon">🌍</span>
-      <h2>Discourse 站点管理</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="discourse-sites">
-      <div class="form-hint" style="margin-bottom:10px;">
-        添加自建 Discourse 论坛域名。linux.do 为内置域名，无需手动添加。
-      </div>
-      <div id="discourseDomainList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;"></div>
-      <div style="display:flex; gap:8px;">
-        <input class="form-input" type="text" id="newDiscourseDomain" placeholder="输入域名，如 meta.discourse.org" style="flex:1;" />
-        <button class="btn-add" id="btnAddDomain" style="width:auto; padding:7px 14px;"><span>＋</span> 添加</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ 视频嵌入模式 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="embed-settings">
-      <span class="card-header-icon">🎬</span>
-      <h2>视频嵌入模式</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="embed-settings">
-      <div class="form-row">
-        <div class="form-label">嵌入方式</div>
-        <div style="flex:1;">
-          <select class="form-input" id="embedMode" style="max-width:300px;">
-            <option value="iframe">iframe 嵌入（需联网，Obsidian 可播放）</option>
-            <option value="local">本地下载引用（离线可用）</option>
-          </select>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ 评论/回复提取 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="comment-settings">
-      <span class="card-header-icon">💬</span>
-      <h2>评论/回复提取</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="comment-settings">
-      <label class="check-row">
-        <input type="checkbox" id="enableComments">
-        <span>保存时同时提取评论/回复（默认关闭）</span>
-      </label>
-      <div id="commentSubControls" class="sub-panel">
-        <div class="form-row">
-          <div class="form-label">显示模式</div>
-          <select class="form-input comment-sub" id="commentsDisplay" style="max-width:200px;" disabled>
-            <option value="details">折叠（details）</option>
-            <option value="heading">标题（## 评论/回复）</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <div class="form-label">最大评论数</div>
-          <input class="form-input comment-sub" type="number" id="maxComments" placeholder="200" min="1" max="99999" style="max-width:120px;" disabled />
-        </div>
-        <div class="form-row">
-          <div class="form-label">楼层范围</div>
-          <div style="flex:1;">
-            <input class="form-input comment-sub" type="text" id="commentFloorRange" placeholder="留空=全部，如 1-10 或 2,5,8" style="width:100%;" disabled />
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ 飞书文档一键复制 ═══ -->
-  <div class="card">
-    <div class="card-header" data-toggle="feishu-copy">
-      <span class="card-header-icon">📋</span>
-      <h2>飞书文档一键复制</h2>
-      <span class="arrow">▼</span>
-    </div>
-    <div class="card-body" id="feishu-copy">
-      <label class="check-row">
-        <input type="checkbox" id="enableCopyUnlock">
-        <span>在飞书文档页面显示一键复制按钮（默认关闭）</span>
-      </label>
-      <div class="form-hint" style="margin-top:6px;">
-        开启后，飞书知识库等页面右上角出现复制按钮，自动提取全部内容为 Markdown。
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ 跨设备同步 ═══ -->
+  <!-- ═══ 9. 跨设备同步 ═══ -->
   <div class="card">
     <div class="card-header" data-toggle="sync-settings">
       <span class="card-header-icon">🔄</span>
@@ -653,15 +624,19 @@ select.form-input { cursor: pointer; }
         <span>通过 Chrome 账号同步偏好设置到其他设备</span>
       </label>
       <div class="form-hint" style="margin-top:6px;">
-        同步：文件命名、限长、视频设置、站点图标开关。不同步：保存路径、端口。
+        同步：文件命名、限长、视频设置、站点图标开关。不同步：保存路径、端口、API 密钥。
       </div>
       <div id="syncStatus" style="margin-top:6px; font-size:11px; color:var(--text-muted);"></div>
     </div>
   </div>
 
-  <!-- ═══ 保存按钮 ═══ -->
-  <div style="display:flex; gap:10px; padding:16px 0;">
+  <!-- ═══ 保存 / 重置按钮 ═══ -->
+  <div style="display:flex; gap:10px; padding:16px 0; align-items:center;">
     <button class="btn-save" id="btnSave"><span>💾</span> 保存设置</button>
+    <button class="btn-save" id="btnResetAll" style="background:var(--danger); flex:0 0 auto;"><span>🔄</span> 重置所有设置</button>
+  </div>
+  <div class="form-hint" style="padding-bottom:12px; font-size:11px; color:var(--text-muted);">
+    所有配置默认保存在浏览器本地存储中，除非手动清除浏览器数据或点击"重置所有设置"，否则不会丢失。
   </div>
 
 </div>

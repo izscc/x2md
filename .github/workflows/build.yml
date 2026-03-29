@@ -37,7 +37,7 @@ jobs:
       - name: 安装 Python
         uses: actions/setup-python@v6.2.0
         with:
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: 安装依赖
         run: |

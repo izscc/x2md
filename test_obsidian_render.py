@@ -189,7 +189,7 @@ def test_twitter_local_img():
         "videos": [],
     }
     _, content, tasks, _ = server.build_markdown(data, CFG_WITH_DOWNLOAD)
-    assert "assets/" in content, "Should reference local path"
+    assert "![[" in content, "Should use Obsidian wiki-link format"
     assert len(tasks) >= 1, "Should have image download task"
     assert tasks[0][0].endswith("name=orig"), "Download URL should be normalized"
 test_twitter_local_img()
@@ -228,7 +228,7 @@ def test_article_images():
         "images": [], "videos": [],
     }
     _, content, tasks, _ = server.build_markdown(data, CFG_WITH_DOWNLOAD)
-    assert "assets/" in content, "Inline image should be localized"
+    assert "![[" in content, "Inline image should be localized as wiki-link"
     assert len(tasks) >= 1, "Should have image task"
 test_article_images()
 
@@ -289,8 +289,8 @@ def test_wechat():
     assert '平台: "WeChat"' in content
     assert "正文段落" in content
     assert "> 引用内容" in content
-    # 图片应被本地化
-    assert "assets/" in content
+    # 图片应被本地化为 wiki-link 格式
+    assert "![[" in content
 test_wechat()
 
 
@@ -324,7 +324,7 @@ def test_video_download():
         "download_video": True,
     }
     _, content, _, vid_tasks = server.build_markdown(data, CFG_NO_DOWNLOAD)
-    assert "assets/" in content, "Video should reference local path"
+    assert "![[" in content, "Video should use wiki-link format for local path"
     assert any("video" in t[2] for t in vid_tasks), "Should have video download task"
 test_video_download()
 
@@ -565,11 +565,8 @@ def test_ob_local_path():
         "videos": [],
     }
     _, content, tasks, _ = server.build_markdown(data, CFG_WITH_DOWNLOAD)
-    # Obsidian 本地引用不应有 ./
-    assert "./" not in content or "://" in content.split("./")[0][-10:], \
-        "Local path should not start with ./"
-    # 应该直接是 assets/filename
-    assert re.search(r'!\[.*?\]\(assets/', content), "Should use assets/ relative path"
+    # Obsidian 本地引用使用 wiki-link 格式 ![[filename]]
+    assert "![[" in content, "Should use Obsidian wiki-link format ![[filename]]"
 test_ob_local_path()
 
 
@@ -965,7 +962,7 @@ def test_ob_local_no_iframe():
     _, content, _, video_tasks = server.build_markdown(data, cfg)
     assert "<iframe" not in content
     assert len(video_tasks) == 1
-    assert "assets/" in content  # 本地路径引用
+    assert "![[" in content  # wiki-link 本地路径引用
 test_ob_local_no_iframe()
 
 

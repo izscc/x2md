@@ -14,10 +14,17 @@ import sys
 import logging
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+# 北京时间（UTC+8）：优先使用 zoneinfo，Windows 打包时可能缺少 tzdata 则回退到 timedelta
+try:
+    from zoneinfo import ZoneInfo
+    BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+except Exception:
+    BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 def _build_ssl_context():
@@ -81,6 +88,8 @@ DEFAULT_CONFIG = {
     # 图片下载到本地（V1.2 新增）
     "download_images": True,
     "image_subfolder": "assets",
+    # 微信视频号视频保存（默认关闭）
+    "enable_wechat_video_channel": False,
     # 覆盖已有同源文件（默认关闭）
     "overwrite_existing": False,
     # 跨设备同步（默认开启）
@@ -269,8 +278,7 @@ def _normalize_publish_time(raw: str) -> str:
     if not raw or not raw.strip():
         return ""
     raw = raw.strip()
-    from zoneinfo import ZoneInfo
-    beijing = ZoneInfo("Asia/Shanghai")
+    beijing = BEIJING_TZ
 
     # Twitter RFC 2822: "Wed Mar 25 10:00:00 +0000 2026"
     try:
@@ -290,7 +298,6 @@ def _normalize_publish_time(raw: str) -> str:
     # 其他常见格式（无时区信息，假定为 UTC）
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
-            from datetime import timezone
             dt = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
             dt = dt.astimezone(beijing)
             return dt.strftime("%Y-%m-%d %H:%M")
@@ -370,13 +377,23 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str, list]:
     thread_tweets = data.get("thread_tweets", [])  # 线程推文列表
     platform = data.get("platform", "Twitter/X")
 
+    # 微信视频号：未启用时过滤掉视频号视频和占位符
+    if platform == "微信公众号" and not cfg.get("enable_wechat_video_channel", False):
+        videos = []
+        if article_content:
+            article_content = re.sub(
+                r'\n?\[MEDIA_VIDEO_URL:[^\]]*\]\n?',
+                '\n> [视频号视频 - 未启用自动保存]\n',
+                article_content,
+            )
+
     # 标签：优先使用平台提供的 tags，其次使用 hashtags（Twitter）
     raw_tags = data.get("tags", []) or []
     raw_hashtags = data.get("hashtags", []) or []
     # 合并去重
     all_tags = list(dict.fromkeys(raw_tags + raw_hashtags))
 
-    now = datetime.now()
+    now = datetime.now(BEIJING_TZ)
     date_str = now.strftime("%Y-%m-%d")
     datetime_str = now.strftime("%Y-%m-%d %H:%M")
 
@@ -439,7 +456,7 @@ tags: {tags_yaml}
     # ── 正文构建 ────────────────────────────────────
     # 原则：仅保留原文内容，不包含作者名和时间（那些已在 Front Matter 里）
     lines = []
-    image_subfolder = cfg.get("image_subfolder", "assets")
+    image_subfolder = cfg.get("image_subfolder", "assets").lstrip("./")  # 去除用户可能手动添加的 ./ 前缀
 
     vid_map = {}
     video_tasks = []  # (url, subfolder, filename) — 与图片同结构，在 _handle_save 中处理
@@ -461,7 +478,7 @@ tags: {tags_yaml}
             vid_filename = f"{filename}_video_{video_idx}.mp4"
             video_tasks.append((vid_url, image_subfolder, vid_filename))
             # 使用相对路径引用，与图片一致，Obsidian 可直接识别
-            vid_map[vid_url] = f"![video_{video_idx}](./{image_subfolder}/{vid_filename})"
+            vid_map[vid_url] = f"![[{vid_filename}]]"
             video_idx += 1
         else:
             vid_map[vid_url] = f"[视频：点击播放]({vid_url})"
@@ -499,7 +516,7 @@ tags: {tags_yaml}
     _img_counter = [0]  # 用列表做闭包可变计数器
 
     def make_image_ref(img_url: str, alt: str = "") -> str:
-        """生成图片引用：本地模式返回相对路径，否则返回远程 URL"""
+        """生成图片引用：本地模式返回 Obsidian wiki-link，否则返回远程 URL"""
         orig_url = normalize_image_url(img_url)
         if not do_download_images:
             return f"![{alt}]({orig_url})"
@@ -507,7 +524,7 @@ tags: {tags_yaml}
         ext = _guess_image_ext(orig_url)
         local_name = f"{filename}_img_{_img_counter[0]}{ext}"
         image_tasks.append((orig_url, image_subfolder, local_name))
-        return f"![{alt}](./{image_subfolder}/{local_name})"
+        return f"![[{local_name}]]"
 
     # ── 处理 article_content 中已内嵌的远程图片链接 ──
     def localize_article_images(md_text: str) -> str:
@@ -517,8 +534,10 @@ tags: {tags_yaml}
         def _repl(m):
             alt_text = m.group(1)
             img_url = m.group(2)
-            # 跳过非 HTTP(S) 的 URL（如 feishu-image://token），保留原始引用
+            # 跳过非 HTTP(S) 的 URL（如 feishu-image://token），替换为说明文本
             if not img_url.startswith(("http://", "https://")):
+                if img_url.startswith("feishu-image://"):
+                    return f"> [飞书图片 - 需在飞书客户端中查看]"
                 return m.group(0)
             return make_image_ref(img_url, alt_text)
         return re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', _repl, md_text)
@@ -690,6 +709,8 @@ class X2MDHandler(BaseHTTPRequestHandler):
             self._handle_save(data)
         elif path == "/config":
             self._handle_config_update(data)
+        elif path == "/config/reset":
+            self._handle_config_reset()
         else:
             self._respond(404, {"error": "Not Found"})
 
@@ -778,6 +799,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
         "enable_platform_folders", "platform_folder_names",
         "download_images", "image_subfolder",
         "overwrite_existing", "sync_enabled",
+        "enable_wechat_video_channel",
         "enable_comments", "comments_display", "max_comments", "comment_floor_range",
         "discourse_domains", "embed_mode",
         # 飞书 Bitable
@@ -806,6 +828,12 @@ class X2MDHandler(BaseHTTPRequestHandler):
         save_config(cfg)
         logger.info(f"配置已更新：{filtered}")
         self._respond(200, {"success": True, "config": cfg})
+
+    def _handle_config_reset(self):
+        """重置配置为默认值"""
+        save_config(dict(DEFAULT_CONFIG))
+        logger.info("配置已重置为默认值")
+        self._respond(200, {"success": True, "config": DEFAULT_CONFIG})
 
     def _respond(self, code: int, payload: dict):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
