@@ -7,7 +7,7 @@ on:
       version:
         description: '版本号（如 1.0.0）'
         required: false
-        default: '1.5.0'
+        default: '1.5.2'
   # 推送 tag 时自动触发（如 git tag v1.0.0 && git push --tags）
   push:
     tags:
@@ -133,6 +133,8 @@ jobs:
           body: |
             ## X2MD ${{ github.ref_name }}
 
+            网页内容一键转 Markdown — 支持 X/Twitter、LINUX DO、飞书、微信公众号，多目标保存到 Obsidian / 飞书多维表格 / Notion / HTML。
+
             ### 下载
             - **Mac 版**：`X2MD_Mac.zip` — 解压后双击 `X2MD.app` 即可运行
             - **Windows 版**：`X2MD_Windows.zip` — 解压后双击 `X2MD.exe` 即可运行
@@ -141,7 +143,12 @@ jobs:
             ### 首次使用
             1. 打开应用，按向导设置保存路径
             2. 解压 `X2MD_Extension.zip` 并在 `chrome://extensions/` 中加载已解压的扩展程序
-            3. 在 X/Twitter 页面使用书签按钮保存内容
+            3. 在支持的网站（X/Twitter、LINUX DO、飞书、微信公众号）使用保存按钮保存内容
+            4. 打开扩展选项页面可配置多目标保存、评论提取等高级功能
+
+            ### 升级用户须知
+            - 从旧版本升级后首次运行，应用会自动合并新增配置字段并更新扩展文件
+            - 你的已有设置（保存路径等）不会被覆盖
 
             ### 系统要求
             - Mac: macOS 12+

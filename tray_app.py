@@ -260,26 +260,86 @@ def run_cli_mode():
 # 主函数
 # ─────────────────────────────────────────────
 def ensure_extension_accessible():
-    """确保 extension 文件夹在用户可访问的位置"""
+    """确保 extension 文件夹在用户可访问的位置，并在版本升级时自动更新。
+    使用 .x2md_version 标记文件判断是否需要更新。"""
     global EXT_DIR
+    import shutil
+
     target = os.path.join(APP_DIR, "extension")
+    src = os.path.join(RESOURCE_DIR, "extension")
+    version_file = os.path.join(APP_DIR, ".x2md_version")
+
+    # 读取打包资源中的版本号（从 server.py 的 /ping 接口硬编码值获取，或用 manifest）
+    bundled_version = ""
+    manifest_src = os.path.join(src, "manifest.json") if os.path.isdir(src) else ""
+    if manifest_src and os.path.isfile(manifest_src):
+        try:
+            with open(manifest_src, "r", encoding="utf-8") as f:
+                bundled_version = json.load(f).get("version", "")
+        except Exception:
+            pass
+
+    # 读取已安装的版本
+    installed_version = ""
+    if os.path.isfile(version_file):
+        try:
+            with open(version_file, "r", encoding="utf-8") as f:
+                installed_version = f.read().strip()
+        except Exception:
+            pass
+
+    need_update = False
+    if not os.path.isdir(target):
+        need_update = True
+    elif bundled_version and bundled_version != installed_version:
+        need_update = True
+
+    if need_update and os.path.isdir(src):
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        shutil.copytree(src, target)
+        # 写入版本标记
+        if bundled_version:
+            with open(version_file, "w", encoding="utf-8") as f:
+                f.write(bundled_version)
+        logger.info(f"已将 extension 更新到: {target} (版本: {bundled_version or 'unknown'})")
+
     if os.path.isdir(target):
         EXT_DIR = target
-        return
 
-    # 从打包资源中复制 extension 到 APP_DIR 旁边
-    src = os.path.join(RESOURCE_DIR, "extension")
-    if os.path.isdir(src):
-        import shutil
-        shutil.copytree(src, target)
-        logger.info(f"已将 extension 复制到: {target}")
-        EXT_DIR = target
+
+def _merge_config_defaults():
+    """将打包资源中的默认配置字段合并到用户现有配置中（不覆盖用户已设置的值）。
+    这样升级版本后新增的配置字段会自动补全。"""
+    src = os.path.join(RESOURCE_DIR, "config.json")
+    if not os.path.isfile(src):
+        return
+    try:
+        with open(src, "r", encoding="utf-8") as f:
+            defaults = json.load(f)
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            user_cfg = json.load(f)
+
+        changed = False
+        for key, value in defaults.items():
+            if key not in user_cfg:
+                user_cfg[key] = value
+                changed = True
+
+        if changed:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(user_cfg, f, ensure_ascii=False, indent=2)
+            logger.info("已将新版本默认字段合并到用户配置")
+    except Exception as e:
+        logger.warning(f"合并配置默认值失败: {e}")
 
 
 def ensure_config_accessible():
     """确保 config.json 在 APP_DIR（可写位置），打包后首次运行时从资源目录复制。
-    同时迁移旧版本遗留在 app 包内的配置。"""
+    同时迁移旧版本遗留在 app 包内的配置。升级时自动补全新增字段。"""
     if os.path.exists(CONFIG_FILE):
+        # 已有配置：合并新版本可能新增的默认字段
+        _merge_config_defaults()
         return
 
     # 优先迁移旧版遗留在 MacOS/ 目录内的配置（用户升级场景）
@@ -289,6 +349,7 @@ def ensure_config_accessible():
             import shutil
             shutil.copy2(old_config, CONFIG_FILE)
             logger.info(f"已迁移旧版配置: {old_config} -> {CONFIG_FILE}")
+            _merge_config_defaults()
             return
 
     # 从打包资源中复制默认配置

@@ -202,14 +202,14 @@ class SetupWizard:
                  font=FONT(24, "bold"), fg=C["text"], bg=C["bg"]).pack(pady=(0, 6))
 
         tk.Label(self.content_frame,
-                 text="一键保存推特/X 内容到 Obsidian Markdown",
+                 text="一键保存网页内容到 Markdown，多平台多目标",
                  font=FONT(13), fg=C["muted"], bg=C["bg"]).pack(pady=(0, 20))
 
         features = [
-            "📄  推文 → Markdown 文件，自动保存到指定文件夹",
+            "📄  X/Twitter、LINUX DO、飞书、微信公众号一键转 Markdown",
             "🎞️  视频自动下载，Obsidian 内嵌播放",
-            "📰  X Article / Note 长文完整抓取",
-            "🧵  Thread 长推文一键保存完整线程",
+            "💾  多目标保存：Obsidian / 飞书多维表格 / Notion / HTML",
+            "🖼️  图片本地下载，按平台分类文件夹",
         ]
         card = self._make_card(self.content_frame)
         card.pack(fill="x", padx=30, pady=10)
@@ -311,7 +311,7 @@ class SetupWizard:
             anchor="w", pady=(8, 2))
 
         tk.Label(self.content_frame,
-                 text="X2MD 需要安装配套的 Chrome 扩展才能在推特页面上抓取内容",
+                 text="X2MD 需要安装配套的 Chrome 扩展才能在网页上抓取内容",
                  font=FONT(12), fg=C["muted"], bg=C["bg"]).pack(
             anchor="w", pady=(0, 14))
 
@@ -320,7 +320,7 @@ class SetupWizard:
             ("❷", "打开右上角的「开发者模式」开关"),
             ("❸", "点击左上角「加载已解压的扩展程序」按钮"),
             ("❹", "选择 X2MD 安装目录下的 extension 文件夹"),
-            ("❺", "扩展安装完成！在推特页面上点击推文的书签按钮即可保存"),
+            ("❺", "安装完成！在 X/Twitter、LINUX DO、飞书、微信公众号页面使用保存按钮即可"),
         ]
 
         for num, text in steps:
@@ -382,7 +382,7 @@ class SetupWizard:
         tk.Frame(card, bg=C["surface"], height=8).pack()
 
         tk.Label(self.content_frame,
-                 text="点击「启动服务」后，X2MD 将在系统托盘后台运行\n在 Chrome 中使用扩展即可开始保存推文",
+                 text="点击「启动服务」后，X2MD 将在系统托盘后台运行\n在 Chrome 中使用扩展即可开始保存内容",
                  font=FONT(12), fg=C["muted"], bg=C["bg"],
                  justify="center").pack(pady=(0, 8))
 
