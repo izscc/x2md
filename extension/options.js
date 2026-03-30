@@ -320,7 +320,7 @@ async function detectSiteType(domain, tagEl) {
     tagEl.style.color = "var(--text-muted)";
 }
 
-function addDiscourseDomain() {
+async function addDiscourseDomain() {
     const input = document.getElementById("newDiscourseDomain");
     let domain = input.value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
     if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
@@ -331,6 +331,19 @@ function addDiscourseDomain() {
         showToast("不允许使用内网地址", true); return;
     }
     if (_discourseDomains.includes(domain)) { showToast("该域名已存在", true); return; }
+
+    // 请求权限（仅 linux.do 外的域名）
+    if (domain.toLowerCase() !== "linux.do") {
+        try {
+            const granted = await chrome.permissions.request({ origins: [`https://${domain}/*`] });
+            if (!granted) {
+                showToast("未授权该域名权限，保存可能无法正常工作", true);
+            }
+        } catch (e) {
+            console.warn("[x2md] 权限请求失败:", e);
+        }
+    }
+
     _discourseDomains.push(domain);
     renderDiscourseDomains(_discourseDomains);
     input.value = "";

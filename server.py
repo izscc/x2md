@@ -161,7 +161,7 @@ def load_config() -> dict:
                 logger.warning(f"配置文件读取失败，使用默认配置: {e}")
         else:
             logger.info("配置文件不存在，使用默认配置")
-        _config_cache = DEFAULT_CONFIG.copy()
+        _config_cache = copy.deepcopy(DEFAULT_CONFIG)
         save_config(_config_cache)
         return _config_cache
 
@@ -870,7 +870,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
     def _handle_config_reset(self):
         """重置配置为默认值"""
-        save_config(dict(DEFAULT_CONFIG))
+        save_config(copy.deepcopy(DEFAULT_CONFIG))
         logger.info("配置已重置为默认值")
         self._respond(200, {"success": True, "config": DEFAULT_CONFIG})
 

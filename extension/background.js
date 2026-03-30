@@ -114,11 +114,8 @@ async function registerDiscourseContentScripts(domains) {
 
     const matches = extraDomains.map(d => `https://${d}/*`);
     try {
-        // 先请求可选权限
-        const granted = await chrome.permissions.request({ origins: matches }).catch(() => false);
-        if (!granted) {
-            console.warn("[x2md] 用户未授权额外域名权限:", extraDomains);
-        }
+        // 注：chrome.permissions.request() 在 MV3 service worker 中不可用（需要用户手势）
+        // 权限请求应在 options.js 中进行
         await chrome.scripting.registerContentScripts([{
             id: "x2md-discourse-extra",
             matches,

@@ -13,7 +13,9 @@
   "platform_folder_names": {
     "Twitter/X": "Twitter",
     "LINUX DO": "LINUX DO",
+    "Discourse": "Discourse",
     "飞书": "飞书",
+    "飞书聊天": "飞书聊天",
     "微信公众号": "微信公众号"
   },
   "download_images": true,
@@ -48,5 +50,7 @@
   "notion_prop_tags": "标签",
   "notion_prop_saved_date": "保存日期",
   "notion_prop_type": "类型",
-  "html_export_folder": "X2MD导出"
+  "html_export_folder": "X2MD导出",
+  "theme": "dark",
+  "notion_prop_comment_count": "评论数"
 }
