@@ -172,6 +172,7 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
     article_content = data.get("article_content", "")  # X Article 正文
     article_title = data.get("article_title", "")
     thread_tweets = data.get("thread_tweets", [])  # 线程推文列表
+    quote_tweet = data.get("quote_tweet") or {}  # 普通推文中的引用推文
     platform = data.get("platform", "Twitter/X")
 
     now = datetime.now()
@@ -224,8 +225,12 @@ tags: []
     save_dir = cfg.get("video_save_path", os.path.join(HOME, "Desktop", "X2MD", "Videos"))
     
     all_videos = list(videos)
+    if quote_tweet:
+        all_videos.extend(quote_tweet.get("videos", []))
     for t in thread_tweets:
         all_videos.extend(t.get("videos", []))
+        if t.get("quote_tweet"):
+            all_videos.extend(t["quote_tweet"].get("videos", []))
         
     video_idx = 1
     for vid_url in all_videos:
@@ -246,6 +251,32 @@ tags: []
             lines_list.append("")
             for v in unused_vids:
                 lines_list.append(vid_map[v])
+
+    def append_quote_tweet(lines_list, quote):
+        if not quote:
+            return
+        q_text = (quote.get("text") or "").strip()
+        q_images = quote.get("images") or []
+        q_videos = quote.get("videos") or []
+        q_url = (quote.get("url") or "").strip()
+        if not q_text and not q_images and not q_videos and not q_url:
+            return
+
+        lines_list.append("")
+        lines_list.append("> [!quote] 引用推文")
+        if q_text:
+            for line in q_text.splitlines():
+                lines_list.append(f"> {line}" if line.strip() else ">")
+        for img_url in q_images:
+            lines_list.append(">")
+            lines_list.append(f"> ![]({normalize_image_url(img_url)})")
+        for v_url in q_videos:
+            if v_url in vid_map:
+                lines_list.append(">")
+                lines_list.append(f"> {vid_map[v_url]}")
+        if q_url:
+            lines_list.append(">")
+            lines_list.append(f"> 原文：{q_url}")
 
     # [新增过滤器] 如果开启了视频下载，防重踢掉对应的占位图（封面）
     if download_video and videos:
@@ -285,6 +316,7 @@ tags: []
                 lines.append(f"![{i+1}]({orig_url})")
         
         append_unused_videos(lines, text_result)
+        append_quote_tweet(lines, quote_tweet)
 
         # ── 线程推文（长推文）───────────────────────────
         for idx, tw in enumerate(thread_tweets):
@@ -292,7 +324,8 @@ tags: []
             tw_images = tw.get("images", [])
             tw_videos = tw.get("videos", [])
             
-            if not tw_text and not tw_images and not tw_videos:
+            tw_quote = tw.get("quote_tweet") or {}
+            if not tw_text and not tw_images and not tw_videos and not tw_quote:
                 continue
             lines.append("\n---\n")
             if tw_text:
@@ -309,6 +342,8 @@ tags: []
                 for v_url in tw_videos:
                     if v_url in vid_map:
                         lines.append(vid_map[v_url])
+
+            append_quote_tweet(lines, tw_quote)
 
     body = "\n".join(lines)
     return filename, front_matter + "\n" + body

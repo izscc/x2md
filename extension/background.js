@@ -325,7 +325,7 @@ async function fetchViaGraphQL(tweetId, options = {}) {
                 sameAuthorTweets.sort((left, right) => BigInt(left.legacy?.id_str || 0) < BigInt(right.legacy?.id_str || 0) ? -1 : 1);
 
                 for (const threadTweet of sameAuthorTweets) {
-                    const parsed = parseLegacyTweet(threadTweet, threadTweet.core?.user_results?.result?.legacy);
+                    const parsed = parseLegacyTweet(threadTweet, threadTweet.core?.user_results?.result?.legacy, { stripLeadingReplyMentions: true });
                     if (parsed && (parsed.text || parsed.images.length || parsed.videos.length)) {
                         threadParsed.push(parsed);
                     }
@@ -346,16 +346,54 @@ async function fetchViaGraphQL(tweetId, options = {}) {
     }
 }
 
+
+function unwrapTweetResult(result) {
+    return result?.tweet || result;
+}
+
+function extractQuotedTweetResult(result) {
+    const candidates = [
+        result?.quoted_status_result?.result,
+        result?.tweet?.quoted_status_result?.result,
+        result?.quoted_status_result?.result?.tweet,
+        result?.tweet?.quoted_status_result?.result?.tweet,
+    ];
+    for (const candidate of candidates) {
+        const unwrapped = unwrapTweetResult(candidate);
+        if (unwrapped?.legacy || unwrapped?.tweet?.legacy) return unwrapped;
+    }
+    return null;
+}
+
+function cleanLeadingReplyMentions(text) {
+    return String(text || "")
+        .replace(/^(?:\s*@\w{1,20})+\s*/u, "")
+        .trimStart();
+}
+
+
+function removeQuotedTweetUrlFromText(text, quoteUrl) {
+    const quoteId = String(quoteUrl || "").match(/\/status\/(\d+)/)?.[1];
+    if (!quoteId) return text;
+    let result = String(text || "");
+    const markdownLinkPattern = new RegExp(`\\s*\\[[^\\]]*\\]\\([^)]*\\/status\\/${quoteId}[^)]*\\)\\s*$`, "i");
+    result = result.replace(markdownLinkPattern, "");
+    const plainUrlPattern = new RegExp(`\\s*https?:\\/\\/(?:x|twitter)\\.com\\/[^\\s)]+\\/status\\/${quoteId}[^\\s)]*\\s*$`, "i");
+    result = result.replace(plainUrlPattern, "");
+    return result.trimEnd();
+}
+
 // ─────────────────────────────────────────────
 // 解析 GraphQL legacy tweet 对象
 // ─────────────────────────────────────────────
-function parseLegacyTweet(result, userLegacy) {
-    const legacy = result.legacy || result.tweet?.legacy;
+function parseLegacyTweet(result, userLegacy, options = {}) {
+    const tweet = unwrapTweetResult(result);
+    const legacy = tweet?.legacy || result?.legacy || result?.tweet?.legacy;
     if (!legacy) return null;
 
     let text = "";
     // X 对于非常长的推文（非专有 article）会把全文存放在 note_tweet 中
-    const noteTweetResult = result.note_tweet?.note_tweet_results?.result || result.tweet?.note_tweet?.note_tweet_results?.result;
+    const noteTweetResult = tweet?.note_tweet?.note_tweet_results?.result || result.note_tweet?.note_tweet_results?.result || result.tweet?.note_tweet?.note_tweet_results?.result;
     if (noteTweetResult && noteTweetResult.text) {
         text = noteTweetResult.text;
     } else {
@@ -379,6 +417,9 @@ function parseLegacyTweet(result, userLegacy) {
 
     // 去掉末尾的残余 t.co 图片链接
     text = text.replace(/https:\/\/t\.co\/\S+$/gm, "").trimEnd();
+    if (options.stripLeadingReplyMentions) {
+        text = cleanLeadingReplyMentions(text);
+    }
 
     // 提取图片与视频
     const images = [];
@@ -410,7 +451,7 @@ function parseLegacyTweet(result, userLegacy) {
         }
     }
 
-    const articleMedia = extractArticleMediaVideos(result);
+    const articleMedia = extractArticleMediaVideos(tweet || result);
     videos.push(...articleMedia.videos);
     videoDurations.push(...articleMedia.videoDurations);
 
@@ -418,7 +459,7 @@ function parseLegacyTweet(result, userLegacy) {
     const handle = userLegacy?.screen_name ? "@" + userLegacy.screen_name : "";
     const published = legacy.created_at || "";
 
-    return {
+    const parsed = {
         text,
         images: Array.from(new Set(images)),
         videos: Array.from(new Set(videos)),
@@ -427,6 +468,27 @@ function parseLegacyTweet(result, userLegacy) {
         handle,
         published,
     };
+
+    if (!options.skipQuote) {
+        const quotedResult = extractQuotedTweetResult(tweet || result);
+        if (quotedResult) {
+            const quoteUserLegacy = quotedResult.core?.user_results?.result?.legacy ||
+                quotedResult.tweet?.core?.user_results?.result?.legacy;
+            const quotedParsed = parseLegacyTweet(quotedResult, quoteUserLegacy, { skipQuote: true });
+            if (quotedParsed && (quotedParsed.text || quotedParsed.images.length || quotedParsed.videos.length)) {
+                const quotedLegacy = quotedResult.legacy || quotedResult.tweet?.legacy || {};
+                const quotedHandle = quotedParsed.handle || (quoteUserLegacy?.screen_name ? "@" + quoteUserLegacy.screen_name : "");
+                const quotedId = quotedLegacy.id_str || quotedResult.rest_id || quotedResult.tweet?.rest_id || "";
+                parsed.quote_tweet = {
+                    ...quotedParsed,
+                    url: quotedHandle && quotedId ? `https://x.com/${quotedHandle.replace(/^@/, "")}/status/${quotedId}` : "",
+                };
+                parsed.text = removeQuotedTweetUrlFromText(parsed.text, parsed.quote_tweet.url);
+            }
+        }
+    }
+
+    return parsed;
 }
 
 // ─────────────────────────────────────────────
@@ -498,6 +560,7 @@ async function fetchFullTweetData(tweetData) {
         handle: apiResult.handle || tweetData.handle,
         published: apiResult.published || tweetData.published,
         thread_tweets: apiResult.thread_tweets && apiResult.thread_tweets.length > 0 ? apiResult.thread_tweets : (tweetData.thread_tweets || []),
+        quote_tweet: apiResult.quote_tweet || tweetData.quote_tweet || null,
     };
 }
 

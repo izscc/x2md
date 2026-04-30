@@ -30,6 +30,7 @@ function extractImages(container) {
     // ── 优先：Twitter 明确的图片容器 ─────────────
     // 推文图片
     container.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
+        if (img.closest('[data-testid="simpleTweet"]')) return;
         const src = img.src || img.getAttribute("src") || "";
         if (src && !src.includes("profile_images") && !src.includes("emoji")) {
             imgs.add(normalizeImageUrl(src));
@@ -50,6 +51,7 @@ function extractImages(container) {
 
     // 推文卡片缩略图（link preview / product card）
     container.querySelectorAll('[data-testid*="card"] img, [data-testid*="Card"] img').forEach(img => {
+        if (img.closest('[data-testid="simpleTweet"]')) return;
         const src = img.src || img.getAttribute("src") || "";
         if (src && !src.includes("profile_images") && !src.includes("emoji")) {
             imgs.add(normalizeImageUrl(src));
@@ -58,6 +60,7 @@ function extractImages(container) {
 
     // ── 通用 fallback：所有 pbs.twimg.com 图片全量提取（彻底防止漏网之鱼） ───
     container.querySelectorAll("img").forEach(img => {
+        if (img.closest('[data-testid="simpleTweet"]')) return;
         const src = img.src || img.getAttribute("src") || "";
         if (src.includes("pbs.twimg.com") &&
             !src.includes("profile_images") &&
@@ -167,6 +170,40 @@ function detectNoteUrl(article) {
     return null;
 }
 
+
+function findFirstStatusUrl(container) {
+    const links = container ? container.querySelectorAll('a[href*="/status/"]') : [];
+    for (const link of links) {
+        const href = link.getAttribute("href") || "";
+        const match = href.match(/^(\/[^/]+\/status\/\d+)/);
+        if (match) return new URL(match[1], location.origin).href;
+    }
+    return "";
+}
+
+function extractQuoteTweetBasic(article) {
+    const quote = article?.querySelector?.('[data-testid="simpleTweet"]');
+    if (!quote) return null;
+
+    const text = quote.querySelector('[data-testid="tweetText"]')?.innerText?.trim() || "";
+    const images = [];
+    quote.querySelectorAll('[data-testid="tweetPhoto"] img, img').forEach((img) => {
+        const src = img.src || img.getAttribute("src") || "";
+        if (!src.includes("pbs.twimg.com") || src.includes("profile_images") || src.includes("emoji")) return;
+        const parentLink = img.closest('a[href*="/status/"]');
+        const quoteUrl = findFirstStatusUrl(quote);
+        const quoteId = quoteUrl.match(/\/status\/(\d+)/)?.[1] || "";
+        const parentHref = parentLink?.getAttribute("href") || "";
+        if (quoteId && parentHref && !parentHref.includes(`/status/${quoteId}`)) return;
+        const normalized = normalizeImageUrl(src);
+        if (!images.includes(normalized)) images.push(normalized);
+    });
+
+    const url = findFirstStatusUrl(quote);
+    if (!text && images.length === 0 && !url) return null;
+    return { text, images, videos: [], url };
+}
+
 // ─────────────────────────────────────────────
 // 作者信息（基础后备）
 // ─────────────────────────────────────────────
@@ -199,6 +236,10 @@ function extractAuthorBasic(article) {
 // ─────────────────────────────────────────────
 // 推文文字（后备：Syndication API 失败时使用）
 // ─────────────────────────────────────────────
+function stripLeadingReplyMentions(text) {
+    return String(text || "").replace(/^(?:\s*@\w{1,20})+\s*/u, "").trimStart();
+}
+
 function extractTweetTextBasic(article) {
     const selectors = [
         '[data-testid="tweetText"]',
@@ -398,7 +439,7 @@ function extractThreadBasic(firstArticle, mainHandle) {
         const art = articles[i];
         const { handle } = extractAuthorBasic(art);
         if (handle && handle !== mainHandle) break;
-        const text = extractTweetTextBasic(art);
+        const text = stripLeadingReplyMentions(extractTweetTextBasic(art));
         const images = extractImages(art);
         if (text || images.length) thread.push({ text, images });
     }
@@ -722,8 +763,9 @@ function captureAndSend(btn) {
     // ── 普通推文 ──────────────────────────────────────
     const text = extractTweetTextBasic(article);
     const thread_tweets = extractThreadBasic(article, handle);
+    const quote_tweet = extractQuoteTweetBasic(article);
 
-    console.log("[x2md] 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40) });
+    console.log("[x2md] 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40), hasQuote: !!quote_tweet });
     sendToBackground({
         author,
         handle,
@@ -731,6 +773,7 @@ function captureAndSend(btn) {
         published,
         url: tweetUrl,
         images,
+        quote_tweet,
         thread_tweets,
         type: "tweet",
         graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
