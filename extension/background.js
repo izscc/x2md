@@ -186,7 +186,7 @@ async function fetchNoteContent(articleUrl) {
                                 // ── 封面图补充（如有则放顶部） ─────────────────────────────
                                 let coverImg = "";
                                 document.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
-                                    if (img.closest('[data-testid="simpleTweet"], article[data-testid="tweet"]')) return;
+                                    if (img.closest('[data-testid="simpleTweet"]')) return;
                                     const src = img.src || '';
                                     if (src && src.includes('pbs.twimg.com') && !src.includes('profile_images')) {
                                         const u = new URL(src);

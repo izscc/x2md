@@ -336,7 +336,7 @@ function detectAndExtractArticle() {
     // 很多文章的首图其实是在推文上方，或者是特定的 article-cover
     let coverImg = "";
     document.querySelectorAll('[data-testid="tweetPhoto"] img, img[alt="Article cover image"]').forEach(img => {
-        if (img.closest('[data-testid="simpleTweet"], article[data-testid="tweet"]')) return;
+        if (img.closest('[data-testid="simpleTweet"]')) return;
         const src = img.src || '';
         if (src && src.includes('pbs.twimg.com') && !src.includes('profile_images')) {
             const cleanSrc = src.split('?')[0];
