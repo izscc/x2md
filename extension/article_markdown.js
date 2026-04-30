@@ -54,9 +54,106 @@
         return !display.startsWith("inline");
     }
 
+    const TWITTER_ACTION_TESTIDS = new Set([
+        "reply", "retweet", "like", "bookmark", "removeBookmark", "share",
+        "app-text-transition-container", "placementTracking",
+    ]);
+
+    function isTwitterEmbeddedTweet(element) {
+        const testId = safeGetAttribute(element, "data-testid");
+        if (testId === "simpleTweet") return true;
+        return getTagName(element) === "article" &&
+            testId === "tweet" &&
+            !!safeClosest(element, '[data-testid="twitterArticleRichTextView"], [data-testid="longformRichTextComponent"]');
+    }
+
     function shouldSkipElement(element) {
+        const testId = safeGetAttribute(element, "data-testid");
+        if (TWITTER_ACTION_TESTIDS.has(testId)) return true;
+
+        const href = safeGetAttribute(element, "href") || "";
+        if (/\/status\/\d+\/analytics(?:$|[?#])/.test(href)) return true;
+
+        const text = getNodeText(element).trim();
+        if (text === "Download") return true;
+
         return safeClosest(element, '[data-testid="twitter-article-title"]') ||
             safeClosest(element, '[data-testid="User-Name"]');
+    }
+
+    function walkElementTree(root, visitor) {
+        if (!root || root.nodeType !== 1) return;
+        visitor(root);
+        for (const child of Array.from(root.childNodes || [])) {
+            walkElementTree(child, visitor);
+        }
+    }
+
+    function cleanTwitterStatusUrl(href) {
+        if (!href) return "";
+        const match = String(href).match(/(?:https?:\/\/(?:x|twitter)\.com)?(\/[^/]+\/status\/\d+)/i);
+        if (!match) return "";
+        return `https://x.com${match[1]}`;
+    }
+
+    function normalizeTwitterImageUrl(src) {
+        if (!src || !String(src).includes("pbs.twimg.com")) return "";
+        if (String(src).includes("profile_images") || String(src).includes("emoji")) return "";
+        try {
+            const url = new URL(src);
+            url.searchParams.set("name", "orig");
+            return url.href;
+        } catch (error) {
+            return src;
+        }
+    }
+
+    function formatTwitterEmbeddedTweet(element) {
+        const statusUrls = [];
+        walkElementTree(element, (node) => {
+            if (getTagName(node) !== "a") return;
+            const cleanUrl = cleanTwitterStatusUrl(safeGetAttribute(node, "href") || "");
+            if (cleanUrl && !statusUrls.includes(cleanUrl)) statusUrls.push(cleanUrl);
+        });
+        const primaryStatusUrl = statusUrls[0] || "";
+        const primaryStatusId = primaryStatusUrl.match(/\/status\/(\d+)/)?.[1] || "";
+
+        let tweetText = "";
+        walkElementTree(element, (node) => {
+            if (tweetText) return;
+            if (safeGetAttribute(node, "data-testid") === "tweetText") {
+                tweetText = getNodeText(node).trim();
+            }
+        });
+
+        const images = [];
+        walkElementTree(element, (node) => {
+            if (getTagName(node) !== "img") return;
+            const imgUrl = normalizeTwitterImageUrl(node.src || safeGetAttribute(node, "src") || "");
+            if (!imgUrl) return;
+
+            // Nested quoted tweets/cards carry their own status id in the photo link.
+            // Keep only media attached to the top-level embedded tweet.
+            const parentLink = safeClosest(node, 'a[href*="/status/"]');
+            const parentHref = parentLink ? safeGetAttribute(parentLink, "href") || "" : "";
+            if (primaryStatusId && parentHref && !parentHref.includes(`/status/${primaryStatusId}`)) return;
+
+            if (!images.includes(imgUrl)) images.push(imgUrl);
+        });
+
+        if (!tweetText && images.length === 0 && !primaryStatusUrl) return "";
+
+        const lines = ["> [!quote] 引用推文"];
+        if (tweetText) {
+            for (const line of tweetText.split("\n")) {
+                lines.push(line.trim() ? `> ${line}` : ">");
+            }
+        }
+        for (const image of images) {
+            lines.push(">", `> ![](${image})`);
+        }
+        if (primaryStatusUrl) lines.push(">", `> 原文：${primaryStatusUrl}`);
+        return `\n${lines.join("\n")}\n`;
     }
 
     function formatCodeFence(code, language = "") {
@@ -131,6 +228,7 @@
         if (!element) return "";
         if (element.nodeType === 3) return element.textContent || "";
         if (element.nodeType !== 1) return "";
+        if (isTwitterEmbeddedTweet(element)) return formatTwitterEmbeddedTweet(element, options);
         if (shouldSkipElement(element)) return "";
 
         const tag = getTagName(element);

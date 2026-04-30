@@ -1,5 +1,5 @@
 /**
- * background.js - X2MD Service Worker v1.3
+ * background.js - X2MD Service Worker v1.4
  *
  * 获取完整推文的 3 层策略（依次降级）：
  *   1. Twitter GraphQL API (TweetDetail) — 携带 cookie，获取最完整数据
@@ -186,6 +186,7 @@ async function fetchNoteContent(articleUrl) {
                                 // ── 封面图补充（如有则放顶部） ─────────────────────────────
                                 let coverImg = "";
                                 document.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
+                                    if (img.closest('[data-testid="simpleTweet"], article[data-testid="tweet"]')) return;
                                     const src = img.src || '';
                                     if (src && src.includes('pbs.twimg.com') && !src.includes('profile_images')) {
                                         const u = new URL(src);

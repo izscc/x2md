@@ -1,5 +1,5 @@
 /**
- * content.js - X2MD 内容脚本 v1.3
+ * content.js - X2MD 内容脚本 v1.4
  *
  * 职责简化：只负责
  *   1. 监听书签按钮点击（首页 Feed + 详情页 + X Article）
@@ -336,6 +336,7 @@ function detectAndExtractArticle() {
     // 很多文章的首图其实是在推文上方，或者是特定的 article-cover
     let coverImg = "";
     document.querySelectorAll('[data-testid="tweetPhoto"] img, img[alt="Article cover image"]').forEach(img => {
+        if (img.closest('[data-testid="simpleTweet"], article[data-testid="tweet"]')) return;
         const src = img.src || '';
         if (src && src.includes('pbs.twimg.com') && !src.includes('profile_images')) {
             const cleanSrc = src.split('?')[0];
@@ -899,4 +900,4 @@ observer.observe(document.body, { childList: true, subtree: true });
 requestRuntimeConfig();
 bindAll();
 
-console.log("[x2md] 内容脚本已加载 v1.3");
+console.log("[x2md] 内容脚本已加载 v1.4");
