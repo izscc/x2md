@@ -926,9 +926,35 @@ function ensureFloatingSaveButton() {
 // ─────────────────────────────────────────────
 // MutationObserver：监听动态加载的推文
 // ─────────────────────────────────────────────
+function isTwitterLikePage(locationLike = location) {
+    const hostname = String(locationLike?.hostname || "").toLowerCase();
+    return hostname === "x.com" || hostname.endsWith(".x.com") ||
+        hostname === "twitter.com" || hostname.endsWith(".twitter.com");
+}
+
 function bindAll() {
-    document.querySelectorAll(BOOKMARK_SELECTORS).forEach(attachBookmarkListener);
+    // 关键性能修复：书签按钮只存在于 X/Twitter。
+    // 之前在 linux.do / 微信公众号页面的每次 DOM mutation 都会全页扫描一组
+    // Twitter 选择器；这两个站点本身会高频动态更新 DOM，导致扩展开启后页面卡死。
+    if (isTwitterLikePage()) {
+        document.querySelectorAll(BOOKMARK_SELECTORS).forEach(attachBookmarkListener);
+    }
     ensureFloatingSaveButton();
+}
+
+let bindScheduled = false;
+function scheduleBindAll() {
+    if (bindScheduled) return;
+    bindScheduled = true;
+    const run = () => {
+        bindScheduled = false;
+        bindAll();
+    };
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(run);
+    } else {
+        setTimeout(run, 100);
+    }
 }
 
 document.addEventListener("click", (event) => {
@@ -938,7 +964,7 @@ document.addEventListener("click", (event) => {
     setTimeout(() => captureLinuxDoPost(btn), 250);
 }, true);
 
-const observer = new MutationObserver(bindAll);
+const observer = new MutationObserver(scheduleBindAll);
 observer.observe(document.body, { childList: true, subtree: true });
 requestRuntimeConfig();
 bindAll();
