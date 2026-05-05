@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "X2MD - 网页内容转Markdown",
-    "version": "1.0.9",
+    "version": "1.1.0",
     "description": "支持 X、LINUX DO、飞书知识库、飞书云文档、微信公众号的一键保存 Markdown",
     "permissions": [
         "storage",
@@ -19,11 +19,24 @@
         "https://mp.weixin.qq.com/*",
         "http://127.0.0.1:9527/*",
         "https://cdn.syndication.twimg.com/*",
-        "https://publish.twitter.com/*"
+        "https://publish.twitter.com/*",
+        "https://translate.googleapis.com/*"
     ],
     "background": {
         "service_worker": "background.js"
     },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "icons/copy_5304228.png",
+                "icons/translate_16818360.png"
+            ],
+            "matches": [
+                "*://*.twitter.com/*",
+                "*://*.x.com/*"
+            ]
+        }
+    ],
     "content_scripts": [
         {
             "matches": [
@@ -42,6 +55,7 @@
                 "wechat.js",
                 "site_actions.js",
                 "twitter_graphql.js",
+                "translation_helpers.js",
                 "content.js"
             ],
             "run_at": "document_idle"

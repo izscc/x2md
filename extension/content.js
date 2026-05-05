@@ -658,6 +658,872 @@ function handleFloatingSave(siteKey) {
 }
 
 // ─────────────────────────────────────────────
+// X/Twitter 页面内复制正文按钮
+// ─────────────────────────────────────────────
+const X_INLINE_COPY_BUTTON_CLASS = "__x2md_x_inline_copy_button";
+const X_INLINE_TRANSLATE_BUTTON_CLASS = "__x2md_x_inline_translate_button";
+const X_INLINE_TRANSLATION_BLOCK_CLASS = "__x2md_x_inline_translation_block";
+const X_INLINE_ACTIONS_CONTAINER_CLASS = "__x2md_x_inline_actions_container";
+const X_INLINE_TRANSLATION_STATUS_CLASS = "__x2md_x_inline_translation_status";
+const X_AUTO_TRANSLATE_LONG_PRESS_MS = 650;
+const X_AUTO_TRANSLATE_MAX_CONCURRENCY = 2;
+const X_COPY_ICON_URL = chrome.runtime.getURL("icons/copy_5304228.png");
+const X_TRANSLATE_ICON_URL = chrome.runtime.getURL("icons/translate_16818360.png");
+const X_GROK_BUTTON_SELECTORS = [
+    'button[aria-label*="Grok"]',
+    'button[aria-label*="grok"]',
+    '[role="button"][aria-label*="Grok"]',
+    '[role="button"][aria-label*="grok"]',
+].join(", ");
+
+let xAutoTranslateEnabled = false;
+let xAutoTranslateScheduled = false;
+const xAutoTranslateDoneKeys = new Set();
+const xAutoTranslateQueuedKeys = new Set();
+const xAutoTranslateQueue = [];
+let xAutoTranslateActiveCount = 0;
+
+function getLocalArticleTextForCopy(article) {
+    if (isNotePageUrl()) {
+        const source = getTwitterArticleTranslationSource(document);
+        if (source.text) return source.text;
+    }
+
+    const ctx = article || document;
+    const tweetText = ctx.querySelector('[data-testid="tweetText"]')?.innerText?.trim();
+    if (tweetText) return stripLeadingReplyMentions(tweetText);
+
+    const fallback = extractTweetTextBasic(ctx);
+    return stripLeadingReplyMentions(fallback || "");
+}
+
+function getTwitterArticleBodyContainer(scope = document) {
+    const ctx = scope || document;
+    return ctx.querySelector?.('[data-testid="twitterArticleRichTextView"]') ||
+        ctx.querySelector?.('[data-testid="longformRichTextComponent"]') ||
+        ctx.querySelector?.('[data-testid="twitterArticleReadView"]') ||
+        ctx.querySelector?.('[data-testid="article-content"]') ||
+        null;
+}
+
+function getTwitterArticleTitleElement(scope = document) {
+    const ctx = scope || document;
+    return ctx.querySelector?.('[data-testid="twitter-article-title"], [data-testid="article-title"], h1') || null;
+}
+
+function getTwitterArticleTranslationSource(scope = document) {
+    const ctx = scope || document;
+    const titleEl = getTwitterArticleTitleElement(ctx) || getTwitterArticleTitleElement(document);
+    const bodyEl = getTwitterArticleBodyContainer(ctx) || getTwitterArticleBodyContainer(document);
+    return buildArticleTranslationSource({
+        title: titleEl?.innerText || "",
+        body: bodyEl?.innerText || "",
+    });
+}
+
+function isTwitterArticleTranslationScope(scope = document) {
+    const ctx = scope || document;
+    if (ctx !== document) {
+        return !!getTwitterArticleBodyContainer(ctx);
+    }
+    return isNotePageUrl() || !!getTwitterArticleBodyContainer(document);
+}
+
+function findVisibleTranslationBlock(scope = document) {
+    const ctx = scope || document;
+    const block = ctx.querySelector?.(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`);
+    if (!block || block.style.display === "none") return null;
+    return block;
+}
+
+function getDisplayedTranslationContentForCopy(scope = document) {
+    const block = findVisibleTranslationBlock(scope);
+    const text = block?.innerText?.trim() || "";
+    if (!text) return null;
+    return { text, html: plainTextToClipboardHtml(text), source: "visible_translation" };
+}
+
+function buildCopyContentPayload(article, triggerButton) {
+    const ctx = article || document;
+    const noteArticleUrl = detectNoteUrl(ctx);
+    const { url: tweetUrl } = findTweetUrl(triggerButton || ctx);
+    const localText = getLocalArticleTextForCopy(article);
+
+    return {
+        type: noteArticleUrl ? "note" : "tweet",
+        url: tweetUrl || location.href.split("?")[0],
+        note_article_url: noteArticleUrl || "",
+        text: localText,
+        graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
+    };
+}
+
+function requestBackgroundCopyText(payload) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: "copy_content_text", data: payload }, (resp) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+            if (!resp?.success || !resp.text) {
+                reject(new Error(resp?.error || "empty copy text"));
+                return;
+            }
+            resolve({ text: resp.text, markdown: resp.markdown || "", source: resp.source || "" });
+        });
+    });
+}
+
+async function resolveContentForCopy(article, triggerButton) {
+    const visibleTranslation = getDisplayedTranslationContentForCopy(article || document) ||
+        (article && article !== document ? getDisplayedTranslationContentForCopy(document) : null);
+    if (visibleTranslation?.text) {
+        return visibleTranslation;
+    }
+
+    const payload = buildCopyContentPayload(article, triggerButton);
+
+    if (payload.note_article_url) {
+        try {
+            const remoteContent = await requestBackgroundCopyText(payload);
+            if (remoteContent?.text) {
+                return {
+                    text: remoteContent.text,
+                    html: remoteContent.markdown ? markdownToClipboardHtml(remoteContent.markdown) : "",
+                };
+            }
+        } catch (error) {
+            console.warn("[x2md] 后台提取 X Article 正文失败，回退当前 DOM：", error);
+        }
+    }
+
+    const text = payload.text || getLocalArticleTextForCopy(article);
+    return { text, html: text ? plainTextToClipboardHtml(text) : "" };
+}
+
+function escapeHtml(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function inlineMarkdownToHtml(text) {
+    let html = escapeHtml(text);
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return html;
+}
+
+function plainTextToClipboardHtml(text) {
+    return String(text || "")
+        .split(/\n{2,}/)
+        .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+        .join("\n");
+}
+
+function markdownToClipboardHtml(markdown) {
+    const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+    const html = [];
+    let paragraph = [];
+    let list = [];
+    let quote = [];
+    let inCode = false;
+    let codeLines = [];
+
+    const flushParagraph = () => {
+        if (!paragraph.length) return;
+        html.push(`<p>${inlineMarkdownToHtml(paragraph.join("\n")).replace(/\n/g, "<br>")}</p>`);
+        paragraph = [];
+    };
+    const flushList = () => {
+        if (!list.length) return;
+        html.push(`<ul>${list.map((item) => `<li>${inlineMarkdownToHtml(item)}</li>`).join("")}</ul>`);
+        list = [];
+    };
+    const flushQuote = () => {
+        if (!quote.length) return;
+        html.push(`<blockquote>${quote.map((line) => `<p>${inlineMarkdownToHtml(line)}</p>`).join("")}</blockquote>`);
+        quote = [];
+    };
+    const flushCode = () => {
+        if (!codeLines.length) return;
+        html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        codeLines = [];
+    };
+    const flushAll = () => {
+        flushParagraph();
+        flushList();
+        flushQuote();
+    };
+
+    for (const rawLine of lines) {
+        const line = rawLine.trimEnd();
+        if (line.startsWith("```")) {
+            if (inCode) {
+                flushCode();
+                inCode = false;
+            } else {
+                flushAll();
+                inCode = true;
+                codeLines = [];
+            }
+            continue;
+        }
+        if (inCode) {
+            codeLines.push(rawLine);
+            continue;
+        }
+
+        if (!line.trim()) {
+            flushAll();
+            continue;
+        }
+
+        const heading = line.match(/^(#{1,4})\s+(.+)$/);
+        if (heading) {
+            flushAll();
+            const level = Math.min(heading[1].length, 4);
+            html.push(`<h${level}>${inlineMarkdownToHtml(heading[2].trim())}</h${level}>`);
+            continue;
+        }
+
+        const image = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)$/);
+        if (image) {
+            flushAll();
+            html.push(`<p><img src="${escapeHtml(image[2])}" alt="${escapeHtml(image[1])}"></p>`);
+            continue;
+        }
+
+        const listItem = line.match(/^[-*]\s+(.+)$/);
+        if (listItem) {
+            flushParagraph();
+            flushQuote();
+            list.push(listItem[1]);
+            continue;
+        }
+
+        const quoteLine = line.match(/^>\s?(.*)$/);
+        if (quoteLine) {
+            flushParagraph();
+            flushList();
+            quote.push(quoteLine[1]);
+            continue;
+        }
+
+        flushList();
+        flushQuote();
+        paragraph.push(line);
+    }
+
+    if (inCode) flushCode();
+    flushAll();
+    return html.join("\n");
+}
+
+function copyHtmlViaSelection(html, text) {
+    const container = document.createElement("div");
+    container.contentEditable = "true";
+    container.innerHTML = html || escapeHtml(text).replace(/\n/g, "<br>");
+    Object.assign(container.style, {
+        position: "fixed",
+        top: "-9999px",
+        left: "-9999px",
+        opacity: "0",
+        pointerEvents: "none",
+    });
+    document.body.appendChild(container);
+
+    const range = document.createRange();
+    range.selectNodeContents(container);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const ok = document.execCommand("copy");
+    selection.removeAllRanges();
+    container.remove();
+    if (!ok) throw new Error("copy command failed");
+}
+
+async function copyContentToClipboard(content) {
+    const text = String(content?.text || "").trim();
+    const html = String(content?.html || "").trim();
+    if (!text) throw new Error("empty text");
+
+    if (html && navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+            new ClipboardItem({
+                "text/html": new Blob([html], { type: "text/html" }),
+                "text/plain": new Blob([text], { type: "text/plain" }),
+            }),
+        ]);
+        return;
+    }
+
+    if (html) {
+        copyHtmlViaSelection(html, text);
+        return;
+    }
+
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    copyHtmlViaSelection("", text);
+}
+
+function extractTweetIdFromUrl(url) {
+    return String(url || "").match(/\/status\/(\d+)/)?.[1] || "";
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function findExpandableTweetTextControls(scope = document) {
+    const ctx = scope || document;
+    const controls = [];
+    for (const el of ctx.querySelectorAll?.('button, [role="button"]') || []) {
+        if (el.closest(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`)) continue;
+        const text = (el.innerText || el.textContent || el.getAttribute?.("aria-label") || "").trim();
+        if (isExpandableTweetTextControl(text)) controls.push(el);
+    }
+    return controls;
+}
+
+async function expandCollapsedTweetText(scope = document) {
+    const controls = findExpandableTweetTextControls(scope);
+    if (!controls.length) return 0;
+    let clicked = 0;
+    for (const control of controls.slice(0, 3)) {
+        try {
+            control.click();
+            clicked++;
+        } catch (error) { }
+    }
+    if (clicked) await delay(180);
+    return clicked;
+}
+
+function findMainTweetTextElement(article) {
+    const ctx = article || document;
+    for (const el of ctx.querySelectorAll('[data-testid="tweetText"]')) {
+        if (el.closest('[data-testid="simpleTweet"]')) continue;
+        if (el.closest(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`)) continue;
+        return el;
+    }
+    return null;
+}
+
+function getTranslationTarget(scope = document) {
+    const ctx = scope || document;
+    if (isTwitterArticleTranslationScope(ctx)) {
+        const titleEl = getTwitterArticleTitleElement(document);
+        const bodyEl = getTwitterArticleBodyContainer(document);
+        if (bodyEl) {
+            const source = getTwitterArticleTranslationSource(document);
+            return {
+                kind: "article",
+                scope: document,
+                insertAfter: titleEl || bodyEl,
+                originalEls: [titleEl, bodyEl].filter(Boolean),
+                articleTitle: source.title,
+                articleBody: source.body,
+                text: source.text,
+            };
+        }
+    }
+
+    const tweetTextEl = findMainTweetTextElement(ctx);
+    if (!tweetTextEl) return null;
+    return {
+        kind: "tweet",
+        scope: ctx,
+        insertAfter: tweetTextEl,
+        originalEls: [tweetTextEl],
+        text: stripLeadingReplyMentions(tweetTextEl.innerText || ""),
+    };
+}
+
+function hideOriginalTranslationTargets(target) {
+    for (const el of target?.originalEls || []) {
+        if (!el) continue;
+        if (el.__x2md_original_display === undefined) {
+            el.__x2md_original_display = el.style.display || "";
+        }
+        el.style.display = "none";
+        el.setAttribute("aria-hidden", "true");
+    }
+}
+
+function showOriginalTranslationTargets(scope = document) {
+    const target = getTranslationTarget(scope);
+    if (!target) return false;
+    const block = (target.scope || document).querySelector?.(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`);
+    if (block) block.style.display = "none";
+    for (const el of target.originalEls || []) {
+        if (!el) continue;
+        el.style.display = el.__x2md_original_display || "";
+        el.removeAttribute("aria-hidden");
+    }
+    return true;
+}
+
+function toggleExistingInlineTranslation(scope = document) {
+    const target = getTranslationTarget(scope);
+    const block = (target?.scope || scope || document).querySelector?.(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`);
+    if (!block || !target) return "";
+
+    if (block.style.display !== "none") {
+        showOriginalTranslationTargets(scope);
+        return "original";
+    }
+
+    hideOriginalTranslationTargets(target);
+    block.style.display = "block";
+    return "translation";
+}
+
+function requestBackgroundTweetTranslation(payload) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: "translate_tweet", data: payload }, (resp) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+            if (!resp?.success || !resp.translatedText) {
+                reject(new Error(resp?.error || "empty translation"));
+                return;
+            }
+            resolve({ translatedText: resp.translatedText, tweetId: resp.tweetId || payload.tweetId || "" });
+        });
+    });
+}
+
+function requestBackgroundTextTranslation(payload) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: "translate_text", data: payload }, (resp) => {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+                return;
+            }
+            if (!resp?.success || !resp.translatedText) {
+                reject(new Error(resp?.error || "empty translation"));
+                return;
+            }
+            resolve({ translatedText: resp.translatedText });
+        });
+    });
+}
+
+function createNativeLikeTranslationBlock(target) {
+    const scope = target?.scope || document;
+    let block = scope.querySelector(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`);
+    if (block) return block;
+
+    block = document.createElement("div");
+    block.className = X_INLINE_TRANSLATION_BLOCK_CLASS;
+    Object.assign(block.style, {
+        marginTop: target?.kind === "article" ? "20px" : "4px",
+        marginBottom: target?.kind === "article" ? "20px" : "",
+        color: "rgb(15, 20, 25)",
+        fontSize: target?.kind === "article" ? "20px" : "15px",
+        lineHeight: target?.kind === "article" ? "1.68" : "1.45",
+        whiteSpace: "pre-wrap",
+    });
+
+    block.innerHTML = `
+        <div data-x2md-role="translated-status" class="${X_INLINE_TRANSLATION_STATUS_CLASS}" style="display:none;margin-bottom:8px;color:rgb(83,100,113);font-size:13px;line-height:1.35;"></div>
+        <div data-x2md-role="translated-text" style="white-space:pre-wrap;font-size:inherit;line-height:inherit;"></div>
+    `;
+    target.insertAfter.insertAdjacentElement("afterend", block);
+    return block;
+}
+
+function setInlineTranslationStatus(scope, message) {
+    const target = getTranslationTarget(scope);
+    if (!target) return false;
+    const block = createNativeLikeTranslationBlock(target);
+    const statusEl = block.querySelector('[data-x2md-role="translated-status"]');
+    if (!statusEl) return false;
+    statusEl.textContent = message || "";
+    statusEl.style.display = message ? "block" : "none";
+    block.style.display = "block";
+    return true;
+}
+
+function renderInlineTranslation(scope, translation) {
+    const target = getTranslationTarget(scope);
+    if (!target || !translation) return false;
+
+    const block = createNativeLikeTranslationBlock(target);
+    const translatedTextEl = block.querySelector('[data-x2md-role="translated-text"]');
+    if (!translatedTextEl) return false;
+
+    const translatedText = typeof translation === "string" ? translation : translation.text;
+    if (!translatedText) return false;
+
+    translatedTextEl.innerHTML = escapeHtml(translatedText).replace(/\n/g, "<br>");
+    const statusEl = block.querySelector('[data-x2md-role="translated-status"]');
+    if (statusEl) statusEl.style.display = "none";
+    block.__x2md_translation_override = typeof translation === "string"
+        ? { type: target.kind, text: translatedText }
+        : translation.override || { type: target.kind, text: translatedText };
+    hideOriginalTranslationTargets(target);
+    block.style.display = "block";
+    return true;
+}
+
+function getTranslationOverrideForSave(scope = document) {
+    const ctx = scope || document;
+    const block = findVisibleTranslationBlock(ctx) ||
+        (ctx !== document ? findVisibleTranslationBlock(document) : null);
+    const override = block?.__x2md_translation_override;
+    if (!override) return null;
+    const text = String(override.text || override.article_content || "").trim();
+    const title = String(override.article_title || "").trim();
+    if (!text && !title) return null;
+    return override;
+}
+
+function withVisibleTranslationOverride(data, scope = document) {
+    const override = getTranslationOverrideForSave(scope);
+    if (!override) return data;
+    return applyTranslationOverrideToData({
+        ...data,
+        prefer_translated_content: true,
+        translation_override: override,
+    });
+}
+
+async function translateScopeInline(scope = document, options = {}) {
+    const requestedScope = scope || document;
+    const targetScope = requestedScope === document && isTwitterArticleTranslationScope(document)
+        ? document
+        : requestedScope;
+    if (!options.force) {
+        const block = findVisibleTranslationBlock(targetScope);
+        if (block?.__x2md_translation_override) return "cached";
+    }
+
+    await expandCollapsedTweetText(targetScope);
+    const target = getTranslationTarget(targetScope);
+    if (!target?.text) return "missing";
+
+    setInlineTranslationStatus(targetScope, "正在翻译…");
+
+    if (target.kind === "article") {
+        const source = getTwitterArticleTranslationSource(document);
+        if (!source.body && !source.title) return "missing";
+
+        const [titleResult, bodyResult] = await Promise.all([
+            source.title ? requestBackgroundTextTranslation({
+                text: source.title,
+                url: location.href.split("?")[0],
+                type: "x_article_title",
+            }) : Promise.resolve({ translatedText: "" }),
+            source.body ? requestBackgroundTextTranslation({
+                text: source.body,
+                url: location.href.split("?")[0],
+                type: "x_article_body",
+            }) : Promise.resolve({ translatedText: "" }),
+        ]);
+
+        const translatedTitle = titleResult.translatedText || "";
+        const translatedBody = bodyResult.translatedText || "";
+        const translatedText = [translatedTitle, translatedBody].filter(Boolean).join("\n\n");
+        if (!translatedText) return "missing";
+        return renderInlineTranslation(document, {
+            text: translatedText,
+            override: {
+                type: "article",
+                article_title: translatedTitle,
+                article_content: translatedBody || translatedTitle,
+            },
+        }) ? "translated" : "missing";
+    }
+
+    const { url: tweetUrl } = findTweetUrl(targetScope);
+    let fallbackUrl = "";
+    if (location.pathname.includes("/status/")) {
+        const statusPath = location.pathname.match(/^(\/[^/]+\/status\/\d+)/)?.[1] || "";
+        if (statusPath) fallbackUrl = location.origin + statusPath;
+    }
+    const resolvedTweetUrl = tweetUrl || fallbackUrl || findFirstStatusUrl(targetScope);
+    const tweetId = extractTweetIdFromUrl(resolvedTweetUrl);
+    let translatedText = "";
+    if (tweetId) {
+        try {
+            const result = await requestBackgroundTweetTranslation({ url: resolvedTweetUrl, tweetId });
+            translatedText = result.translatedText || "";
+        } catch (error) {
+            console.warn("[x2md] Grok 翻译失败，回退普通文本翻译：", error);
+        }
+    }
+    if (!translatedText) {
+        const result = await requestBackgroundTextTranslation({
+            text: target.text,
+            url: resolvedTweetUrl || location.href.split("?")[0],
+            type: "x_tweet",
+        });
+        translatedText = result.translatedText || "";
+    }
+    if (!translatedText) return "missing";
+    return renderInlineTranslation(targetScope, {
+        text: translatedText,
+        override: { type: "tweet", text: translatedText },
+    }) ? "translated" : "missing";
+}
+
+function getAutoTranslateKey(scope = document) {
+    if ((!scope || scope === document) && isTwitterArticleTranslationScope(document)) {
+        return `article:${location.href.split("?")[0]}`;
+    }
+    let currentStatusUrl = "";
+    if (location.pathname.includes("/status/")) {
+        const statusPath = location.pathname.match(/^(\/[^/]+\/status\/\d+)/)?.[1] || "";
+        if (statusPath) currentStatusUrl = `${location.origin}${statusPath}`;
+    }
+    const statusUrl = findFirstStatusUrl(scope) || currentStatusUrl;
+    const id = extractTweetIdFromUrl(statusUrl);
+    return id ? `tweet:${id}` : "";
+}
+
+function enqueueAutoTranslateScope(scope = document) {
+    const key = getAutoTranslateKey(scope);
+    if (!key || xAutoTranslateDoneKeys.has(key) || xAutoTranslateQueuedKeys.has(key)) return;
+    xAutoTranslateQueuedKeys.add(key);
+    xAutoTranslateQueue.push({ key, scope });
+    drainAutoTranslateQueue();
+}
+
+function drainAutoTranslateQueue() {
+    while (xAutoTranslateActiveCount < X_AUTO_TRANSLATE_MAX_CONCURRENCY && xAutoTranslateQueue.length) {
+        const item = xAutoTranslateQueue.shift();
+        xAutoTranslateActiveCount++;
+        translateScopeInline(item.scope, { force: false, auto: true })
+            .then((state) => {
+                if (state === "translated" || state === "cached") xAutoTranslateDoneKeys.add(item.key);
+            })
+            .catch((error) => {
+                console.warn("[x2md] 自动翻译失败：", error);
+            })
+            .finally(() => {
+                xAutoTranslateQueuedKeys.delete(item.key);
+                xAutoTranslateActiveCount--;
+                drainAutoTranslateQueue();
+            });
+    }
+}
+
+function scheduleAutoTranslateLoadedContent() {
+    if (!xAutoTranslateEnabled || xAutoTranslateScheduled || !isTwitterLikePage()) return;
+    xAutoTranslateScheduled = true;
+    setTimeout(() => {
+        xAutoTranslateScheduled = false;
+        if (!xAutoTranslateEnabled) return;
+        if (isTwitterArticleTranslationScope(document)) {
+            enqueueAutoTranslateScope(document);
+        }
+        document.querySelectorAll("article, [role='article']").forEach((article) => {
+            if (isTwitterArticleTranslationScope(article)) return;
+            enqueueAutoTranslateScope(article);
+        });
+    }, 250);
+}
+
+function enableAutoTranslateMode() {
+    if (!isTwitterDetailOrArticlePage()) {
+        showToast("请先进入推文详情页或文章页再长按自动翻译", "error", 3200);
+        return;
+    }
+    xAutoTranslateEnabled = true;
+    showToast("已开启自动翻译：正在处理正文和已加载评论…", "loading", 2600);
+    scheduleAutoTranslateLoadedContent();
+}
+
+function buildTwitterInlineTranslateButton(referenceButton) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `${referenceButton?.className || ""} ${X_INLINE_TRANSLATE_BUTTON_CLASS}`.trim();
+    btn.setAttribute("aria-label", "显示翻译");
+    btn.title = "显示翻译";
+    btn.innerHTML = `
+        <div dir="ltr" style="display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;line-height:32px;">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;">
+                <img src="${X_TRANSLATE_ICON_URL}" alt="" aria-hidden="true" style="width:20px;height:20px;display:block;object-fit:contain;" />
+            </span>
+        </div>
+    `;
+    btn.style.marginRight = "4px";
+    btn.style.flexShrink = "0";
+    btn.addEventListener("mouseenter", () => {
+        const span = btn.querySelector("span");
+        if (span) span.style.background = "rgba(29, 155, 240, .10)";
+    });
+    btn.addEventListener("mouseleave", () => {
+        const span = btn.querySelector("span");
+        if (span) span.style.background = "transparent";
+    });
+    let longPressTimer = null;
+    const clearLongPressTimer = () => {
+        if (longPressTimer) clearTimeout(longPressTimer);
+        longPressTimer = null;
+    };
+    btn.addEventListener("pointerdown", (event) => {
+        clearLongPressTimer();
+        btn.__x2md_long_press_fired = false;
+        longPressTimer = setTimeout(() => {
+            btn.__x2md_long_press_fired = true;
+            try {
+                event.preventDefault();
+                event.stopPropagation();
+            } catch (error) { }
+            enableAutoTranslateMode();
+        }, X_AUTO_TRANSLATE_LONG_PRESS_MS);
+    }, true);
+    ["pointerup", "pointerleave", "pointercancel"].forEach((eventName) => {
+        btn.addEventListener(eventName, clearLongPressTimer, true);
+    });
+    btn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        clearLongPressTimer();
+        if (btn.__x2md_long_press_fired) {
+            btn.__x2md_long_press_fired = false;
+            return;
+        }
+        const fixedActions = btn.closest(`.${X_INLINE_ACTIONS_CONTAINER_CLASS}`);
+        const article = fixedActions ? document : (btn.closest("article, [role='article']") || document);
+        const existingState = toggleExistingInlineTranslation(article);
+        if (existingState) {
+            showToast(existingState === "original" ? "已显示原文" : "翻译已显示", "success", 1600);
+            return;
+        }
+
+        showToast("正在获取翻译…", "loading", null);
+        try {
+            const state = await translateScopeInline(article, { force: true });
+            if (state !== "translated" && state !== "cached") {
+                showToast("译文已获取，但未找到插入位置", "error", 3500);
+                return;
+            }
+            showToast("翻译已显示", "success", 2200);
+        } catch (error) {
+            console.error("[x2md] 翻译失败：", error);
+            showToast("翻译失败，请点进推文后重试", "error", 4500);
+        }
+    }, true);
+    return btn;
+}
+
+function buildTwitterInlineCopyButton(referenceButton) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `${referenceButton?.className || ""} ${X_INLINE_COPY_BUTTON_CLASS}`.trim();
+    btn.setAttribute("aria-label", "复制正文");
+    btn.title = "复制这条推文或文章的正文";
+    btn.innerHTML = `
+        <div dir="ltr" style="display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;line-height:32px;">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;">
+                <img src="${X_COPY_ICON_URL}" alt="" aria-hidden="true" style="width:19px;height:19px;display:block;object-fit:contain;" />
+            </span>
+        </div>
+    `;
+    btn.style.marginRight = "4px";
+    btn.style.flexShrink = "0";
+    btn.addEventListener("mouseenter", () => {
+        const span = btn.querySelector("span");
+        if (span) span.style.background = "rgba(29, 155, 240, .10)";
+    });
+    btn.addEventListener("mouseleave", () => {
+        const span = btn.querySelector("span");
+        if (span) span.style.background = "transparent";
+    });
+    btn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const article = btn.closest("article, [role='article']") || document;
+        showToast("正在提取正文…", "loading", null);
+        try {
+            const content = await resolveContentForCopy(article, btn);
+            if (!content?.text) {
+                showToast("未找到可复制的正文", "error", 3500);
+                return;
+            }
+            await copyContentToClipboard(content);
+            showToast(content.html ? "正文已复制（含格式）" : "正文已复制", "success", 2200);
+        } catch (error) {
+            console.error("[x2md] 复制正文失败：", error);
+            showToast("复制失败，请重试", "error", 3500);
+        }
+    }, true);
+    return btn;
+}
+
+function ensureTwitterInlineCopyButtons() {
+    if (!isTwitterLikePage()) {
+        document.querySelectorAll(`.${X_INLINE_COPY_BUTTON_CLASS}`).forEach((btn) => btn.remove());
+        document.querySelectorAll(`.${X_INLINE_ACTIONS_CONTAINER_CLASS}`).forEach((el) => el.remove());
+        return;
+    }
+
+    document.querySelectorAll("article, [role='article']").forEach((article) => {
+        const grokButton = article.querySelector(X_GROK_BUTTON_SELECTORS);
+        if (!grokButton || !grokButton.parentElement) return;
+
+        let copyButton = article.querySelector(`.${X_INLINE_COPY_BUTTON_CLASS}`);
+        if (!copyButton) {
+            copyButton = buildTwitterInlineCopyButton(grokButton);
+            grokButton.parentElement.insertBefore(copyButton, grokButton);
+        }
+
+        if (!article.querySelector(`.${X_INLINE_TRANSLATE_BUTTON_CLASS}`)) {
+            const translateButton = buildTwitterInlineTranslateButton(grokButton);
+            copyButton.insertAdjacentElement("afterend", translateButton);
+        }
+    });
+
+    if (isNotePageUrl() && !document.querySelector(`.${X_INLINE_COPY_BUTTON_CLASS}`)) {
+        const grokButton = document.querySelector(X_GROK_BUTTON_SELECTORS);
+        if (grokButton?.parentElement) {
+            const copyButton = buildTwitterInlineCopyButton(grokButton);
+            const translateButton = buildTwitterInlineTranslateButton(grokButton);
+            grokButton.parentElement.insertBefore(copyButton, grokButton);
+            copyButton.insertAdjacentElement("afterend", translateButton);
+            return;
+        }
+
+        let container = document.querySelector(`.${X_INLINE_ACTIONS_CONTAINER_CLASS}`);
+        if (!container) {
+            container = document.createElement("div");
+            container.className = X_INLINE_ACTIONS_CONTAINER_CLASS;
+            Object.assign(container.style, {
+                position: "fixed",
+                top: "72px",
+                right: "18px",
+                zIndex: "2147483646",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                background: "rgba(255,255,255,.86)",
+                borderRadius: "999px",
+                boxShadow: "0 4px 16px rgba(0,0,0,.10)",
+                backdropFilter: "blur(8px)",
+            });
+            const copyButton = buildTwitterInlineCopyButton(null);
+            const translateButton = buildTwitterInlineTranslateButton(null);
+            container.append(copyButton, translateButton);
+            document.body.appendChild(container);
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
 // 书签按钮监听
 // ─────────────────────────────────────────────
 const BOOKMARK_SELECTORS = [
@@ -694,7 +1560,7 @@ function captureAndSend(btn) {
                 const articleData = detectAndExtractArticle();
                 if (articleData && articleData.article_content.trim()) {
                     showToast("已识别为 X Article，正在保存…", "loading", null);
-                    sendToBackground(articleData);
+                    sendToBackground(withVisibleTranslationOverride(articleData, document));
                 } else {
                     showToast("未能提取文章内容，请稍后重试", "error", 4000);
                 }
@@ -730,7 +1596,7 @@ function captureAndSend(btn) {
             const inlineArticle = detectAndExtractArticle();
             if (inlineArticle && inlineArticle.article_content && inlineArticle.article_content.trim().length > 50) {
                 console.log("[x2md] 当前页面已有内嵌文章内容，直接保存");
-                sendToBackground({
+                sendToBackground(withVisibleTranslationOverride({
                     ...inlineArticle,
                     url: tweetUrl,       // 用原始推文链接（/status/xxx）作为源
                     author: inlineArticle.author || author,
@@ -738,7 +1604,7 @@ function captureAndSend(btn) {
                     published: inlineArticle.published || published,
                     images: inlineArticle.images, // 透传已经过去重的剩余外部图
                     graphql_operation_ids: inlineArticle.graphql_operation_ids || extractDiscoveredGraphQLOperationIds(),
-                });
+                }, document));
                 return;
             }
         } catch (extractErr) {
@@ -748,7 +1614,7 @@ function captureAndSend(btn) {
 
         // 降级：让 background 尝试 fetch（可能得到空壳），最终降级为摘要+链接
         console.log("[x2md] 当前页面无内嵌内容，由 background 处理");
-        sendToBackground({
+        sendToBackground(withVisibleTranslationOverride({
             type: "note",
             url: tweetUrl,
             note_article_url: noteArticleUrl,
@@ -756,7 +1622,7 @@ function captureAndSend(btn) {
             text: extractTweetTextBasic(article),
             thread_tweets: [],
             graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
-        });
+        }, article || document));
         return;
     }
 
@@ -766,7 +1632,7 @@ function captureAndSend(btn) {
     const quote_tweet = extractQuoteTweetBasic(article);
 
     console.log("[x2md] 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40), hasQuote: !!quote_tweet });
-    sendToBackground({
+    sendToBackground(withVisibleTranslationOverride({
         author,
         handle,
         text,
@@ -777,7 +1643,7 @@ function captureAndSend(btn) {
         thread_tweets,
         type: "tweet",
         graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
-    });
+    }, article || document));
 }
 
 function sendToBackground(data) {
@@ -932,12 +1798,18 @@ function isTwitterLikePage(locationLike = location) {
         hostname === "twitter.com" || hostname.endsWith(".twitter.com");
 }
 
+function isTwitterDetailOrArticlePage() {
+    return isNotePageUrl() || location.pathname.includes("/status/");
+}
+
 function bindAll() {
     // 关键性能修复：书签按钮只存在于 X/Twitter。
     // 之前在 linux.do / 微信公众号页面的每次 DOM mutation 都会全页扫描一组
     // Twitter 选择器；这两个站点本身会高频动态更新 DOM，导致扩展开启后页面卡死。
     if (isTwitterLikePage()) {
         document.querySelectorAll(BOOKMARK_SELECTORS).forEach(attachBookmarkListener);
+        ensureTwitterInlineCopyButtons();
+        scheduleAutoTranslateLoadedContent();
     }
     ensureFloatingSaveButton();
 }

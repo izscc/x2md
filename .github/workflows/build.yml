@@ -7,7 +7,7 @@ on:
       version:
         description: '版本号（如 1.0.0）'
         required: false
-        default: '1.0.9'
+        default: '1.1.0'
   # 推送 tag 时自动触发（如 git tag v1.0.0 && git push --tags）
   push:
     tags:
@@ -121,35 +121,27 @@ jobs:
       contents: write
 
     steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
       - name: 下载所有构建产物
         uses: actions/download-artifact@v4
         with:
           merge-multiple: true
 
+      - name: 生成 SHA256 校验文件
+        run: |
+          sha256sum X2MD_Mac.zip X2MD_Windows.zip X2MD_Extension.zip > SHA256SUMS.txt
+
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: X2MD ${{ github.ref_name }}
-          body: |
-            ## X2MD ${{ github.ref_name }}
-
-            ### 下载
-            - **Mac 版**：`X2MD_Mac.zip` — 解压后双击 `X2MD.app` 即可运行
-            - **Windows 版**：`X2MD_Windows.zip` — 解压后双击 `X2MD.exe` 即可运行
-            - **浏览器扩展**：`X2MD_Extension.zip` — 解压后在 `chrome://extensions/` 中加载已解压的扩展程序
-
-            ### 首次使用
-            1. 打开应用，按向导设置保存路径
-            2. 解压 `X2MD_Extension.zip` 并在 `chrome://extensions/` 中加载已解压的扩展程序
-            3. 在 X/Twitter 页面使用书签按钮保存内容
-
-            ### 系统要求
-            - Mac: macOS 12+
-            - Windows: Windows 10+
-            - Chrome 浏览器
+          body_path: release/${{ github.ref_name }}/RELEASE_NOTES.md
           files: |
             X2MD_Mac.zip
             X2MD_Windows.zip
             X2MD_Extension.zip
+            SHA256SUMS.txt
           draft: false
           prerelease: false

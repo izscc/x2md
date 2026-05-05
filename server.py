@@ -16,6 +16,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Optional
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 
@@ -79,7 +80,7 @@ logging.basicConfig(
 logger = logging.getLogger("x2md")
 
 # 全局配置缓存和视频下载线程池
-_config_cache: dict | None = None
+_config_cache: Optional[dict] = None
 _video_executor = ThreadPoolExecutor(max_workers=3)
 
 
@@ -131,6 +132,38 @@ def sanitize_filename(name: str, max_len: int = 60) -> str:
     return name[:max_len]
 
 
+def _normalize_translation_text(value: str) -> str:
+    return str(value or "").replace("\u00a0", " ").strip()
+
+
+def apply_translation_override(data: dict) -> dict:
+    """保存端兜底：如果扩展传入已显示译文，则以译文作为 Markdown 主体。"""
+    if not data.get("prefer_translated_content") or not isinstance(data.get("translation_override"), dict):
+        return data
+
+    result = dict(data)
+    override = result.get("translation_override") or {}
+    override_type = str(override.get("type") or "").lower()
+
+    if override_type == "article" or result.get("type") == "article":
+        title = _normalize_translation_text(override.get("article_title") or override.get("title") or "")
+        content = _normalize_translation_text(
+            override.get("article_content") or override.get("content") or override.get("text") or ""
+        )
+        if title:
+            result["article_title"] = title
+        if content:
+            result["article_content"] = content
+        if title or content:
+            result["type"] = "article"
+        return result
+
+    text = _normalize_translation_text(override.get("text") or override.get("article_content") or "")
+    if text:
+        result["text"] = text
+    return result
+
+
 def download_video_async(url: str, save_path: str, filename: str):
     """提交视频下载任务到线程池（限并发 3），避免阻塞 HTTP 响应"""
     def _download():
@@ -160,6 +193,7 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
     将接收到的推文/文章数据构建为 Markdown 字符串。
     返回 (文件名不含后缀, markdown内容)
     """
+    data = apply_translation_override(data)
     author = data.get("author", "unknown")
     handle = data.get("handle", "")
     text = data.get("text", "")
@@ -371,7 +405,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.0.9"})
+            self._respond(200, {"status": "ok", "version": "1.1.0"})
 
         elif path == "/config":
             # 返回当前配置
