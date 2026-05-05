@@ -7,7 +7,7 @@ on:
       version:
         description: '版本号（如 1.0.0）'
         required: false
-        default: '1.1.0'
+        default: '1.1.1'
   # 推送 tag 时自动触发（如 git tag v1.0.0 && git push --tags）
   push:
     tags:
