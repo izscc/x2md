@@ -1218,11 +1218,38 @@ function isArticleTextBlockCandidate(el, bodyEl) {
     return true;
 }
 
+function getArticleTextLeafBlocks(bodyEl) {
+    if (!bodyEl || typeof document.createTreeWalker !== "function") return [];
+    const blocks = [];
+    const seen = new Set();
+    const walker = document.createTreeWalker(bodyEl, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            const text = String(node.textContent || "").trim();
+            if (text.length < 2) return NodeFilter.FILTER_REJECT;
+            const parent = node.parentElement;
+            if (!parent || !bodyEl.contains(parent)) return NodeFilter.FILTER_REJECT;
+            if (!isArticleTextBlockCandidate(parent, bodyEl)) return NodeFilter.FILTER_SKIP;
+            return NodeFilter.FILTER_ACCEPT;
+        },
+    });
+
+    while (walker.nextNode()) {
+        const parent = walker.currentNode.parentElement;
+        const block = parent?.closest?.('div[dir="auto"], div[lang], p, li, blockquote, h1, h2, h3, h4, h5, h6, span') || parent;
+        if (!block || seen.has(block) || !isArticleTextBlockCandidate(block, bodyEl)) continue;
+        seen.add(block);
+        blocks.push(block);
+    }
+    return blocks;
+}
+
 function getArticleTranslatableTextBlocks(bodyEl) {
     if (!bodyEl) return [];
     const selectors = [
         '.public-DraftStyleDefault-block',
         '[data-block="true"]',
+        'div[dir="auto"]',
+        'div[lang]',
         'p', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
     ].join(',');
     let blocks = Array.from(bodyEl.querySelectorAll?.(selectors) || [])
@@ -1231,6 +1258,10 @@ function getArticleTranslatableTextBlocks(bodyEl) {
     if (!blocks.length) {
         blocks = Array.from(bodyEl.children || [])
             .filter((el) => isArticleTextBlockCandidate(el, bodyEl));
+    }
+
+    if (!blocks.length) {
+        blocks = getArticleTextLeafBlocks(bodyEl);
     }
 
     return blocks.filter((el, index, list) => !list.some((other, otherIndex) => otherIndex !== index && other.contains?.(el)));
