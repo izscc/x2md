@@ -10,9 +10,12 @@
 importScripts("media_helpers.js");
 importScripts("twitter_graphql.js");
 importScripts("twitter_graphql.js");
+importScripts("translation_helpers.js");
 
 const SERVER_BASE = "http://127.0.0.1:9527";
+const TWITTER_BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 const GRAPHQL_DISCOVERY_CACHE = new Map();
+const PLAIN_TEXT_TRANSLATE_CHUNK_SIZE = 2600;
 
 function hasDiscoveredOperationIds(ids) {
     return Array.isArray(ids?.TweetDetail) && ids.TweetDetail.length > 0 ||
@@ -92,6 +95,118 @@ async function discoverGraphQLOperationIdsFromPage(pageUrl) {
 // 3. executeScript 提取完整内容
 // 4. 关闭 tab
 // ─────────────────────────────────────────────
+async function fetchGrokTranslation(tweetId) {
+    const id = String(tweetId || "").match(/\d+/)?.[0] || "";
+    if (!id) {
+        throw new Error("missing tweet id");
+    }
+
+    const csrfToken = await getCookieValue("ct0");
+    if (!csrfToken) {
+        throw new Error("missing ct0 cookie");
+    }
+
+    const resp = await fetch("https://api.x.com/2/grok/translation.json", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+            "Authorization": `Bearer ${TWITTER_BEARER_TOKEN}`,
+            "X-Csrf-Token": csrfToken,
+            "Content-Type": "text/plain;charset=UTF-8",
+            "x-twitter-active-user": "yes",
+            "x-twitter-client-language": "zh-cn",
+        },
+        body: JSON.stringify({
+            content_type: "POST",
+            id,
+            dst_lang: "zh",
+        }),
+    });
+
+    if (!resp.ok) {
+        throw new Error(`grok translation failed: ${resp.status}`);
+    }
+
+    const json = await resp.json();
+    const translatedText = String(json?.result?.text || "").trim();
+    if (!translatedText) {
+        throw new Error("empty translation");
+    }
+
+    return {
+        translatedText,
+        tweetId: id,
+        contentType: json?.result?.content_type || "POST",
+    };
+}
+
+function splitTextForTranslation(text, maxLen = PLAIN_TEXT_TRANSLATE_CHUNK_SIZE) {
+    const source = String(text || "").replace(/\r\n/g, "\n").trim();
+    if (!source) return [];
+
+    const chunks = [];
+    const paragraphs = source.split(/(\n{2,})/);
+    let current = "";
+
+    const pushCurrent = () => {
+        const value = current.trim();
+        if (value) chunks.push(value);
+        current = "";
+    };
+
+    for (const part of paragraphs) {
+        if (!part) continue;
+        if (part.length > maxLen) {
+            pushCurrent();
+            for (let i = 0; i < part.length; i += maxLen) {
+                const slice = part.slice(i, i + maxLen).trim();
+                if (slice) chunks.push(slice);
+            }
+            continue;
+        }
+        if ((current + part).length > maxLen) {
+            pushCurrent();
+        }
+        current += part;
+    }
+    pushCurrent();
+    return chunks;
+}
+
+function parseGoogleTranslateResponse(json) {
+    if (!Array.isArray(json?.[0])) return "";
+    return json[0]
+        .map((segment) => Array.isArray(segment) ? String(segment[0] || "") : "")
+        .join("")
+        .trim();
+}
+
+async function translatePlainTextToChinese(text) {
+    const chunks = splitTextForTranslation(text);
+    if (!chunks.length) {
+        throw new Error("empty text");
+    }
+
+    const translated = [];
+    for (const chunk of chunks) {
+        const apiUrl = "https://translate.googleapis.com/translate_a/single"
+            + "?client=gtx&sl=auto&tl=zh-CN&dt=t&q="
+            + encodeURIComponent(chunk);
+        const resp = await fetch(apiUrl);
+        if (!resp.ok) {
+            throw new Error(`plain text translation failed: ${resp.status}`);
+        }
+        const json = await resp.json();
+        const part = parseGoogleTranslateResponse(json);
+        if (!part) {
+            throw new Error("empty plain text translation");
+        }
+        translated.push(part);
+    }
+
+    return translated.join("\n\n").trim();
+}
+
 async function fetchNoteContent(articleUrl) {
     return new Promise((resolve) => {
         let tabId = null;
@@ -195,7 +310,12 @@ async function fetchNoteContent(articleUrl) {
                                     }
                                 });
 
-                                return { title, content: coverImg + contentStr, images: [], videos: finalVideos }; // 放开视频包裹以并入 payload
+                                const plainText = [title, container.innerText || ""]
+                                    .map((part) => String(part || "").trim())
+                                    .filter(Boolean)
+                                    .join("\n\n");
+
+                                return { title, content: coverImg + contentStr, plainText, images: [], videos: finalVideos }; // 放开视频包裹以并入 payload
                             },
                         },
                         (results) => {
@@ -278,7 +398,7 @@ async function fetchViaGraphQL(tweetId, options = {}) {
         }
 
         const headers = {
-            "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+            "Authorization": `Bearer ${TWITTER_BEARER_TOKEN}`,
             "X-Csrf-Token": csrfToken,
             "Content-Type": "application/json",
             "x-twitter-active-user": "yes",
@@ -564,6 +684,53 @@ async function fetchFullTweetData(tweetData) {
     };
 }
 
+function normalizeArticleUrl(url) {
+    return String(url || "").replace("twitter.com", "x.com");
+}
+
+function extractArticleUrlFromText(text) {
+    const match = String(text || "").match(/https?:\/\/(?:x|twitter)\.com\/(?:i\/article|[^/]+\/article)\/\d+/i);
+    return match ? normalizeArticleUrl(match[0]) : "";
+}
+
+function buildCopyPayloadFromNoteResult(noteResult, fallbackTitle = "") {
+    if (!noteResult) return null;
+    const title = String(noteResult.title || fallbackTitle || "").trim();
+    const body = String(noteResult.plainText || noteResult.content || "")
+        .replace(/!\[\]\([^)]*\)/g, "")
+        .replace(/\[MEDIA_VIDEO_URL:[^\]]+\]/g, "")
+        .trim();
+    const text = !title ? body : (!body ? title : (body.startsWith(title) ? body : `${title}\n\n${body}`));
+
+    const markdownBody = String(noteResult.content || "")
+        .replace(/\[MEDIA_VIDEO_URL:[^\]]+\]/g, "")
+        .trim();
+    const markdown = title && markdownBody && !markdownBody.startsWith(`# ${title}`)
+        ? `# ${title}\n\n${markdownBody}`
+        : (markdownBody || title);
+
+    return { text, markdown };
+}
+
+async function resolveCopyContentText(copyData = {}) {
+    let articleUrl = normalizeArticleUrl(copyData.note_article_url || copyData.article_url || "");
+    let enrichedData = copyData;
+
+    if (!articleUrl && copyData.url && copyData.url.includes("/status/")) {
+        enrichedData = await fetchFullTweetData(copyData);
+        articleUrl = extractArticleUrlFromText(enrichedData.text);
+    }
+
+    if (articleUrl) {
+        const noteResult = await fetchNoteContent(articleUrl);
+        const payload = buildCopyPayloadFromNoteResult(noteResult, enrichedData.text || copyData.text || "");
+        if (payload?.text) return { ...payload, source: "x_article", articleUrl };
+    }
+
+    const text = String(enrichedData.text || copyData.text || "").trim();
+    return { text, source: "tweet" };
+}
+
 // ─────────────────────────────────────────────
 // 消息处理
 // ─────────────────────────────────────────────
@@ -653,6 +820,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         }
                     }
                 }
+
+                data = applyTranslationOverrideToData(data);
 
                 // --------- 统一填补长文专栏中的遗留视频占位符 ---------
                 let contentToFix = data.article_content || data.content || "";
@@ -754,10 +923,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.action === "translate_tweet") {
+        (async () => {
+            try {
+                const rawId = message.data?.tweetId || String(message.data?.url || "").match(/\/status\/(\d+)/)?.[1] || "";
+                const result = await fetchGrokTranslation(rawId);
+                sendResponse({
+                    success: true,
+                    translatedText: result.translatedText,
+                    tweetId: result.tweetId,
+                    error: "",
+                });
+            } catch (err) {
+                console.error("[x2md] 获取推文翻译失败：", err);
+                sendResponse({ success: false, error: err.message || String(err) });
+            }
+        })();
+        return true;
+    }
+
+    if (message.action === "translate_text") {
+        (async () => {
+            try {
+                const sourceText = String(message.data?.text || "").trim();
+                const translatedText = await translatePlainTextToChinese(sourceText);
+                sendResponse({
+                    success: true,
+                    translatedText,
+                    error: "",
+                });
+            } catch (err) {
+                console.error("[x2md] 文本翻译失败：", err);
+                sendResponse({ success: false, error: err.message || String(err) });
+            }
+        })();
+        return true;
+    }
+
+    if (message.action === "copy_content_text") {
+        (async () => {
+            try {
+                const result = await resolveCopyContentText(message.data || {});
+                sendResponse({ success: !!result.text, ...result });
+            } catch (err) {
+                console.error("[x2md] 复制正文提取失败：", err);
+                sendResponse({ success: false, error: err.message || String(err) });
+            }
+        })();
+        return true;
+    }
+
     if (message.action === "force_save_tweet") {
         (async () => {
             try {
-                const data = message.data;
+                const data = applyTranslationOverrideToData(message.data || {});
                 const resp = await fetch(`${SERVER_BASE}/save`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

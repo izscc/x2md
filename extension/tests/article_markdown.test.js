@@ -187,6 +187,24 @@ test("extractArticleMarkdown keeps unlabeled code fences in the default format",
     );
 });
 
+test("extractArticleMarkdown skips X article promo and action chrome", () => {
+    const tree = elementNode("div", {
+        children: [
+            elementNode("p", { children: [textNode("Real article paragraph one.")] }),
+            elementNode("div", { children: [textNode("想发布自己的文章？\n升级为 Premium")] }),
+            elementNode("div", { attrs: { "data-testid": "reply" }, children: [textNode("7")] }),
+            elementNode("button", { children: [textNode("Download")] }),
+            elementNode("p", { children: [textNode("Real article paragraph two.")] }),
+        ],
+    });
+
+    const markdown = extractArticleMarkdown(tree, { getComputedStyle });
+
+    assert.match(markdown, /Real article paragraph one/);
+    assert.match(markdown, /Real article paragraph two/);
+    assert.doesNotMatch(markdown, /Premium|Download|\\b7\\b/);
+});
+
 
 test("extractArticleMarkdown formats embedded X quote tweet without engagement metadata", () => {
     const tree = elementNode("div", {
