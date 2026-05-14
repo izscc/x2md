@@ -201,6 +201,7 @@ def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
     published = data.get("published", "")
     content_type = data.get("type", "tweet")  # "tweet" | "article"
     images = data.get("images", [])           # 图片 URL 列表
+    image_alt_texts = data.get("image_alt_texts", {}) or {}  # 规范化图片 URL -> ALT 描述
     videos = data.get("videos", [])           # 视频 URL 列表
     download_video = data.get("download_video", False) # 客户端最终确认的下载标识
     article_content = data.get("article_content", "")  # X Article 正文
@@ -278,6 +279,39 @@ tags: []
         else:
             vid_map[vid_url] = f"🎞️ [推特媒体：点击播放视频]({vid_url})"
 
+
+    def get_image_alt_text(img_url, alt_map=None):
+        alt_map = alt_map or image_alt_texts
+        if not isinstance(alt_map, dict):
+            return ""
+        candidates = []
+        if img_url:
+            candidates.append(img_url)
+            candidates.append(normalize_image_url(img_url))
+            candidates.append(str(img_url).split("?")[0])
+            candidates.append(normalize_image_url(str(img_url).split("?")[0]))
+        for key in candidates:
+            value = alt_map.get(key)
+            if isinstance(value, str) and value.strip():
+                return " ".join(value.split())
+        return ""
+
+    def append_alt_fence(lines_list, alt_text, prefix=""):
+        alt = " ".join(str(alt_text or "").split()).strip()
+        if not alt:
+            return
+        alt = alt.replace("```", "``\u200b`")
+        lines_list.append(f"{prefix}```")
+        for line in alt.splitlines() or [alt]:
+            lines_list.append(f"{prefix}{line}")
+        lines_list.append(f"{prefix}```")
+
+    def append_image(lines_list, img_url, label="", prefix="", alt_map=None):
+        orig_url = normalize_image_url(img_url)
+        alt_label = label or ""
+        lines_list.append(f"{prefix}![{alt_label}]({orig_url})")
+        append_alt_fence(lines_list, get_image_alt_text(orig_url, alt_map), prefix)
+
     def append_unused_videos(lines_list, content_text):
         if not videos: return
         unused_vids = [v for v in videos if f"[MEDIA_VIDEO_URL:{v}]" not in (content_text or "")]
@@ -291,6 +325,7 @@ tags: []
             return
         q_text = (quote.get("text") or "").strip()
         q_images = quote.get("images") or []
+        q_image_alt_texts = quote.get("image_alt_texts") or {}
         q_videos = quote.get("videos") or []
         q_url = (quote.get("url") or "").strip()
         if not q_text and not q_images and not q_videos and not q_url:
@@ -303,7 +338,7 @@ tags: []
                 lines_list.append(f"> {line}" if line.strip() else ">")
         for img_url in q_images:
             lines_list.append(">")
-            lines_list.append(f"> ![]({normalize_image_url(img_url)})")
+            append_image(lines_list, img_url, prefix="> ", alt_map=q_image_alt_texts)
         for v_url in q_videos:
             if v_url in vid_map:
                 lines_list.append(">")
@@ -320,8 +355,7 @@ tags: []
         # X Article 图片嵌入（作为封面或母贴遗留的前导图放在顶端）
         if images:
             for i, img_url in enumerate(images):
-                orig_url = normalize_image_url(img_url)
-                lines.append(f"![{i+1}]({orig_url})")
+                append_image(lines, img_url, label=str(i+1))
             lines.append("")
 
         append_unused_videos(lines, article_content)
@@ -346,8 +380,7 @@ tags: []
         if images:
             lines.append("")
             for i, img_url in enumerate(images):
-                orig_url = normalize_image_url(img_url)
-                lines.append(f"![{i+1}]({orig_url})")
+                append_image(lines, img_url, label=str(i+1))
         
         append_unused_videos(lines, text_result)
         append_quote_tweet(lines, quote_tweet)
@@ -367,9 +400,9 @@ tags: []
             
             if tw_images:
                 lines.append("")
+                tw_image_alt_texts = tw.get("image_alt_texts") or {}
                 for i, img_url in enumerate(tw_images):
-                    orig_url = normalize_image_url(img_url)
-                    lines.append(f"![{idx+2}-{i+1}]({orig_url})")
+                    append_image(lines, img_url, label=f"{idx+2}-{i+1}", alt_map=tw_image_alt_texts)
                     
             if tw_videos:
                 lines.append("")
@@ -405,7 +438,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.2"})
+            self._respond(200, {"status": "ok", "version": "1.1.3"})
 
         elif path == "/config":
             # 返回当前配置

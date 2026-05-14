@@ -48,5 +48,38 @@ class TranslationOverrideMarkdownTests(unittest.TestCase):
         self.assertNotIn("Original body", content)
 
 
+class ImageAltMarkdownTests(unittest.TestCase):
+    def test_tweet_image_alt_text_is_written_after_image(self):
+        _, content = build_markdown({
+            "type": "tweet",
+            "text": "GPT Image 2 on ChatGPT",
+            "url": "https://x.com/a/status/1",
+            "handle": "@alice",
+            "images": ["https://pbs.twimg.com/media/watch.jpg?format=jpg&name=small"],
+            "image_alt_texts": {
+                "https://pbs.twimg.com/media/watch.jpg?format=jpg&name=orig": "Apple Watch ⌚",
+            },
+        }, BASE_CFG)
+
+        self.assertIn("![1](https://pbs.twimg.com/media/watch.jpg?format=jpg&name=orig)\n```\nApple Watch ⌚\n```", content)
+
+    def test_quote_tweet_image_alt_text_is_written_inside_quote_block(self):
+        _, content = build_markdown({
+            "type": "tweet",
+            "text": "Parent",
+            "url": "https://x.com/a/status/1",
+            "handle": "@alice",
+            "quote_tweet": {
+                "text": "Quoted",
+                "images": ["https://pbs.twimg.com/media/quote.jpg?name=small"],
+                "image_alt_texts": {
+                    "https://pbs.twimg.com/media/quote.jpg?name=orig": "Quoted image description",
+                },
+            },
+        }, BASE_CFG)
+
+        self.assertIn("> ![](https://pbs.twimg.com/media/quote.jpg?name=orig)\n> ```\n> Quoted image description\n> ```", content)
+
+
 if __name__ == "__main__":
     unittest.main()

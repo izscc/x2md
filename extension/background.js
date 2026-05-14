@@ -503,6 +503,56 @@ function removeQuotedTweetUrlFromText(text, quoteUrl) {
     return result.trimEnd();
 }
 
+
+function normalizeTwitterMediaUrl(url) {
+    if (!url || !String(url).includes("pbs.twimg.com")) return String(url || "");
+    try {
+        const parsed = new URL(url);
+        parsed.searchParams.set("name", "orig");
+        return parsed.href;
+    } catch (error) {
+        return String(url).replace(/name=[^&]+/, "name=orig");
+    }
+}
+
+function normalizeAltText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isMeaningfulImageAltText(value) {
+    const alt = normalizeAltText(value);
+    if (!alt) return false;
+    return !new Set([
+        "image", "photo", "picture", "article cover image",
+        "图片", "照片", "图像", "封面图片", "文章封面图片",
+    ]).has(alt.toLowerCase());
+}
+
+function mergeImageAltTextMaps(...maps) {
+    const result = {};
+    for (const map of maps) {
+        if (!map || typeof map !== "object") continue;
+        for (const [url, altText] of Object.entries(map)) {
+            const normalizedUrl = normalizeTwitterMediaUrl(url);
+            const normalizedAlt = normalizeAltText(altText);
+            if (normalizedUrl && isMeaningfulImageAltText(normalizedAlt) && !result[normalizedUrl]) {
+                result[normalizedUrl] = normalizedAlt;
+            }
+        }
+    }
+    return result;
+}
+
+function readMediaAltText(media) {
+    return normalizeAltText(
+        media?.ext_alt_text ||
+        media?.ext?.alt_text ||
+        media?.accessibility_label ||
+        media?.accessibilityLabel ||
+        ""
+    );
+}
+
 // ─────────────────────────────────────────────
 // 解析 GraphQL legacy tweet 对象
 // ─────────────────────────────────────────────
@@ -543,6 +593,7 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
 
     // 提取图片与视频
     const images = [];
+    const imageAltTexts = {};
     const videos = [];
     const videoDurations = [];
     const media = [];
@@ -556,10 +607,16 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
 
     for (const m of media) {
         if (m.type === "photo" && m.media_url_https) {
-            images.push(m.media_url_https + "?name=orig");
+            const imageUrl = normalizeTwitterMediaUrl(m.media_url_https);
+            images.push(imageUrl);
+            const altText = readMediaAltText(m);
+            if (isMeaningfulImageAltText(altText)) imageAltTexts[imageUrl] = altText;
         } else if (m.type === "video" || m.type === "animated_gif") {
             if (m.media_url_https) {
-                images.push(m.media_url_https + "?name=orig"); // 保存视频的缩略图作为备份或底图
+                const imageUrl = normalizeTwitterMediaUrl(m.media_url_https);
+                images.push(imageUrl); // 保存视频的缩略图作为备份或底图
+                const altText = readMediaAltText(m);
+                if (isMeaningfulImageAltText(altText)) imageAltTexts[imageUrl] = altText;
             }
             const bestVariant = selectBestMp4Variant(m.video_info?.variants);
             if (bestVariant?.url) {
@@ -582,6 +639,7 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
     const parsed = {
         text,
         images: Array.from(new Set(images)),
+        image_alt_texts: imageAltTexts,
         videos: Array.from(new Set(videos)),
         videoDurations,
         author,
@@ -674,6 +732,7 @@ async function fetchFullTweetData(tweetData) {
         _api_fetched: true,
         text: apiResult.text || tweetData.text,
         images: (apiResult.images && apiResult.images.length > 0) ? apiResult.images : (tweetData.images || []),
+        image_alt_texts: mergeImageAltTextMaps(tweetData.image_alt_texts, apiResult.image_alt_texts),
         videos: apiResult.videos || (tweetData.videos || []),
         videoDurations: apiResult.videoDurations || (tweetData.videoDurations || []),
         author: apiResult.author || tweetData.author,
@@ -764,6 +823,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             article_title: noteResult.title || enrichedData.text?.slice(0, 50) || "Note",
                             article_content: noteResult.content,
                             images: mergedImages,
+                            image_alt_texts: mergeImageAltTextMaps(data.image_alt_texts, enrichedData.image_alt_texts, noteResult.image_alt_texts),
                             url: enrichedData.url,  // 保留 /status/ 链接作为源
                         };
                     } else {
@@ -814,6 +874,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 article_title: noteResult.title || (data.text ? data.text.trim().split('\n')[0].replace(/https?:\/\/\S+/g, '').replace(/[\n\t]/g, '').slice(0, 50).trim() : "Untitled"),
                                 article_content: prefix + noteResult.content,
                                 images: mergedImages,
+                                image_alt_texts: mergeImageAltTextMaps(data.image_alt_texts, noteResult.image_alt_texts),
                             };
                         } else {
                             data.text = data.text + `\n\n📔 完整长文：${articleUrl}`;
@@ -856,6 +917,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     if (apiData.images) {
                         data.images = Array.from(new Set([...(data.images || []), ...apiData.images]));
                     }
+                    data.image_alt_texts = mergeImageAltTextMaps(data.image_alt_texts, apiData.image_alt_texts);
                 }
                 // ----------------------------------------------------
 

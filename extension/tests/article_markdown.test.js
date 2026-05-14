@@ -255,3 +255,35 @@ test("extractArticleMarkdown formats embedded X quote tweet without engagement m
     assert.match(markdown, /原文：https:\/\/x\.com\/BeautyVerse_Lab\/status\/2031003251555066008/);
     assert.doesNotMatch(markdown, /\b5\b|\b10\b|\b125\b|2\.9万|Download|由 AI 生成|nested\.jpg/);
 });
+
+test("extractArticleMarkdown appends X image ALT text as a code fence", () => {
+    const tree = elementNode("div", {
+        children: [elementNode("img", {
+            attrs: {
+                src: "https://pbs.twimg.com/media/example.jpg?format=jpg&name=small",
+                alt: "Apple Watch ⌚",
+            },
+        })],
+    });
+
+    assert.equal(
+        extractArticleMarkdown(tree, { getComputedStyle }),
+        "![](https://pbs.twimg.com/media/example.jpg?format=jpg&name=orig)\n```\nApple Watch ⌚\n```",
+    );
+});
+
+test("extractArticleMarkdown ignores generic image alt labels", () => {
+    const tree = elementNode("div", {
+        children: [elementNode("img", {
+            attrs: {
+                src: "https://pbs.twimg.com/media/example.jpg?format=jpg&name=small",
+                alt: "Image",
+            },
+        })],
+    });
+
+    assert.equal(
+        extractArticleMarkdown(tree, { getComputedStyle }),
+        "![](https://pbs.twimg.com/media/example.jpg?format=jpg&name=orig)",
+    );
+});

@@ -110,6 +110,40 @@
         }
     }
 
+
+    function normalizeAltText(value) {
+        return String(value || "")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function isMeaningfulImageAlt(value) {
+        const alt = normalizeAltText(value);
+        if (!alt) return false;
+        const genericLabels = new Set([
+            "image", "photo", "picture", "article cover image",
+            "图片", "照片", "图像", "封面图片", "文章封面图片",
+        ]);
+        return !genericLabels.has(alt.toLowerCase());
+    }
+
+    function formatImageAltFence(altText, quotePrefix = "") {
+        if (!isMeaningfulImageAlt(altText)) return "";
+        const alt = normalizeAltText(altText).replace(/```/g, "``\u200b`");
+        return `\n${quotePrefix}\`\`\`\n${quotePrefix}${alt}\n${quotePrefix}\`\`\``;
+    }
+
+    function formatTwitterImageMarkdown(src, altText = "") {
+        let imageUrl = src;
+        try {
+            const url = new URL(src);
+            url.searchParams.set("name", "orig");
+            imageUrl = url.href;
+        } catch (error) { }
+
+        return `\n![](${imageUrl})${formatImageAltFence(altText)}\n`;
+    }
+
     function formatTwitterEmbeddedTweet(element) {
         const statusUrls = [];
         walkElementTree(element, (node) => {
@@ -129,6 +163,7 @@
         });
 
         const images = [];
+        const imageAltTexts = {};
         walkElementTree(element, (node) => {
             if (getTagName(node) !== "img") return;
             const imgUrl = normalizeTwitterImageUrl(node.src || safeGetAttribute(node, "src") || "");
@@ -141,6 +176,8 @@
             if (primaryStatusId && parentHref && !parentHref.includes(`/status/${primaryStatusId}`)) return;
 
             if (!images.includes(imgUrl)) images.push(imgUrl);
+            const altText = normalizeAltText(node.alt || safeGetAttribute(node, "alt") || "");
+            if (isMeaningfulImageAlt(altText)) imageAltTexts[imgUrl] = altText;
         });
 
         if (!tweetText && images.length === 0 && !primaryStatusUrl) return "";
@@ -153,6 +190,8 @@
         }
         for (const image of images) {
             lines.push(">", `> ![](${image})`);
+            const altFence = formatImageAltFence(imageAltTexts[image], "> ");
+            if (altFence) lines.push(altFence);
         }
         if (primaryStatusUrl) lines.push(">", `> 原文：${primaryStatusUrl}`);
         return `\n${lines.join("\n")}\n`;
@@ -249,13 +288,7 @@
             }
             if (src.includes("emoji")) return element.alt || "";
             if (src && src.includes("pbs.twimg.com") && !src.includes("profile_images")) {
-                try {
-                    const url = new URL(src);
-                    url.searchParams.set("name", "orig");
-                    return `\n![](${url.href})\n`;
-                } catch (error) {
-                    return `\n![](${src})\n`;
-                }
+                return formatTwitterImageMarkdown(src, element.alt || safeGetAttribute(element, "alt") || "");
             }
             return "";
         }
@@ -311,6 +344,8 @@
         extractArticleMarkdown,
         isBlockElement,
         isBoldElement,
+        isMeaningfulImageAlt,
+        formatImageAltFence,
     };
 
     if (typeof module !== "undefined" && module.exports) {

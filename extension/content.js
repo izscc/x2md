@@ -23,6 +23,43 @@ function normalizeImageUrl(url) {
     }
 }
 
+function getMeaningfulAltText(img) {
+    const alt = (img?.alt || img?.getAttribute?.("alt") || "").replace(/\s+/g, " ").trim();
+    if (!alt) return "";
+    if (typeof isMeaningfulImageAlt === "function" && !isMeaningfulImageAlt(alt)) return "";
+    return alt;
+}
+
+function collectImageAltText(map, rawUrl, img) {
+    if (!rawUrl) return;
+    const normalized = normalizeImageUrl(rawUrl);
+    const alt = getMeaningfulAltText(img);
+    if (normalized && alt) map[normalized] = alt;
+}
+
+function extractImageAltTexts(container) {
+    if (!container) return {};
+    const result = {};
+    container.querySelectorAll("img").forEach(img => {
+        if (img.closest('[data-testid="simpleTweet"]')) return;
+        const src = img.src || img.getAttribute("src") || "";
+        if (src.includes("pbs.twimg.com") &&
+            !src.includes("profile_images") &&
+            !src.includes("emoji")) {
+            collectImageAltText(result, src, img);
+        }
+        const srcset = img.getAttribute("srcset") || "";
+        if (srcset) {
+            srcset.split(",").map(s => s.trim().split(/\s+/)[0]).forEach(u => {
+                if (u.includes("pbs.twimg.com") && !u.includes("profile_images") && !u.includes("emoji")) {
+                    collectImageAltText(result, u, img);
+                }
+            });
+        }
+    });
+    return result;
+}
+
 function extractImages(container) {
     if (!container) return [];
     const imgs = new Set();
@@ -187,6 +224,7 @@ function extractQuoteTweetBasic(article) {
 
     const text = quote.querySelector('[data-testid="tweetText"]')?.innerText?.trim() || "";
     const images = [];
+    const image_alt_texts = {};
     quote.querySelectorAll('[data-testid="tweetPhoto"] img, img').forEach((img) => {
         const src = img.src || img.getAttribute("src") || "";
         if (!src.includes("pbs.twimg.com") || src.includes("profile_images") || src.includes("emoji")) return;
@@ -197,11 +235,12 @@ function extractQuoteTweetBasic(article) {
         if (quoteId && parentHref && !parentHref.includes(`/status/${quoteId}`)) return;
         const normalized = normalizeImageUrl(src);
         if (!images.includes(normalized)) images.push(normalized);
+        collectImageAltText(image_alt_texts, src, img);
     });
 
     const url = findFirstStatusUrl(quote);
     if (!text && images.length === 0 && !url) return null;
-    return { text, images, videos: [], url };
+    return { text, images, image_alt_texts, videos: [], url };
 }
 
 // ─────────────────────────────────────────────
@@ -384,7 +423,8 @@ function detectAndExtractArticle() {
             const u = new URL(src);
             u.searchParams.set('name', 'orig');
             if (!article_content.includes(cleanSrc) && !coverImg.includes(u.href)) {
-                coverImg += `![](${u.href})\n\n`;
+                const altFence = typeof formatImageAltFence === "function" ? formatImageAltFence(getMeaningfulAltText(img)) : "";
+                coverImg += `![](${u.href})${altFence}\n\n`;
             }
         }
     });
@@ -421,6 +461,7 @@ function detectAndExtractArticle() {
         article_title: articleTitle,
         article_content: article_content,
         images: extractedImages,
+        image_alt_texts: extractImageAltTexts(document),
         videos: finalVideos,
         graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
     };
@@ -1745,6 +1786,7 @@ function captureAndSend(btn) {
     const timeEl = article ? article.querySelector("time") : document.querySelector("time");
     const published = timeEl ? timeEl.getAttribute("datetime") : "";
     const images = extractImages(article || document);
+    const image_alt_texts = extractImageAltTexts(article || document);
 
     // ── Note 长文推文检测 ─────────────────────────────
     const noteArticleUrl = detectNoteUrl(article);
@@ -1764,6 +1806,7 @@ function captureAndSend(btn) {
                     handle: inlineArticle.handle || handle,
                     published: inlineArticle.published || published,
                     images: inlineArticle.images, // 透传已经过去重的剩余外部图
+                    image_alt_texts: { ...image_alt_texts, ...(inlineArticle.image_alt_texts || {}) },
                     graphql_operation_ids: inlineArticle.graphql_operation_ids || extractDiscoveredGraphQLOperationIds(),
                 }, document));
                 return;
@@ -1779,7 +1822,7 @@ function captureAndSend(btn) {
             type: "note",
             url: tweetUrl,
             note_article_url: noteArticleUrl,
-            author, handle, published, images,
+            author, handle, published, images, image_alt_texts,
             text: extractTweetTextBasic(article),
             thread_tweets: [],
             graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
@@ -1800,6 +1843,7 @@ function captureAndSend(btn) {
         published,
         url: tweetUrl,
         images,
+        image_alt_texts,
         quote_tweet,
         thread_tweets,
         type: "tweet",
