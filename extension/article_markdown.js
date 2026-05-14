@@ -76,6 +76,7 @@
 
         const text = getNodeText(element).trim();
         if (text === "Download") return true;
+        if (text === "查看图片描述" || text === "View image description" || text === "ALT") return true;
         if (/^(想发布自己的文章|Want to publish your own article)/i.test(text) ||
             /^升级为\s*Premium$/i.test(text)) return true;
 

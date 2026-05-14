@@ -287,3 +287,29 @@ test("extractArticleMarkdown ignores generic image alt labels", () => {
         "![](https://pbs.twimg.com/media/example.jpg?format=jpg&name=orig)",
     );
 });
+
+test("extractArticleMarkdown skips X image description disclosure chrome", () => {
+    const tree = elementNode("div", {
+        children: [
+            elementNode("img", {
+                attrs: {
+                    src: "https://pbs.twimg.com/media/example.jpg?format=jpg&name=small",
+                    alt: "Prompt text worth keeping",
+                },
+            }),
+            elementNode("div", { children: [textNode("查看图片描述")] }),
+            elementNode("div", { children: [elementNode("span", {
+                style: { fontWeight: "700" },
+                children: [textNode("ALT")],
+            })] }),
+        ],
+    });
+
+    const markdown = extractArticleMarkdown(tree, { getComputedStyle });
+
+    assert.equal(
+        markdown,
+        "![](https://pbs.twimg.com/media/example.jpg?format=jpg&name=orig)\n```\nPrompt text worth keeping\n```",
+    );
+    assert.doesNotMatch(markdown, /查看图片描述|\*\*ALT\*\*/);
+});
