@@ -1417,6 +1417,37 @@ function normalizeInlineLinkText(text) {
     return String(text || "").replace(/\s+/g, "");
 }
 
+function makeLooseInlineTextPattern(text) {
+    const compact = normalizeInlineLinkText(text);
+    if (!compact) return "";
+    return compact
+        .split("")
+        .map((char) => escapeRegExp(char))
+        .join("\\s*");
+}
+
+function cleanupTranslationMentionLineBreaks(text, descriptors = []) {
+    let result = String(text || "");
+    const mentions = descriptors
+        .filter((item) => item.type === "mention")
+        .map((item) => item.displayText)
+        .filter(Boolean)
+        .sort((left, right) => right.length - left.length);
+
+    for (const mention of mentions) {
+        const pattern = makeLooseInlineTextPattern(mention);
+        if (!pattern) continue;
+        result = result.replace(new RegExp(`\\n\\s*(${pattern})\\s*\\n`, "gi"), " $1 ");
+        result = result.replace(new RegExp(`\\n\\s*(${pattern})(?=[\\s\\u3000，,。.！!？?；;：:])`, "gi"), " $1");
+        result = result.replace(new RegExp(`([\\s\\u3000，,。.！!？?；;：:])(${pattern})\\s*\\n`, "gi"), "$1$2 ");
+    }
+
+    return result
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n[ \t]+/g, "\n")
+        .replace(/[ \t]{2,}/g, " ");
+}
+
 function buildOriginalTweetLinkDescriptors(tweetTextEl) {
     const descriptors = [];
     for (const anchor of tweetTextEl?.querySelectorAll?.("a[href]") || []) {
@@ -1451,6 +1482,8 @@ function buildOriginalTweetLinkDescriptors(tweetTextEl) {
         descriptors.push({
             candidates,
             html: sanitizeTwitterNativeTranslationHtml(clone.outerHTML),
+            displayText: visibleText,
+            type: isMentionOrHash ? "mention" : (isUrlLike ? "url" : "link"),
         });
     }
     return descriptors.filter((item) => item.html);
@@ -1462,12 +1495,20 @@ function buildNativeLikeTweetTranslationHtml(translatedText, originalTweetTextEl
         .trim();
     if (!text) return { text: "", html: "" };
 
+    const descriptors = buildOriginalTweetLinkDescriptors(originalTweetTextEl);
+    text = cleanupTranslationMentionLineBreaks(text, descriptors);
+
     const tokens = [];
-    for (const descriptor of buildOriginalTweetLinkDescriptors(originalTweetTextEl)) {
+    for (const descriptor of descriptors) {
         for (const candidate of descriptor.candidates) {
-            if (!candidate || !text.includes(candidate)) continue;
+            if (!candidate) continue;
             const token = `\uE000${tokens.length}\uE001`;
-            text = text.replace(new RegExp(escapeRegExp(candidate), "g"), token);
+            const pattern = descriptor.type === "mention"
+                ? makeLooseInlineTextPattern(candidate)
+                : escapeRegExp(candidate);
+            const re = new RegExp(pattern, "g");
+            if (!re.test(text)) continue;
+            text = text.replace(re, token);
             tokens.push({ token, html: descriptor.html });
             break;
         }
