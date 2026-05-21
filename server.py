@@ -62,6 +62,8 @@ DEFAULT_CONFIG = {
     "save_paths": [
         os.path.join(HOME, "Desktop", "X2MD", "MD")
     ],
+    # X/Twitter 书签按钮悬停菜单：命名保存路径（只在用户点击菜单项时使用）
+    "custom_save_paths": [],
     "filename_format": "{summary}_{date}_{author}",
     "max_filename_length": 60,
     "video_save_path": os.path.join(HOME, "Desktop", "X2MD", "Videos"),
@@ -112,6 +114,35 @@ def save_config(cfg: dict):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
     _config_cache = cfg
+
+
+def normalize_custom_save_paths(cfg: dict) -> list[dict]:
+    """返回已配置的命名保存路径，过滤空名称或空路径。"""
+    entries = cfg.get("custom_save_paths", [])
+    if not isinstance(entries, list):
+        return []
+    normalized = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        path = str(entry.get("path", "")).strip()
+        if name and path:
+            normalized.append({"name": name, "path": path})
+    return normalized
+
+
+def resolve_save_paths_for_request(cfg: dict, data: dict) -> tuple[list[str], bool]:
+    """根据请求解析实际保存路径；自定义路径必须来自本地配置。"""
+    target_path = str(data.get("custom_save_path", "")).strip()
+    target_name = str(data.get("custom_save_path_name", "")).strip()
+    if not target_path:
+        return cfg.get("save_paths", []), False
+
+    for entry in normalize_custom_save_paths(cfg):
+        if entry["path"] == target_path and (not target_name or entry["name"] == target_name):
+            return [entry["path"]], True
+    raise ValueError("自定义保存路径无效或未在设置中配置")
 
 
 def normalize_image_url(url: str) -> str:
@@ -438,7 +469,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.4"})
+            self._respond(200, {"status": "ok", "version": "1.1.5"})
 
         elif path == "/config":
             # 返回当前配置
@@ -470,7 +501,11 @@ class X2MDHandler(BaseHTTPRequestHandler):
     def _handle_save(self, data: dict):
         """核心：接收推文数据，写入 Markdown 文件"""
         cfg = load_config()
-        save_paths = cfg.get("save_paths", [])
+        try:
+            save_paths, _using_custom_save_path = resolve_save_paths_for_request(cfg, data)
+        except ValueError as e:
+            self._respond(400, {"success": False, "error": str(e)})
+            return
 
         if not save_paths:
             self._respond(500, {"error": "未配置保存路径"})

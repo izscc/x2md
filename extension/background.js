@@ -790,6 +790,40 @@ async function resolveCopyContentText(copyData = {}) {
     return { text, source: "tweet" };
 }
 
+function getCustomSavePathEntries(config = {}) {
+    const entries = Array.isArray(config.custom_save_paths) ? config.custom_save_paths : [];
+    return entries
+        .map((entry, index) => ({
+            index,
+            name: String(entry?.name || "").trim(),
+            path: String(entry?.path || "").trim(),
+        }))
+        .filter((entry) => entry.name && entry.path);
+}
+
+function applyCustomSavePathSelection(data, config) {
+    const selection = data?.x2md_custom_save_path;
+    if (!selection) return data;
+
+    const selectedIndex = Number.isInteger(selection.index) ? selection.index : Number(selection.index);
+    const selectedName = String(selection.name || "").trim();
+    const entries = getCustomSavePathEntries(config);
+    const matched = entries.find((entry) => entry.index === selectedIndex && (!selectedName || entry.name === selectedName)) ||
+        entries.find((entry) => selectedName && entry.name === selectedName);
+
+    if (!matched) {
+        throw new Error(`自定义保存路径未配置或已失效：${selectedName || selectedIndex}`);
+    }
+
+    const nextData = {
+        ...data,
+        custom_save_path: matched.path,
+        custom_save_path_name: matched.name,
+    };
+    delete nextData.x2md_custom_save_path;
+    return nextData;
+}
+
 // ─────────────────────────────────────────────
 // 消息处理
 // ─────────────────────────────────────────────
@@ -924,12 +958,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // --------- 视频时长检测与二次确认拦截 ---------
                 let enableVideoDownload = true;
                 let durationThresholdMin = 5;
+                let cfg = {};
                 try {
                     const cfgResp = await fetch(`${SERVER_BASE}/config`);
-                    const cfg = await cfgResp.json();
+                    cfg = await cfgResp.json();
                     enableVideoDownload = cfg.enable_video_download !== false;
                     durationThresholdMin = cfg.video_duration_threshold || 5;
                 } catch (e) { console.warn("[x2md] 获取配置失败，使用默认视频设置", e); }
+
+                data = applyCustomSavePathSelection(data, cfg);
 
                 const allVideos = [...(data.videos || [])];
                 const allDurations = [...(data.videoDurations || [])];

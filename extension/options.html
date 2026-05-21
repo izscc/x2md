@@ -220,6 +220,15 @@
             color: var(--text-muted);
         }
 
+        .custom-path-name {
+            max-width: 150px;
+            font-family: 'Inter', -apple-system, sans-serif !important;
+        }
+
+        .custom-path-target {
+            min-width: 0;
+        }
+
         .btn-remove {
             background: transparent;
             border: none;
@@ -413,6 +422,26 @@
                 <button class="btn-add" id="btnAdd">
                     <span>＋</span> 添加保存路径
                 </button>
+            </div>
+        </div>
+
+        <!-- X / Twitter 自定义保存菜单 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🔖</div>
+                <div>
+                    <h2>X 书签自定义菜单</h2>
+                    <p>配置后，鼠标悬停 X/Twitter 书签按钮时显示 Apple 风格自定义保存入口</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="path-list" id="customPathList"></div>
+                <button class="btn-add" id="btnAddCustomPath">
+                    <span>＋</span> 添加自定义保存路径
+                </button>
+                <div class="form-hint">
+                    例如名称填“生图类”，路径填 Obsidian 中对应子目录。菜单标题最多显示 5 个中文字符，点击后只保存到该路径。
+                </div>
             </div>
         </div>
 

@@ -1737,9 +1737,154 @@ const BOOKMARK_SELECTORS = [
     '[aria-label="Remove Bookmark"]',
 ].join(", ");
 
+const X_CUSTOM_SAVE_MENU_ID = "__x2md_x_custom_save_menu";
+const X_CUSTOM_SAVE_MENU_MAX_CHARS = 5;
+let xCustomSaveMenuHideTimer = null;
+
+function getCustomSavePathEntries() {
+    const entries = Array.isArray(runtimeConfig?.custom_save_paths) ? runtimeConfig.custom_save_paths : [];
+    return entries
+        .map((entry, index) => ({
+            index,
+            name: String(entry?.name || "").trim(),
+            path: String(entry?.path || "").trim(),
+        }))
+        .filter((entry) => entry.name && entry.path);
+}
+
+function truncateCustomSaveTitle(title) {
+    return Array.from(String(title || "").trim()).slice(0, X_CUSTOM_SAVE_MENU_MAX_CHARS).join("");
+}
+
+function ensureCustomSaveMenu() {
+    let menu = document.getElementById(X_CUSTOM_SAVE_MENU_ID);
+    if (menu) return menu;
+
+    menu = document.createElement("div");
+    menu.id = X_CUSTOM_SAVE_MENU_ID;
+    Object.assign(menu.style, {
+        position: "fixed",
+        zIndex: "2147483647",
+        width: "fit-content",
+        minWidth: "86px",
+        maxWidth: "148px",
+        padding: "6px",
+        borderRadius: "16px",
+        border: "1px solid rgba(255,255,255,.48)",
+        background: "rgba(246,246,246,.72)",
+        boxShadow: "0 18px 44px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.52)",
+        backdropFilter: "saturate(180%) blur(22px)",
+        WebkitBackdropFilter: "saturate(180%) blur(22px)",
+        display: "none",
+        opacity: "0",
+        transform: "translateY(-4px) scale(.98)",
+        transformOrigin: "top center",
+        transition: "opacity .14s ease, transform .14s ease",
+        pointerEvents: "auto",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif",
+    });
+    menu.addEventListener("mouseenter", () => {
+        clearTimeout(xCustomSaveMenuHideTimer);
+    });
+    menu.addEventListener("mouseleave", scheduleHideCustomSaveMenu);
+    document.body.appendChild(menu);
+    return menu;
+}
+
+function scheduleHideCustomSaveMenu() {
+    clearTimeout(xCustomSaveMenuHideTimer);
+    xCustomSaveMenuHideTimer = setTimeout(() => {
+        const menu = document.getElementById(X_CUSTOM_SAVE_MENU_ID);
+        if (!menu) return;
+        menu.style.opacity = "0";
+        menu.style.transform = "translateY(-4px) scale(.98)";
+        setTimeout(() => {
+            if (menu.style.opacity === "0") menu.style.display = "none";
+        }, 160);
+    }, 180);
+}
+
+function showCustomSaveMenu(btn) {
+    const entries = getCustomSavePathEntries();
+    if (!entries.length) return;
+
+    clearTimeout(xCustomSaveMenuHideTimer);
+    const menu = ensureCustomSaveMenu();
+    menu.textContent = "";
+
+    const visibleTitles = entries.map((entry) => truncateCustomSaveTitle(entry.name));
+    const maxTitleLength = Math.max(1, ...visibleTitles.map((title) => Array.from(title).length));
+    const menuWidth = Math.min(148, Math.max(86, 32 + maxTitleLength * 18));
+    menu.style.width = `${menuWidth}px`;
+
+    entries.forEach((entry, index) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.textContent = visibleTitles[index];
+        item.title = entry.name === visibleTitles[index] ? entry.path : `${entry.name} · ${entry.path}`;
+        Object.assign(item.style, {
+            display: "block",
+            width: "100%",
+            border: "none",
+            borderRadius: "11px",
+            background: "transparent",
+            color: "#1d1d1f",
+            cursor: "pointer",
+            fontSize: "13px",
+            fontWeight: "600",
+            lineHeight: "1.2",
+            textAlign: "center",
+            padding: "8px 10px",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            letterSpacing: ".01em",
+        });
+        item.addEventListener("mouseenter", () => {
+            item.style.background = "rgba(0, 122, 255, .16)";
+        });
+        item.addEventListener("mouseleave", () => {
+            item.style.background = "transparent";
+        });
+        item.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            menu.style.display = "none";
+            captureAndSend(btn, {
+                customSavePath: {
+                    index: entry.index,
+                    name: entry.name,
+                },
+            });
+        }, true);
+        menu.appendChild(item);
+    });
+
+    menu.style.visibility = "hidden";
+    menu.style.display = "block";
+    const rect = btn.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const centeredLeft = rect.left + rect.width / 2 - menuRect.width / 2;
+    const left = Math.max(8, Math.min(window.innerWidth - menuRect.width - 8, centeredLeft));
+    let top = rect.bottom + 8;
+    if (top + menuRect.height > window.innerHeight - 8) {
+        top = rect.top - menuRect.height - 8;
+    }
+    top = Math.max(8, Math.min(window.innerHeight - menuRect.height - 8, top));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = "visible";
+    requestAnimationFrame(() => {
+        menu.style.opacity = "1";
+        menu.style.transform = "translateY(0) scale(1)";
+    });
+}
+
 function attachBookmarkListener(btn) {
     if (btn.__x2md_bound) return;
     btn.__x2md_bound = true;
+    btn.addEventListener("mouseenter", () => showCustomSaveMenu(btn), true);
+    btn.addEventListener("mouseleave", scheduleHideCustomSaveMenu, true);
     btn.addEventListener("click", () => {
         setTimeout(() => captureAndSend(btn), 400);
     }, true);
@@ -1748,8 +1893,19 @@ function attachBookmarkListener(btn) {
 // ─────────────────────────────────────────────
 // 主流程：捕获 → 组装基础数据 → 发给 background
 // ─────────────────────────────────────────────
-function captureAndSend(btn) {
+function captureAndSend(btn, options = {}) {
     showToast("正在获取完整推文内容…", "loading", null);
+
+    const attachCustomSavePath = (data) => {
+        if (!options.customSavePath) return data;
+        return {
+            ...data,
+            x2md_custom_save_path: {
+                index: options.customSavePath.index,
+                name: options.customSavePath.name,
+            },
+        };
+    };
 
     // ── 当前在独立的 Note 文章页面（/i/article/xxx 或 /username/article/xxx）──
     if (isNotePageUrl()) {
@@ -1762,7 +1918,7 @@ function captureAndSend(btn) {
                 const articleData = detectAndExtractArticle();
                 if (articleData && articleData.article_content.trim()) {
                     showToast("已识别为 X Article，正在保存…", "loading", null);
-                    sendToBackground(withVisibleTranslationOverride(articleData, document));
+                    sendToBackground(attachCustomSavePath(withVisibleTranslationOverride(articleData, document)));
                 } else {
                     showToast("未能提取文章内容，请稍后重试", "error", 4000);
                 }
@@ -1799,7 +1955,7 @@ function captureAndSend(btn) {
             const inlineArticle = detectAndExtractArticle();
             if (inlineArticle && inlineArticle.article_content && inlineArticle.article_content.trim().length > 50) {
                 console.log("[x2md] 当前页面已有内嵌文章内容，直接保存");
-                sendToBackground(withVisibleTranslationOverride({
+                sendToBackground(attachCustomSavePath(withVisibleTranslationOverride({
                     ...inlineArticle,
                     url: tweetUrl,       // 用原始推文链接（/status/xxx）作为源
                     author: inlineArticle.author || author,
@@ -1808,7 +1964,7 @@ function captureAndSend(btn) {
                     images: inlineArticle.images, // 透传已经过去重的剩余外部图
                     image_alt_texts: { ...image_alt_texts, ...(inlineArticle.image_alt_texts || {}) },
                     graphql_operation_ids: inlineArticle.graphql_operation_ids || extractDiscoveredGraphQLOperationIds(),
-                }, document));
+                }, document)));
                 return;
             }
         } catch (extractErr) {
@@ -1818,7 +1974,7 @@ function captureAndSend(btn) {
 
         // 降级：让 background 尝试 fetch（可能得到空壳），最终降级为摘要+链接
         console.log("[x2md] 当前页面无内嵌内容，由 background 处理");
-        sendToBackground(withVisibleTranslationOverride({
+        sendToBackground(attachCustomSavePath(withVisibleTranslationOverride({
             type: "note",
             url: tweetUrl,
             note_article_url: noteArticleUrl,
@@ -1826,7 +1982,7 @@ function captureAndSend(btn) {
             text: extractTweetTextBasic(article),
             thread_tweets: [],
             graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
-        }, article || document));
+        }, article || document)));
         return;
     }
 
@@ -1836,7 +1992,7 @@ function captureAndSend(btn) {
     const quote_tweet = extractQuoteTweetBasic(article);
 
     console.log("[x2md] 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40), hasQuote: !!quote_tweet });
-    sendToBackground(withVisibleTranslationOverride({
+    sendToBackground(attachCustomSavePath(withVisibleTranslationOverride({
         author,
         handle,
         text,
@@ -1848,7 +2004,7 @@ function captureAndSend(btn) {
         thread_tweets,
         type: "tweet",
         graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
-    }, article || document));
+    }, article || document)));
 }
 
 function sendToBackground(data) {

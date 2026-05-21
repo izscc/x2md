@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // 绑定按钮事件（不使用 inline onclick）
     document.getElementById("btnRefresh").addEventListener("click", checkStatus);
     document.getElementById("btnAdd").addEventListener("click", addPath);
+    document.getElementById("btnAddCustomPath").addEventListener("click", addCustomPath);
     document.getElementById("btnSave").addEventListener("click", saveConfig);
 
     loadConfig();
@@ -43,6 +44,7 @@ function applyConfigToUI(cfg) {
     document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
 
     renderPaths(cfg.save_paths || []);
+    renderCustomPaths(cfg.custom_save_paths || []);
 }
 
 // ─────────────────────────────────────────────
@@ -97,6 +99,77 @@ function addPath() {
 }
 
 // ─────────────────────────────────────────────
+// X 书签悬停菜单的自定义保存路径
+// ─────────────────────────────────────────────
+function normalizeCustomPathEntry(entry = {}) {
+    return {
+        name: String(entry.name || "").trim(),
+        path: String(entry.path || "").trim(),
+    };
+}
+
+function renderCustomPaths(paths) {
+    const list = document.getElementById("customPathList");
+    list.innerHTML = "";
+    paths.map(normalizeCustomPathEntry).forEach((entry, i) => {
+        const row = document.createElement("div");
+        row.className = "path-row";
+
+        const icon = document.createElement("span");
+        icon.className = "path-row-icon";
+        icon.textContent = "🏷️";
+
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.value = entry.name;
+        nameInput.dataset.field = "name";
+        nameInput.placeholder = "菜单名，如：生图类";
+        nameInput.className = "custom-path-name";
+
+        const pathInput = document.createElement("input");
+        pathInput.type = "text";
+        pathInput.value = entry.path;
+        pathInput.dataset.field = "path";
+        pathInput.placeholder = "/path/to/obsidian/subfolder";
+        pathInput.className = "custom-path-target";
+
+        const btn = document.createElement("button");
+        btn.className = "btn-remove";
+        btn.title = "删除";
+        btn.textContent = "×";
+        btn.addEventListener("click", () => {
+            const paths2 = collectCustomPaths({ keepIncomplete: true });
+            paths2.splice(i, 1);
+            renderCustomPaths(paths2);
+        });
+
+        row.appendChild(icon);
+        row.appendChild(nameInput);
+        row.appendChild(pathInput);
+        row.appendChild(btn);
+        list.appendChild(row);
+    });
+}
+
+function collectCustomPaths(options = {}) {
+    const keepIncomplete = !!options.keepIncomplete;
+    return [...document.querySelectorAll("#customPathList .path-row")]
+        .map((row) => ({
+            name: row.querySelector('input[data-field="name"]')?.value.trim() || "",
+            path: row.querySelector('input[data-field="path"]')?.value.trim() || "",
+        }))
+        .filter((entry) => keepIncomplete ? (entry.name || entry.path) : (entry.name && entry.path));
+}
+
+function addCustomPath() {
+    const paths = collectCustomPaths({ keepIncomplete: true });
+    paths.push({ name: "", path: "" });
+    renderCustomPaths(paths);
+    const inputs = document.querySelectorAll('#customPathList input[data-field="name"]');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+// ─────────────────────────────────────────────
 // 服务状态检测
 // ─────────────────────────────────────────────
 function checkStatus() {
@@ -122,6 +195,9 @@ function saveConfig() {
         "{date}_{author}_{summary}";
     const maxLen = parseInt(document.getElementById("maxLen").value) || 60;
     const savePaths = collectPaths();
+    const rawCustomSavePaths = collectCustomPaths({ keepIncomplete: true });
+    const invalidCustomPath = rawCustomSavePaths.find((entry) => (entry.name && !entry.path) || (!entry.name && entry.path));
+    const customSavePaths = collectCustomPaths();
 
     // 媒体设置读取
     const enableVideoDownload = document.getElementById("enableVideoDownload").checked;
@@ -133,12 +209,17 @@ function saveConfig() {
         showToast("请至少添加一个保存路径", true);
         return;
     }
+    if (invalidCustomPath) {
+        showToast("自定义保存路径需要同时填写菜单名和路径", true);
+        return;
+    }
 
     const newConfig = {
         port,
         filename_format: filenameFormat,
         max_filename_length: maxLen,
         save_paths: savePaths,
+        custom_save_paths: customSavePaths,
         enable_video_download: enableVideoDownload,
         video_save_path: videoSavePath,
         video_duration_threshold: videoDurationThreshold,
