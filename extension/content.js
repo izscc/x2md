@@ -1850,12 +1850,23 @@ function showCustomSaveMenu(btn) {
             event.preventDefault();
             event.stopPropagation();
             menu.style.display = "none";
-            captureAndSend(btn, {
-                customSavePath: {
-                    index: entry.index,
-                    name: entry.name,
-                },
-            });
+            if (!isBookmarkButtonAlreadySaved(btn)) {
+                btn.__x2md_skip_next_default_bookmark_save = true;
+                btn.click();
+                setTimeout(() => {
+                    if (btn.__x2md_skip_next_default_bookmark_save) {
+                        btn.__x2md_skip_next_default_bookmark_save = false;
+                    }
+                }, 0);
+            }
+            setTimeout(() => {
+                captureAndSend(btn, {
+                    customSavePath: {
+                        index: entry.index,
+                        name: entry.name,
+                    },
+                });
+            }, 400);
         }, true);
         menu.appendChild(item);
     });
@@ -1880,12 +1891,25 @@ function showCustomSaveMenu(btn) {
     });
 }
 
+function isBookmarkButtonAlreadySaved(btn) {
+    const testId = btn?.getAttribute?.("data-testid") || "";
+    const aria = btn?.getAttribute?.("aria-label") || "";
+    return testId === "removeBookmark" ||
+        /remove bookmark/i.test(aria) ||
+        aria.includes("移除书签") ||
+        aria.includes("取消书签");
+}
+
 function attachBookmarkListener(btn) {
     if (btn.__x2md_bound) return;
     btn.__x2md_bound = true;
     btn.addEventListener("mouseenter", () => showCustomSaveMenu(btn), true);
     btn.addEventListener("mouseleave", scheduleHideCustomSaveMenu, true);
     btn.addEventListener("click", () => {
+        if (btn.__x2md_skip_next_default_bookmark_save) {
+            btn.__x2md_skip_next_default_bookmark_save = false;
+            return;
+        }
         setTimeout(() => captureAndSend(btn), 400);
     }, true);
 }
