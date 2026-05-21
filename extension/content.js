@@ -1169,15 +1169,52 @@ function findMainTweetTextElement(article, options = {}) {
     const ctx = article || document;
     for (const el of ctx.querySelectorAll('[data-testid="tweetText"]')) {
         if (!options.includeQuote && el.closest('[data-testid="simpleTweet"]')) continue;
+        if (!options.includeQuote && el.closest('[data-x2md-quote-container="1"]')) continue;
         if (el.closest(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`)) continue;
         return el;
     }
     return null;
 }
 
-function findQuoteTweetTranslationTarget(scope = document) {
+function isQuoteTweetLabel(text) {
+    return /^(?:引用|Quote)$/i.test(normalizeSpaces(text || ""));
+}
+
+function findQuoteContainerFromLabel(labelEl, root) {
+    let current = labelEl?.parentElement || null;
+    while (current && current !== root && current !== document.body) {
+        const text = normalizeSpaces(current.innerText || current.textContent || "");
+        const rect = getVisibleRect(current);
+        const hasQuoteContent = !!current.querySelector?.('[data-testid="User-Name"], [data-testid="tweetText"]') ||
+            !!findTwitterArticleCardContainer(current);
+        if (rect && rect.width > 220 && rect.height > 40 && hasQuoteContent && !current.matches?.('article[data-testid="tweet"]')) {
+            current.setAttribute?.("data-x2md-quote-container", "1");
+            return current;
+        }
+        if (text.length > 2000) break;
+        current = current.parentElement;
+    }
+    return null;
+}
+
+function findQuoteTweetContainer(scope = document) {
     const ctx = scope || document;
-    const quote = ctx.querySelector?.('[data-testid="simpleTweet"]');
+    const simple = ctx.querySelector?.('[data-testid="simpleTweet"]');
+    if (simple) {
+        simple.setAttribute?.("data-x2md-quote-container", "1");
+        return simple;
+    }
+
+    for (const el of ctx.querySelectorAll?.("span, div") || []) {
+        if (!isQuoteTweetLabel(el.innerText || el.textContent || "")) continue;
+        const quote = findQuoteContainerFromLabel(el, ctx);
+        if (quote) return quote;
+    }
+    return null;
+}
+
+function findQuoteTweetTranslationTarget(scope = document) {
+    const quote = findQuoteTweetContainer(scope);
     if (!quote) return null;
     const textEl = findMainTweetTextElement(quote, { includeQuote: true });
     if (!textEl) return null;
@@ -1229,7 +1266,7 @@ function findTwitterArticleCardContainer(scope = document) {
     const candidates = [];
 
     for (const el of ctx.querySelectorAll?.("div") || []) {
-        if (el.closest?.('[data-testid="User-Name"], [role="group"], [data-testid="tweetText"], [data-testid="simpleTweet"]')) continue;
+        if (el.closest?.('[data-testid="User-Name"], [role="group"], [data-testid="tweetText"]')) continue;
         const text = normalizeSpaces(el.innerText || "");
         const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
         if (lines.length < 3 || !isTwitterArticleCardLabel(lines[0])) continue;
@@ -1289,6 +1326,8 @@ function getTwitterArticleCardTranslationTarget(scope = document) {
         articleTitle,
         articleBody,
         text,
+        url: findFirstStatusUrl(cardEl) || findFirstStatusUrl(ctx),
+        tweetId: extractTweetIdFromUrl(findFirstStatusUrl(cardEl) || findFirstStatusUrl(ctx)),
     };
 }
 
@@ -1849,7 +1888,7 @@ function isUrlOnlyText(text) {
     return /^https?:\/\/\S+$/i.test(normalizeSpaces(text || ""));
 }
 
-async function translateArticleCardInPlace(target) {
+async function translateArticleCardInPlace(target, options = {}) {
     if (!target?.titleEl && !target?.bodyEl) return false;
 
     const originalTitle = String(target.articleTitle || "").trim();
@@ -1857,9 +1896,10 @@ async function translateArticleCardInPlace(target) {
     let translatedTitle = "";
     let translatedBody = "";
 
-    const { url: tweetUrl } = findTweetUrl(target.scope);
-    const tweetId = extractTweetIdFromUrl(tweetUrl || findFirstStatusUrl(target.scope));
-    if (tweetId) {
+    const { url: scopeTweetUrl } = findTweetUrl(target.scope);
+    const tweetUrl = target.url || scopeTweetUrl || findFirstStatusUrl(target.scope);
+    const tweetId = target.tweetId || extractTweetIdFromUrl(tweetUrl);
+    if (tweetId && !options.skipNativeTweetTranslation) {
         try {
             const nativeResult = await requestBackgroundTweetTranslation({ url: tweetUrl, tweetId });
             const split = splitNativeArticleCardTranslation(nativeResult.translatedText || "");
@@ -1962,6 +2002,25 @@ async function translateQuoteTweetInPlace(scope = document) {
     });
 }
 
+async function translateEmbeddedArticleCardInPlace(scope = document) {
+    const target = getTwitterArticleCardTranslationTarget(scope);
+    if (!target || targetHasVisibleTranslation(target)) return false;
+
+    // 当同一条推文同时包含正文和文章卡片时，X 原生推文翻译接口优先返回正文译文；
+    // 直接拿它拆分会把正文第一句误写进卡片标题。此时卡片标题/摘要改为逐段翻译。
+    const hasPrimaryTweetText = !!findMainTweetTextElement(scope);
+    return await translateArticleCardInPlace(target, {
+        skipNativeTweetTranslation: hasPrimaryTweetText,
+    });
+}
+
+async function translateEmbeddedTargetsInPlace(scope = document) {
+    let rendered = false;
+    rendered = await translateQuoteTweetInPlace(scope) || rendered;
+    rendered = await translateEmbeddedArticleCardInPlace(scope) || rendered;
+    return rendered;
+}
+
 function renderInlineTranslation(scope, translation) {
     const target = getTranslationTarget(scope);
     if (!target || !translation) return false;
@@ -2055,13 +2114,13 @@ async function translateScopeInline(scope = document, options = {}) {
     if (!options.force) {
         const currentTarget = getTranslationTarget(targetScope);
         if (targetHasVisibleTranslation(currentTarget)) {
-            const quoteRendered = await translateQuoteTweetInPlace(targetScope);
-            return quoteRendered ? "translated" : "cached";
+            const embeddedRendered = await translateEmbeddedTargetsInPlace(targetScope);
+            return embeddedRendered ? "translated" : "cached";
         }
         if (currentTarget?.kind === "tweet" && findNativeTwitterTranslationControl(targetScope, "original")) {
             markNativeTwitterTranslation(targetScope);
-            const quoteRendered = await translateQuoteTweetInPlace(targetScope);
-            return quoteRendered ? "translated" : "cached";
+            const embeddedRendered = await translateEmbeddedTargetsInPlace(targetScope);
+            return embeddedRendered ? "translated" : "cached";
         }
     }
 
@@ -2073,21 +2132,21 @@ async function translateScopeInline(scope = document, options = {}) {
 
     if (target.kind === "article") {
         const mainRendered = await translateArticleInPlace(target);
-        const quoteRendered = await translateQuoteTweetInPlace(targetScope);
-        return (mainRendered || quoteRendered) ? "translated" : "missing";
+        const embeddedRendered = await translateEmbeddedTargetsInPlace(targetScope);
+        return (mainRendered || embeddedRendered) ? "translated" : "missing";
     }
 
     if (target.kind === "article_card") {
         const mainRendered = await translateArticleCardInPlace(target);
-        const quoteRendered = await translateQuoteTweetInPlace(targetScope);
-        return (mainRendered || quoteRendered) ? "translated" : "missing";
+        const embeddedRendered = await translateEmbeddedTargetsInPlace(targetScope);
+        return (mainRendered || embeddedRendered) ? "translated" : "missing";
     }
 
     const nativeState = await showNativeTwitterTranslation(targetScope);
     if (nativeState) {
-        const quoteRendered = await translateQuoteTweetInPlace(targetScope);
+        const embeddedRendered = await translateEmbeddedTargetsInPlace(targetScope);
         clearInlineTranslationStatus(targetScope);
-        return (nativeState === "cached" && !quoteRendered) ? "cached" : "translated";
+        return (nativeState === "cached" && !embeddedRendered) ? "cached" : "translated";
     }
 
     const { url: tweetUrl } = findTweetUrl(targetScope);
@@ -2129,9 +2188,9 @@ async function translateScopeInline(scope = document, options = {}) {
         source: translationSource,
         override: { type: "tweet", text: translatedText, source: translationSource ? "twitter_native" : "" },
     });
-    const quoteRendered = await translateQuoteTweetInPlace(targetScope);
+    const embeddedRendered = await translateEmbeddedTargetsInPlace(targetScope);
     clearInlineTranslationStatus(targetScope);
-    return (rendered || quoteRendered) ? "translated" : "missing";
+    return (rendered || embeddedRendered) ? "translated" : "missing";
 }
 
 function getAutoTranslateKey(scope = document) {
