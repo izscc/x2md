@@ -708,6 +708,19 @@ const X_INLINE_ACTIONS_CONTAINER_CLASS = "__x2md_x_inline_actions_container";
 const X_INLINE_TRANSLATION_STATUS_CLASS = "__x2md_x_inline_translation_status";
 const X_AUTO_TRANSLATE_LONG_PRESS_MS = 650;
 const X_AUTO_TRANSLATE_MAX_CONCURRENCY = 2;
+const X_NATIVE_TRANSLATE_LABELS = [
+    "显示翻译",
+    "翻译帖子",
+    "翻译推文",
+    "translate post",
+    "translate tweet",
+];
+const X_NATIVE_SHOW_ORIGINAL_LABELS = [
+    "显示原文",
+    "show original",
+    "show original post",
+    "show original tweet",
+];
 const X_COPY_ICON_URL = chrome.runtime.getURL("icons/copy_5304228.png");
 const X_TRANSLATE_ICON_URL = chrome.runtime.getURL("icons/translate_16818360.png");
 const X_GROK_BUTTON_SELECTORS = [
@@ -1053,6 +1066,103 @@ async function expandCollapsedTweetText(scope = document) {
     }
     if (clicked) await delay(180);
     return clicked;
+}
+
+function normalizeControlText(text) {
+    return normalizeSpaces(text || "").replace(/\s+/g, " ").trim();
+}
+
+function getTwitterControlText(el) {
+    if (!el) return "";
+    return normalizeControlText(el.innerText || el.textContent || el.getAttribute?.("aria-label") || "");
+}
+
+function matchesNativeTwitterTranslationLabel(text, mode = "translate") {
+    const value = normalizeControlText(text);
+    const lower = value.toLowerCase();
+    const labels = mode === "original" ? X_NATIVE_SHOW_ORIGINAL_LABELS : X_NATIVE_TRANSLATE_LABELS;
+    return labels.includes(value) || labels.includes(lower);
+}
+
+function findNativeTwitterTranslationControl(scope = document, mode = "translate") {
+    const ctx = scope || document;
+    const controls = ctx.querySelectorAll?.('button, [role="button"]') || [];
+    for (const el of controls) {
+        if (el.classList?.contains(X_INLINE_TRANSLATE_BUTTON_CLASS)) continue;
+        if (el.closest?.(`.${X_INLINE_TRANSLATE_BUTTON_CLASS}, .${X_INLINE_ACTIONS_CONTAINER_CLASS}, .${X_INLINE_TRANSLATION_BLOCK_CLASS}`)) continue;
+        if (el.closest?.('[data-testid="simpleTweet"]')) continue;
+
+        const text = getTwitterControlText(el);
+        if (matchesNativeTwitterTranslationLabel(text, mode)) return el;
+    }
+    return null;
+}
+
+function clearTranslationMark(el) {
+    if (!el) return;
+    delete el.__x2md_translation_override;
+    el.removeAttribute?.("data-x2md-translated");
+}
+
+function clearNativeTwitterTranslationOverride(scope = document) {
+    const target = getTranslationTarget(scope);
+    if (target?.textEl?.__x2md_translation_override?.source === "twitter_native") {
+        clearTranslationMark(target.textEl);
+    }
+}
+
+function markNativeTwitterTranslation(scope = document) {
+    const target = getTranslationTarget(scope);
+    if (!target || target.kind !== "tweet" || !target.textEl || !target.text) return false;
+    markElementTranslated(target.textEl, {
+        type: "tweet",
+        text: target.text,
+        source: "twitter_native",
+    });
+    return true;
+}
+
+async function waitForNativeTwitterTranslationState(scope = document, mode = "original", timeoutMs = 6000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        if (findNativeTwitterTranslationControl(scope, mode)) return true;
+        await delay(120);
+    }
+    return false;
+}
+
+async function showNativeTwitterTranslation(scope = document) {
+    const target = getTranslationTarget(scope);
+    if (!target || target.kind !== "tweet") return "";
+
+    if (findNativeTwitterTranslationControl(scope, "original")) {
+        markNativeTwitterTranslation(scope);
+        return "cached";
+    }
+
+    const nativeTranslateButton = findNativeTwitterTranslationControl(scope, "translate");
+    if (!nativeTranslateButton) return "";
+
+    nativeTranslateButton.click();
+    const translated = await waitForNativeTwitterTranslationState(scope, "original");
+    if (!translated) return "";
+
+    return markNativeTwitterTranslation(scope) ? "translated" : "";
+}
+
+async function toggleNativeTwitterTranslation(scope = document) {
+    const target = getTranslationTarget(scope);
+    if (!target || target.kind !== "tweet") return "";
+
+    const showOriginalButton = findNativeTwitterTranslationControl(scope, "original");
+    if (showOriginalButton) {
+        showOriginalButton.click();
+        await waitForNativeTwitterTranslationState(scope, "translate", 3000);
+        clearNativeTwitterTranslationOverride(scope);
+        return "original";
+    }
+
+    return await showNativeTwitterTranslation(scope);
 }
 
 function findMainTweetTextElement(article) {
@@ -1404,6 +1514,18 @@ function getTranslationOverrideForSave(scope = document) {
         }
     }
 
+    const nativeTarget = getTranslationTarget(ctx);
+    if (nativeTarget?.kind === "tweet" && findNativeTwitterTranslationControl(ctx, "original")) {
+        const nativeText = String(nativeTarget.text || "").trim();
+        if (nativeText) {
+            return {
+                type: "tweet",
+                text: nativeText,
+                source: "twitter_native",
+            };
+        }
+    }
+
     const elementOverride = getElementTranslationOverride(ctx) || findDescendantTranslationOverride(ctx);
     if (elementOverride) return elementOverride;
 
@@ -1435,6 +1557,10 @@ async function translateScopeInline(scope = document, options = {}) {
     if (!options.force) {
         const currentTarget = getTranslationTarget(targetScope);
         if (targetHasVisibleTranslation(currentTarget)) return "cached";
+        if (currentTarget?.kind === "tweet" && findNativeTwitterTranslationControl(targetScope, "original")) {
+            markNativeTwitterTranslation(targetScope);
+            return "cached";
+        }
     }
 
     await expandCollapsedTweetText(targetScope);
@@ -1445,6 +1571,12 @@ async function translateScopeInline(scope = document, options = {}) {
 
     if (target.kind === "article") {
         return await translateArticleInPlace(target) ? "translated" : "missing";
+    }
+
+    const nativeState = await showNativeTwitterTranslation(targetScope);
+    if (nativeState) {
+        clearInlineTranslationStatus(targetScope);
+        return nativeState === "cached" ? "cached" : "translated";
     }
 
     const { url: tweetUrl } = findTweetUrl(targetScope);
@@ -1601,6 +1733,12 @@ function buildTwitterInlineTranslateButton(referenceButton) {
         }
         const fixedActions = btn.closest(`.${X_INLINE_ACTIONS_CONTAINER_CLASS}`);
         const article = fixedActions ? document : (btn.closest("article, [role='article']") || document);
+        const nativeState = await toggleNativeTwitterTranslation(article);
+        if (nativeState) {
+            showToast(nativeState === "original" ? "已显示原文" : "翻译已显示", "success", 1600);
+            return;
+        }
+
         const existingState = toggleExistingInlineTranslation(article);
         if (existingState) {
             showToast(existingState === "original" ? "已显示原文" : "翻译已显示", "success", 1600);
