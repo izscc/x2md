@@ -1175,6 +1175,101 @@ function findMainTweetTextElement(article) {
     return null;
 }
 
+function isTwitterArticleCardLabel(text) {
+    return /^(?:X\s*)?文章$|^Article$/i.test(normalizeSpaces(text || ""));
+}
+
+function getVisibleRect(el) {
+    const rect = el?.getBoundingClientRect?.();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+    return rect;
+}
+
+function meaningfulArticleCardText(el) {
+    const text = normalizeSpaces(el?.innerText || el?.textContent || "");
+    if (!text || text.length < 2) return "";
+    if (isTwitterArticleCardLabel(text)) return "";
+    if (/^(?:Download|⊘|🖋️|\d+|[\d.,]+万|[\d.,]+k)$/i.test(text)) return "";
+    return text;
+}
+
+function elementHasDivergentTextChild(el, ownText) {
+    for (const child of Array.from(el?.children || [])) {
+        if (child.tagName !== "DIV") continue;
+        const childText = meaningfulArticleCardText(child);
+        if (childText && childText !== ownText) return true;
+    }
+    return false;
+}
+
+function findTwitterArticleCardContainer(scope = document) {
+    const ctx = scope || document;
+    const candidates = [];
+
+    for (const el of ctx.querySelectorAll?.("div") || []) {
+        if (el.closest?.('[data-testid="User-Name"], [role="group"], [data-testid="tweetText"], [data-testid="simpleTweet"]')) continue;
+        const text = normalizeSpaces(el.innerText || "");
+        const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+        if (lines.length < 3 || !isTwitterArticleCardLabel(lines[0])) continue;
+        const rect = getVisibleRect(el);
+        if (!rect || rect.width < 220 || rect.height < 80) continue;
+        candidates.push({ el, area: rect.width * rect.height });
+    }
+
+    candidates.sort((left, right) => left.area - right.area);
+    return candidates[0]?.el || null;
+}
+
+function findTwitterArticleCardTextBlocks(cardEl) {
+    if (!cardEl) return [];
+
+    const blocks = [];
+    const seen = new Set();
+    for (const el of cardEl.querySelectorAll?.("div") || []) {
+        if (el.closest?.(`.${X_INLINE_TRANSLATION_BLOCK_CLASS}`)) continue;
+        const text = meaningfulArticleCardText(el);
+        if (!text || text.length < 6) continue;
+        if (text === meaningfulArticleCardText(cardEl)) continue;
+        if (elementHasDivergentTextChild(el, text)) continue;
+
+        const rect = getVisibleRect(el);
+        if (!rect) continue;
+        if (seen.has(text)) continue;
+        seen.add(text);
+        blocks.push({ el, text, top: rect.top, left: rect.left });
+    }
+
+    blocks.sort((left, right) => left.top === right.top ? left.left - right.left : left.top - right.top);
+    return blocks.map((item) => item.el).slice(0, 2);
+}
+
+function getTwitterArticleCardTranslationTarget(scope = document) {
+    const ctx = scope || document;
+    const cardEl = findTwitterArticleCardContainer(ctx);
+    const blocks = findTwitterArticleCardTextBlocks(cardEl);
+    if (!cardEl || !blocks.length) return null;
+
+    const titleEl = blocks[0] || null;
+    const bodyEl = blocks[1] || null;
+    const articleTitle = meaningfulArticleCardText(titleEl);
+    const articleBody = meaningfulArticleCardText(bodyEl);
+    const text = [articleTitle, articleBody].filter(Boolean).join("\n\n");
+    if (!text) return null;
+
+    return {
+        kind: "article_card",
+        scope: ctx,
+        cardEl,
+        insertAfter: bodyEl || titleEl || cardEl,
+        originalEls: [titleEl, bodyEl].filter(Boolean),
+        titleEl,
+        bodyEl,
+        articleTitle,
+        articleBody,
+        text,
+    };
+}
+
 function getTranslationTarget(scope = document) {
     const ctx = scope || document;
     if (isTwitterArticleTranslationScope(ctx)) {
@@ -1196,6 +1291,9 @@ function getTranslationTarget(scope = document) {
             };
         }
     }
+
+    const articleCardTarget = getTwitterArticleCardTranslationTarget(ctx);
+    if (articleCardTarget) return articleCardTarget;
 
     const tweetTextEl = findMainTweetTextElement(ctx);
     if (!tweetTextEl) return null;
@@ -1422,6 +1520,17 @@ function showOriginalTranslationTargets(scope = document) {
         return restored;
     }
 
+    if (target.kind === "article_card") {
+        let restored = false;
+        if (target.titleEl) restored = restoreTranslatedElement(target.titleEl) || restored;
+        if (target.bodyEl) restored = restoreTranslatedElement(target.bodyEl) || restored;
+        if (target.cardEl) {
+            delete target.cardEl.__x2md_translation_override;
+            target.cardEl.removeAttribute?.("data-x2md-translated");
+        }
+        return restored;
+    }
+
     return restoreTranslatedElement(target.textEl);
 }
 
@@ -1430,6 +1539,9 @@ function targetHasVisibleTranslation(target) {
     if (target.kind === "article") {
         if (target.titleEl?.__x2md_translation_override) return true;
         return getArticleTranslatableTextBlocks(target.bodyEl).some((block) => !!block.__x2md_translation_override);
+    }
+    if (target.kind === "article_card") {
+        return !!target.titleEl?.__x2md_translation_override || !!target.bodyEl?.__x2md_translation_override;
     }
     return !!target.textEl?.__x2md_translation_override;
 }
@@ -1627,6 +1739,78 @@ async function translateArticleInPlace(target) {
     return !!translatedText;
 }
 
+function splitNativeArticleCardTranslation(translatedText) {
+    const parts = String(translatedText || "")
+        .replace(/\r\n/g, "\n")
+        .split(/\n{2,}|\n/)
+        .map((part) => normalizeSpaces(part))
+        .filter(Boolean);
+    if (!parts.length) return { title: "", body: "" };
+    return {
+        title: parts[0] || "",
+        body: parts.slice(1).join("\n").trim(),
+    };
+}
+
+async function translateArticleCardInPlace(target) {
+    if (!target?.titleEl && !target?.bodyEl) return false;
+
+    const originalTitle = String(target.articleTitle || "").trim();
+    const originalBody = String(target.articleBody || "").trim();
+    let translatedTitle = "";
+    let translatedBody = "";
+
+    const { url: tweetUrl } = findTweetUrl(target.scope);
+    const tweetId = extractTweetIdFromUrl(tweetUrl || findFirstStatusUrl(target.scope));
+    if (tweetId) {
+        try {
+            const nativeResult = await requestBackgroundTweetTranslation({ url: tweetUrl, tweetId });
+            const split = splitNativeArticleCardTranslation(nativeResult.translatedText || "");
+            if (split.title && (!originalTitle || split.title !== originalTitle)) translatedTitle = split.title;
+            if (split.body && (!originalBody || split.body !== originalBody)) translatedBody = split.body;
+        } catch (error) {
+            console.warn("[x2md] Article 卡片原生翻译失败，回退文本翻译：", error);
+        }
+    }
+
+    if (!translatedTitle && originalTitle && target.titleEl) {
+        const result = await requestBackgroundTextTranslation({
+            text: originalTitle,
+            url: tweetUrl || location.href.split("?")[0],
+            type: "x_article_card_title",
+        });
+        translatedTitle = result.translatedText || "";
+    }
+
+    if (!translatedBody && originalBody && target.bodyEl) {
+        const result = await requestBackgroundTextTranslation({
+            text: originalBody,
+            url: tweetUrl || location.href.split("?")[0],
+            type: "x_article_card_summary",
+        });
+        translatedBody = result.translatedText || "";
+    }
+
+    const override = {
+        type: "article_card",
+        article_title: translatedTitle,
+        article_content: translatedBody,
+        text: [translatedTitle, translatedBody].filter(Boolean).join("\n\n"),
+        source: "twitter_article_card",
+    };
+
+    let rendered = false;
+    if (translatedTitle && target.titleEl) {
+        rendered = replaceElementTextWithTranslation(target.titleEl, translatedTitle, override) || rendered;
+    }
+    if (translatedBody && target.bodyEl) {
+        rendered = replaceElementTextWithTranslation(target.bodyEl, translatedBody, override) || rendered;
+    }
+    if (rendered && target.cardEl) markElementTranslated(target.cardEl, override);
+    clearInlineTranslationStatus(target.scope);
+    return rendered;
+}
+
 function renderInlineTranslation(scope, translation) {
     const target = getTranslationTarget(scope);
     if (!target || !translation) return false;
@@ -1734,6 +1918,10 @@ async function translateScopeInline(scope = document, options = {}) {
 
     if (target.kind === "article") {
         return await translateArticleInPlace(target) ? "translated" : "missing";
+    }
+
+    if (target.kind === "article_card") {
+        return await translateArticleCardInPlace(target) ? "translated" : "missing";
     }
 
     const nativeState = await showNativeTwitterTranslation(targetScope);
