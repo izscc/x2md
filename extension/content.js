@@ -1248,6 +1248,163 @@ function replaceElementTextWithTranslation(el, translatedText, override) {
     return true;
 }
 
+function sanitizeTwitterNativeTranslationHtml(html) {
+    const source = String(html || "").trim();
+    if (!source) return "";
+
+    const template = document.createElement("template");
+    template.innerHTML = source;
+
+    const allowedTags = new Set(["SPAN", "A", "IMG", "BR", "B", "STRONG", "I", "EM", "S"]);
+    const allowedAttrs = {
+        SPAN: new Set(["class", "dir", "aria-hidden"]),
+        A: new Set(["class", "dir", "href", "rel", "target", "role", "aria-hidden", "style"]),
+        IMG: new Set(["class", "alt", "src", "title", "draggable", "aria-hidden"]),
+        BR: new Set([]),
+        B: new Set(["class"]),
+        STRONG: new Set(["class"]),
+        I: new Set(["class"]),
+        EM: new Set(["class"]),
+        S: new Set(["class"]),
+    };
+
+    const cleanNode = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) return;
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+            node.remove();
+            return;
+        }
+
+        if (!allowedTags.has(node.tagName)) {
+            node.replaceWith(document.createTextNode(node.textContent || ""));
+            return;
+        }
+
+        const tagAttrs = allowedAttrs[node.tagName] || new Set();
+        for (const attr of Array.from(node.attributes || [])) {
+            if (!tagAttrs.has(attr.name)) {
+                node.removeAttribute(attr.name);
+                continue;
+            }
+            if ((attr.name === "href" || attr.name === "src") && !/^https?:\/\//i.test(attr.value)) {
+                node.removeAttribute(attr.name);
+            }
+            if (attr.name === "style" && !/^color:\s*rgb\(29,\s*155,\s*240\);?$/i.test(attr.value.trim())) {
+                node.removeAttribute(attr.name);
+            }
+        }
+
+        for (const child of Array.from(node.childNodes)) cleanNode(child);
+    };
+
+    for (const child of Array.from(template.content.childNodes)) cleanNode(child);
+    return template.innerHTML.trim();
+}
+
+function decodeHtmlEntities(text) {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = String(text || "");
+    return textarea.value;
+}
+
+function escapeRegExp(text) {
+    return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function uniqueNonEmpty(values) {
+    return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function normalizeInlineLinkText(text) {
+    return String(text || "").replace(/\s+/g, "");
+}
+
+function buildOriginalTweetLinkDescriptors(tweetTextEl) {
+    const descriptors = [];
+    for (const anchor of tweetTextEl?.querySelectorAll?.("a[href]") || []) {
+        const href = anchor.href || "";
+        const rawHref = anchor.getAttribute("href") || "";
+        let absoluteRawHref = rawHref;
+        try {
+            absoluteRawHref = new URL(rawHref, location.origin).href;
+        } catch (error) { }
+
+        const visibleText = normalizeSpaces(anchor.innerText || anchor.textContent || "");
+        const compactVisibleText = normalizeInlineLinkText(visibleText);
+        const isMentionOrHash = /^[@#]/.test(visibleText);
+        const isUrlLike = /^https?:\/\//i.test(href) || /^https?:\/\//i.test(absoluteRawHref) || href.includes("t.co/");
+
+        const candidates = uniqueNonEmpty([
+            href,
+            absoluteRawHref,
+            href.replace(/^http:\/\//i, "https://"),
+            absoluteRawHref.replace(/^http:\/\//i, "https://"),
+            isMentionOrHash ? visibleText : "",
+            isUrlLike ? compactVisibleText : "",
+        ]).sort((left, right) => right.length - left.length);
+
+        if (!candidates.length) continue;
+
+        const clone = anchor.cloneNode(true);
+        clone.setAttribute("href", href || absoluteRawHref);
+        clone.setAttribute("rel", "noopener noreferrer nofollow");
+        clone.setAttribute("target", "_blank");
+
+        descriptors.push({
+            candidates,
+            html: sanitizeTwitterNativeTranslationHtml(clone.outerHTML),
+        });
+    }
+    return descriptors.filter((item) => item.html);
+}
+
+function buildNativeLikeTweetTranslationHtml(translatedText, originalTweetTextEl) {
+    let text = decodeHtmlEntities(translatedText)
+        .replace(/\r\n/g, "\n")
+        .trim();
+    if (!text) return { text: "", html: "" };
+
+    const tokens = [];
+    for (const descriptor of buildOriginalTweetLinkDescriptors(originalTweetTextEl)) {
+        for (const candidate of descriptor.candidates) {
+            if (!candidate || !text.includes(candidate)) continue;
+            const token = `\uE000${tokens.length}\uE001`;
+            text = text.replace(new RegExp(escapeRegExp(candidate), "g"), token);
+            tokens.push({ token, html: descriptor.html });
+            break;
+        }
+    }
+
+    let html = escapeHtml(text).replace(/\n/g, "<br>");
+    for (const item of tokens) {
+        html = html.split(item.token).join(item.html);
+    }
+
+    return {
+        text: text.replace(/\uE000\d+\uE001/g, (token) => {
+            const item = tokens.find((entry) => entry.token === token);
+            if (!item) return "";
+            const template = document.createElement("template");
+            template.innerHTML = item.html;
+            return template.content.textContent || "";
+        }).trim(),
+        html,
+    };
+}
+
+function replaceElementWithNativeTranslation(el, translation, override) {
+    const translatedText = String(translation?.text || "").trim();
+    if (!el || !translatedText) return false;
+    if (el.__x2md_original_html === undefined) {
+        el.__x2md_original_html = el.innerHTML;
+    }
+
+    const safeHtml = sanitizeTwitterNativeTranslationHtml(translation.html);
+    el.innerHTML = safeHtml || escapeHtml(translatedText).replace(/\n/g, "<br>");
+    markElementTranslated(el, override || { type: "tweet", text: translatedText, source: "twitter_native" });
+    return true;
+}
+
 function showOriginalTranslationTargets(scope = document) {
     const target = getTranslationTarget(scope);
     if (!target) return false;
@@ -1478,6 +1635,12 @@ function renderInlineTranslation(scope, translation) {
     if (!translatedText) return false;
 
     if (target.kind === "tweet") {
+        if (translation.source === "twitter_native_api" || translation.html) {
+            return replaceElementWithNativeTranslation(target.textEl, {
+                text: translatedText,
+                html: translation.html || "",
+            }, translation.override || { type: "tweet", text: translatedText, source: "twitter_native" });
+        }
         return replaceElementTextWithTranslation(target.textEl, translatedText, typeof translation === "string"
             ? { type: "tweet", text: translatedText }
             : translation.override || { type: "tweet", text: translatedText });
@@ -1588,10 +1751,17 @@ async function translateScopeInline(scope = document, options = {}) {
     const resolvedTweetUrl = tweetUrl || fallbackUrl || findFirstStatusUrl(targetScope);
     const tweetId = extractTweetIdFromUrl(resolvedTweetUrl);
     let translatedText = "";
+    let translatedHtml = "";
+    let translationSource = "";
     if (tweetId) {
         try {
             const result = await requestBackgroundTweetTranslation({ url: resolvedTweetUrl, tweetId });
-            translatedText = result.translatedText || "";
+            if (result.translatedText) {
+                const nativeLike = buildNativeLikeTweetTranslationHtml(result.translatedText, target.textEl);
+                translatedText = nativeLike.text || result.translatedText || "";
+                translatedHtml = nativeLike.html || "";
+                translationSource = "twitter_native_api";
+            }
         } catch (error) {
             console.warn("[x2md] Grok 翻译失败，回退普通文本翻译：", error);
         }
@@ -1607,7 +1777,9 @@ async function translateScopeInline(scope = document, options = {}) {
     if (!translatedText) return "missing";
     const rendered = renderInlineTranslation(targetScope, {
         text: translatedText,
-        override: { type: "tweet", text: translatedText },
+        html: translatedHtml,
+        source: translationSource,
+        override: { type: "tweet", text: translatedText, source: translationSource ? "twitter_native" : "" },
     });
     clearInlineTranslationStatus(targetScope);
     return rendered ? "translated" : "missing";
