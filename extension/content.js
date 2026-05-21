@@ -1314,19 +1314,22 @@ function getTranslationTarget(scope = document) {
         }
     }
 
+    const tweetTextEl = findMainTweetTextElement(ctx);
+    if (tweetTextEl) {
+        return {
+            kind: "tweet",
+            scope: ctx,
+            insertAfter: tweetTextEl,
+            originalEls: [tweetTextEl],
+            textEl: tweetTextEl,
+            text: stripLeadingReplyMentions(tweetTextEl.innerText || ""),
+        };
+    }
+
     const articleCardTarget = getTwitterArticleCardTranslationTarget(ctx);
     if (articleCardTarget) return articleCardTarget;
 
-    const tweetTextEl = findMainTweetTextElement(ctx);
-    if (!tweetTextEl) return null;
-    return {
-        kind: "tweet",
-        scope: ctx,
-        insertAfter: tweetTextEl,
-        originalEls: [tweetTextEl],
-        textEl: tweetTextEl,
-        text: stripLeadingReplyMentions(tweetTextEl.innerText || ""),
-    };
+    return null;
 }
 
 function markElementTranslated(el, override) {
