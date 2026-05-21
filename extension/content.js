@@ -1746,10 +1746,29 @@ function splitNativeArticleCardTranslation(translatedText) {
         .map((part) => normalizeSpaces(part))
         .filter(Boolean);
     if (!parts.length) return { title: "", body: "" };
+
+    let droppedLeadingUrl = false;
+    while (parts.length && isUrlOnlyText(parts[0])) {
+        parts.shift();
+        droppedLeadingUrl = true;
+    }
+    if (!parts.length) return { title: "", body: "" };
+
+    if (droppedLeadingUrl) {
+        return {
+            title: "",
+            body: parts.join("\n").trim(),
+        };
+    }
+
     return {
         title: parts[0] || "",
         body: parts.slice(1).join("\n").trim(),
     };
+}
+
+function isUrlOnlyText(text) {
+    return /^https?:\/\/\S+$/i.test(normalizeSpaces(text || ""));
 }
 
 async function translateArticleCardInPlace(target) {
@@ -1766,7 +1785,7 @@ async function translateArticleCardInPlace(target) {
         try {
             const nativeResult = await requestBackgroundTweetTranslation({ url: tweetUrl, tweetId });
             const split = splitNativeArticleCardTranslation(nativeResult.translatedText || "");
-            if (split.title && (!originalTitle || split.title !== originalTitle)) translatedTitle = split.title;
+            if (split.title && !isUrlOnlyText(split.title) && (!originalTitle || split.title !== originalTitle)) translatedTitle = split.title;
             if (split.body && (!originalBody || split.body !== originalBody)) translatedBody = split.body;
         } catch (error) {
             console.warn("[x2md] Article 卡片原生翻译失败，回退文本翻译：", error);
