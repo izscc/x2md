@@ -42,6 +42,10 @@ function applyConfigToUI(cfg) {
     document.getElementById("videoSavePath").value = cfg.video_save_path || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
     document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
     document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
+    document.getElementById("showXProfileCaptureButton").checked = cfg.show_x_profile_capture_button !== false;
+    document.getElementById("profileCaptureRange").value = cfg.profile_capture_range || "today";
+    document.getElementById("profileCaptureDays").value = cfg.profile_capture_custom_days || 7;
+    document.getElementById("profileCaptureSavePath").value = cfg.profile_capture_save_path || "";
 
     renderPaths(cfg.save_paths || []);
     renderCustomPaths(cfg.custom_save_paths || []);
@@ -204,6 +208,10 @@ function saveConfig() {
     const videoSavePath = document.getElementById("videoSavePath").value.trim() || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
     const videoDurationThreshold = parseFloat(document.getElementById("videoDurationThreshold").value) || 5;
     const showSiteSaveIcon = document.getElementById("showSiteSaveIcon").checked;
+    const showXProfileCaptureButton = document.getElementById("showXProfileCaptureButton").checked;
+    const profileCaptureRange = document.getElementById("profileCaptureRange").value || "today";
+    const profileCaptureDays = parseInt(document.getElementById("profileCaptureDays").value, 10) || 7;
+    const profileCaptureSavePath = document.getElementById("profileCaptureSavePath").value.trim();
 
     if (!savePaths.length) {
         showToast("请至少添加一个保存路径", true);
@@ -224,6 +232,10 @@ function saveConfig() {
         video_save_path: videoSavePath,
         video_duration_threshold: videoDurationThreshold,
         show_site_save_icon: showSiteSaveIcon,
+        show_x_profile_capture_button: showXProfileCaptureButton,
+        profile_capture_range: profileCaptureRange,
+        profile_capture_custom_days: profileCaptureDays,
+        profile_capture_save_path: profileCaptureSavePath,
     };
 
     document.getElementById("portLabel").textContent = port;

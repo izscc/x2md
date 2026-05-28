@@ -15,6 +15,7 @@ import logging
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
@@ -55,6 +56,7 @@ def get_app_dir():
 
 APP_DIR = get_app_dir()
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
+PROFILE_CAPTURE_STATE_FILE = os.path.join(APP_DIR, "profile_capture_state.json")
 
 HOME = os.path.expanduser("~")
 DEFAULT_CONFIG = {
@@ -68,6 +70,10 @@ DEFAULT_CONFIG = {
     "max_filename_length": 60,
     "video_save_path": os.path.join(HOME, "Desktop", "X2MD", "Videos"),
     "show_site_save_icon": True,
+    "show_x_profile_capture_button": True,
+    "profile_capture_range": "today",
+    "profile_capture_custom_days": 7,
+    "profile_capture_save_path": "",
     "setup_completed": False,
 }
 
@@ -163,6 +169,101 @@ def sanitize_filename(name: str, max_len: int = 60) -> str:
     return name[:max_len]
 
 
+def load_profile_capture_state() -> dict:
+    """读取 X 博主批量抓取记录。"""
+    if os.path.exists(PROFILE_CAPTURE_STATE_FILE):
+        try:
+            with open(PROFILE_CAPTURE_STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                if isinstance(state, dict):
+                    state.setdefault("profiles", {})
+                    return state
+        except Exception as e:
+            logger.warning(f"博主抓取记录读取失败，使用空记录：{e}")
+    return {"profiles": {}}
+
+
+def save_profile_capture_state(state: dict):
+    """保存 X 博主批量抓取记录。"""
+    with open(PROFILE_CAPTURE_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def get_profile_state_bucket(state: dict, handle: str) -> dict:
+    key = normalize_profile_handle(handle) or "unknown"
+    profiles = state.setdefault("profiles", {})
+    bucket = profiles.setdefault(key, {})
+    bucket.setdefault("tweets", {"captured_ids": {}, "daily": {}})
+    bucket.setdefault("articles", {"captured_urls": {}})
+    return bucket
+
+
+def normalize_profile_handle(handle: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]", "", str(handle or "").lstrip("@")).lower()
+
+
+def parse_twitter_datetime(value: str) -> Optional[datetime]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone()
+    except Exception:
+        pass
+    try:
+        return parsedate_to_datetime(raw).astimezone()
+    except Exception:
+        return None
+
+
+def profile_date_key(value: str) -> str:
+    dt = parse_twitter_datetime(value)
+    return (dt or datetime.now().astimezone()).strftime("%Y-%m-%d")
+
+
+def profile_time_label(value: str) -> str:
+    dt = parse_twitter_datetime(value)
+    return dt.strftime("%H:%M") if dt else "时间未知"
+
+
+def extract_status_id(url: str) -> str:
+    match = re.search(r"/status/(\d+)", str(url or ""))
+    return match.group(1) if match else ""
+
+
+def resolve_profile_capture_dir(cfg: dict, profile: dict) -> str:
+    base = str(cfg.get("profile_capture_save_path") or "").strip()
+    if not base:
+        save_paths = cfg.get("save_paths") or []
+        base = save_paths[0] if save_paths else os.path.join(HOME, "Desktop", "X2MD", "MD")
+
+    display = (
+        str(profile.get("displayName") or "").strip() or
+        str(profile.get("display_name") or "").strip() or
+        normalize_profile_handle(profile.get("handle", "")) or
+        "X博主"
+    )
+    handle = normalize_profile_handle(profile.get("handle", ""))
+    dirname = sanitize_filename(display, 60) or handle or "X博主"
+    if handle and handle not in dirname.lower():
+        dirname = sanitize_filename(f"{dirname}_{handle}", 80)
+    return os.path.join(base, dirname)
+
+
+def profile_author_label(profile: dict) -> str:
+    return (
+        str(profile.get("displayName") or "").strip() or
+        str(profile.get("display_name") or "").strip() or
+        normalize_profile_handle(profile.get("handle", "")) or
+        "X博主"
+    )
+
+
+def normalize_article_url(url: str) -> str:
+    raw = str(url or "").strip().replace("twitter.com", "x.com")
+    return raw.split("?")[0].rstrip("/")
+
+
 def _normalize_translation_text(value: str) -> str:
     return str(value or "").replace("\u00a0", " ").strip()
 
@@ -217,6 +318,317 @@ def download_video_async(url: str, save_path: str, filename: str):
             logger.error(f"❌ 视频流下载失败: {e}")
 
     _video_executor.submit(_download)
+
+
+def append_profile_image(lines: list[str], img_url: str, alt_map: Optional[dict] = None, prefix: str = ""):
+    if not img_url:
+        return
+    orig_url = normalize_image_url(img_url)
+    lines.append(f"{prefix}![]({orig_url})")
+    alt_map = alt_map or {}
+    alt = ""
+    if isinstance(alt_map, dict):
+        alt = (
+            alt_map.get(orig_url) or
+            alt_map.get(str(img_url)) or
+            alt_map.get(str(img_url).split("?")[0]) or
+            ""
+        )
+    alt = " ".join(str(alt or "").split()).strip()
+    if alt:
+        lines.append(f"{prefix}```")
+        lines.append(f"{prefix}{alt.replace('```', '``\u200b`')}")
+        lines.append(f"{prefix}```")
+
+
+def append_profile_quote(lines: list[str], quote: dict):
+    if not isinstance(quote, dict):
+        return
+    q_text = str(quote.get("text") or "").strip()
+    q_images = quote.get("images") or []
+    q_videos = quote.get("videos") or []
+    q_url = str(quote.get("url") or "").strip()
+    if not q_text and not q_images and not q_videos and not q_url:
+        return
+
+    lines.append("")
+    lines.append("> [!quote] 引用推文")
+    if q_text:
+        for line in q_text.splitlines():
+            lines.append(f"> {line}" if line.strip() else ">")
+    for img_url in q_images:
+        lines.append(">")
+        append_profile_image(lines, img_url, quote.get("image_alt_texts") or {}, prefix="> ")
+    for video_url in q_videos:
+        lines.append(">")
+        lines.append(f"> 🎞️ [视频]({video_url})")
+    if q_url:
+        lines.append(">")
+        lines.append(f"> 原文：{q_url}")
+
+
+def build_profile_tweet_entry(tweet: dict) -> str:
+    url = str(tweet.get("url") or "").strip()
+    published = str(tweet.get("published") or "").strip()
+    text = str(tweet.get("text") or "").strip()
+    lines = [
+        f"## {profile_time_label(published)} · [原文]({url})" if url else f"## {profile_time_label(published)}",
+        "",
+    ]
+
+    if text:
+        lines.append(text)
+    elif tweet.get("article_title"):
+        lines.append(str(tweet.get("article_title")).strip())
+
+    images = tweet.get("images") or []
+    if images:
+        lines.append("")
+        for img_url in images:
+            append_profile_image(lines, img_url, tweet.get("image_alt_texts") or {})
+
+    videos = tweet.get("videos") or []
+    if videos:
+        lines.append("")
+        for video_url in videos:
+            lines.append(f"🎞️ [视频]({video_url})")
+
+    append_profile_quote(lines, tweet.get("quote_tweet") or {})
+
+    thread_tweets = tweet.get("thread_tweets") or []
+    for index, child in enumerate(thread_tweets, start=1):
+        if not isinstance(child, dict):
+            continue
+        child_text = str(child.get("text") or "").strip()
+        child_images = child.get("images") or []
+        child_videos = child.get("videos") or []
+        child_quote = child.get("quote_tweet") or {}
+        if not child_text and not child_images and not child_videos and not child_quote:
+            continue
+        lines.append("")
+        lines.append(f"### 续推 {index}")
+        lines.append("")
+        if child_text:
+            lines.append(child_text)
+        for img_url in child_images:
+            append_profile_image(lines, img_url, child.get("image_alt_texts") or {})
+        for video_url in child_videos:
+            lines.append(f"🎞️ [视频]({video_url})")
+        append_profile_quote(lines, child_quote)
+
+    return "\n".join(lines).strip()
+
+
+def build_profile_daily_header(profile: dict, date_key: str, range_label: str) -> str:
+    author = profile_author_label(profile)
+    handle = normalize_profile_handle(profile.get("handle", ""))
+    profile_url = str(profile.get("profileUrl") or profile.get("profile_url") or "").strip()
+    if not profile_url and handle:
+        profile_url = f"https://x.com/{handle}"
+    created = datetime.now().strftime("%Y-%m-%d %H:%M")
+    title = f"{author} 推文 {date_key}".replace('"', "'")
+    return f"""---
+title: "{title}"
+tags: []
+源: "{profile_url}"
+作者主页: "{profile_url}"
+创建时间: "{created}"
+发布时间: "{date_key}"
+平台: "Twitter/X"
+类别: "[[剪报]]"
+阅读状态: false
+整理: false
+---
+
+# {author} 推文 {date_key}
+
+> 抓取范围：{range_label or "按设置"}
+> 排列方式：按 X 时间线从新到旧排列；已自动排除转发/转载。
+
+<!-- X2MD_PROFILE_TIMELINE -->
+"""
+
+
+def write_profile_daily_file(filepath: str, header: str, entries: list[str], *, prepend: bool, overwrite: bool) -> str:
+    body = "\n\n---\n\n".join(entry for entry in entries if entry.strip()).strip()
+    if overwrite or not os.path.exists(filepath):
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(header.rstrip() + "\n\n" + body + "\n")
+        return filepath
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        old = f.read().rstrip()
+    marker = "<!-- X2MD_PROFILE_TIMELINE -->"
+    if marker in old:
+        prefix, rest = old.split(marker, 1)
+        if prepend:
+            merged = prefix.rstrip() + "\n\n" + marker + "\n\n" + body + "\n\n---\n\n" + rest.strip() + "\n"
+        else:
+            merged = old + "\n\n---\n\n" + body + "\n"
+    else:
+        merged = old + "\n\n---\n\n" + body + "\n"
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(merged)
+    return filepath
+
+
+def build_profile_article_markdown(article: dict, profile: dict) -> str:
+    title = str(article.get("article_title") or article.get("title") or "Untitled").strip()
+    content = str(article.get("article_content") or article.get("content") or "").strip()
+    url = normalize_article_url(article.get("url") or article.get("article_url") or "")
+    published = str(article.get("published") or "").strip()
+    author = profile_author_label(profile)
+    profile_url = str(profile.get("profileUrl") or profile.get("profile_url") or "").strip()
+    created = datetime.now().strftime("%Y-%m-%d %H:%M")
+    safe_title = " ".join(title.split()).replace('"', "'")[:100]
+
+    for video_url in article.get("videos") or []:
+        content = content.replace(f"[MEDIA_VIDEO_URL:{video_url}]", f"🎞️ [视频]({video_url})")
+
+    return f"""---
+title: "{safe_title}"
+tags: []
+源: "{url}"
+作者主页: "{profile_url}"
+创建时间: "{created}"
+发布时间: "{published}"
+平台: "Twitter/X"
+类别: "[[剪报]]"
+阅读状态: false
+整理: false
+---
+
+# {title}
+
+> 作者：{author}
+> 原文：{url}
+
+{content}
+"""
+
+
+def handle_profile_capture_save(data: dict, cfg: dict) -> dict:
+    mode = str(data.get("mode") or "tweets").strip()
+    profile = data.get("profile") if isinstance(data.get("profile"), dict) else {}
+    handle = normalize_profile_handle(profile.get("handle", ""))
+    force_full = bool(data.get("force_full"))
+    items = data.get("items") if isinstance(data.get("items"), list) else []
+    range_label = str(data.get("range_label") or "").strip()
+
+    target_dir = resolve_profile_capture_dir(cfg, profile)
+    os.makedirs(target_dir, exist_ok=True)
+
+    state = load_profile_capture_state()
+    bucket = get_profile_state_bucket(state, handle)
+    saved_files: list[str] = []
+    skipped = 0
+
+    if mode == "articles":
+        article_state = bucket.setdefault("articles", {"captured_urls": {}})
+        captured_urls = article_state.setdefault("captured_urls", {})
+        for article in items:
+            if not isinstance(article, dict):
+                continue
+            url = normalize_article_url(article.get("url") or article.get("article_url") or "")
+            if not url:
+                continue
+            if not force_full and url in captured_urls:
+                skipped += 1
+                continue
+            article["url"] = url
+            date_key = profile_date_key(article.get("published", ""))
+            title = str(article.get("article_title") or article.get("title") or "Untitled").strip()
+            filename = sanitize_filename(f"{profile_author_label(profile)}文章{date_key}_{title}", 120) or f"文章{date_key}"
+            filepath = os.path.join(target_dir, filename + ".md")
+            if os.path.exists(filepath) and not force_full:
+                ts = datetime.now().strftime("%H%M%S")
+                filepath = os.path.join(target_dir, f"{filename}_{ts}.md")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(build_profile_article_markdown(article, profile))
+            saved_files.append(filepath)
+            captured_urls[url] = {
+                "published": article.get("published", ""),
+                "title": title,
+                "saved_at": datetime.now().isoformat(timespec="seconds"),
+                "file": filepath,
+            }
+        article_state["last_captured_at"] = datetime.now().isoformat(timespec="seconds")
+        save_profile_capture_state(state)
+        return {"success": True, "saved": saved_files, "skipped": skipped, "target_dir": target_dir}
+
+    tweet_state = bucket.setdefault("tweets", {"captured_ids": {}, "daily": {}})
+    captured_ids = tweet_state.setdefault("captured_ids", {})
+    daily_state = tweet_state.setdefault("daily", {})
+    unique: dict[str, dict] = {}
+    for tweet in items:
+        if not isinstance(tweet, dict):
+            continue
+        tweet_id = str(tweet.get("tweet_id") or extract_status_id(tweet.get("url", "")) or "").strip()
+        if not tweet_id:
+            continue
+        if tweet_id not in unique:
+            tweet["tweet_id"] = tweet_id
+            unique[tweet_id] = tweet
+
+    new_tweets = []
+    for tweet_id, tweet in unique.items():
+        if not force_full and tweet_id in captured_ids:
+            skipped += 1
+            continue
+        new_tweets.append(tweet)
+
+    grouped: dict[str, list[dict]] = {}
+    for tweet in new_tweets:
+        grouped.setdefault(profile_date_key(tweet.get("published", "")), []).append(tweet)
+
+    for date_key, tweets in grouped.items():
+        tweets.sort(
+            key=lambda tw: parse_twitter_datetime(tw.get("published", "")) or datetime.fromtimestamp(0).astimezone(),
+            reverse=True,
+        )
+        filename = sanitize_filename(f"{profile_author_label(profile)}推文{date_key}", 100) or f"推文{date_key}"
+        filepath = os.path.join(target_dir, filename + ".md")
+        entries = [build_profile_tweet_entry(tweet) for tweet in tweets]
+        day_bucket = daily_state.setdefault(date_key, {})
+        tweet_datetimes = [parse_twitter_datetime(tw.get("published", "")) for tw in tweets]
+        tweet_datetimes = [dt for dt in tweet_datetimes if dt]
+        newest = max(tweet_datetimes) if tweet_datetimes else None
+        previous_latest = parse_twitter_datetime(day_bucket.get("latest_published", ""))
+        prepend = not previous_latest or (newest and newest > previous_latest)
+        write_profile_daily_file(
+            filepath,
+            build_profile_daily_header(profile, date_key, range_label),
+            entries,
+            prepend=prepend,
+            overwrite=force_full,
+        )
+        saved_files.append(filepath)
+
+        for tweet in tweets:
+            tweet_id = tweet.get("tweet_id")
+            captured_ids[tweet_id] = {
+                "published": tweet.get("published", ""),
+                "url": tweet.get("url", ""),
+                "saved_at": datetime.now().isoformat(timespec="seconds"),
+                "file": filepath,
+            }
+        published_values = [tw.get("published", "") for tw in tweets]
+        all_for_day = [
+            item.get("published", "")
+            for item in captured_ids.values()
+            if isinstance(item, dict) and item.get("file") == filepath
+        ]
+        combined = [v for v in [*published_values, *all_for_day] if v]
+        parsed = [parse_twitter_datetime(v) for v in combined]
+        parsed = [v for v in parsed if v]
+        if parsed:
+            day_bucket["latest_published"] = max(parsed).isoformat()
+            day_bucket["earliest_published"] = min(parsed).isoformat()
+        day_bucket["file"] = filepath
+
+    tweet_state["last_captured_at"] = datetime.now().isoformat(timespec="seconds")
+    save_profile_capture_state(state)
+    return {"success": True, "saved": saved_files, "skipped": skipped, "target_dir": target_dir}
 
 
 def build_markdown(data: dict, cfg: dict) -> tuple[str, str]:
@@ -469,12 +881,19 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.5"})
+            self._respond(200, {"status": "ok", "version": "1.1.6"})
 
         elif path == "/config":
             # 返回当前配置
             cfg = load_config()
             self._respond(200, cfg)
+
+        elif path == "/profile-capture/state":
+            query = parse_qs(urlparse(self.path).query)
+            handle = normalize_profile_handle((query.get("handle") or [""])[0])
+            state = load_profile_capture_state()
+            bucket = get_profile_state_bucket(state, handle) if handle else {}
+            self._respond(200, {"success": True, "handle": handle, "state": bucket})
 
         else:
             self._respond(404, {"error": "Not Found"})
@@ -493,6 +912,8 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/save":
             self._handle_save(data)
+        elif path == "/profile-capture":
+            self._handle_profile_capture(data)
         elif path == "/config":
             self._handle_config_update(data)
         else:
@@ -544,6 +965,16 @@ class X2MDHandler(BaseHTTPRequestHandler):
             })
         else:
             self._respond(500, {"success": False, "errors": errors})
+
+    def _handle_profile_capture(self, data: dict):
+        """批量保存 X 博主推文/文章。"""
+        cfg = load_config()
+        try:
+            result = handle_profile_capture_save(data, cfg)
+            self._respond(200, result)
+        except Exception as e:
+            logger.error(f"博主批量抓取保存失败：{e}")
+            self._respond(500, {"success": False, "error": str(e)})
 
     def _handle_config_update(self, data: dict):
         """更新配置"""

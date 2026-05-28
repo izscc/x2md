@@ -824,10 +824,88 @@ function applyCustomSavePathSelection(data, config) {
     return nextData;
 }
 
+async function enrichProfileTweetForBatch(tweetData) {
+    let data = await fetchFullTweetData(tweetData || {});
+    data = applyTranslationOverrideToData(data);
+    return {
+        ...data,
+        type: "tweet",
+        tweet_id: data.tweet_id || String(data.url || "").match(/\/status\/(\d+)/)?.[1] || "",
+    };
+}
+
+async function fetchProfileArticleForBatch(articleData = {}) {
+    const articleUrl = normalizeArticleUrl(articleData.url || articleData.article_url || "");
+    if (!articleUrl) return null;
+    const noteResult = await fetchNoteContent(articleUrl);
+    if (!noteResult || !noteResult.content) {
+        return null;
+    }
+    return {
+        ...articleData,
+        type: "article",
+        url: articleUrl,
+        article_title: noteResult.title || articleData.article_title || articleData.title || "Untitled",
+        article_content: noteResult.content,
+        text: noteResult.plainText || "",
+        images: noteResult.images || [],
+        videos: noteResult.videos || [],
+        published: articleData.published || "",
+    };
+}
+
+async function postProfileCapturePayload(payload) {
+    const resp = await fetch(`${SERVER_BASE}/profile-capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    return await resp.json();
+}
+
 // ─────────────────────────────────────────────
 // 消息处理
 // ─────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+
+    if (message.action === "batch_profile_capture") {
+        (async () => {
+            try {
+                const payload = message.data || {};
+                const mode = payload.mode === "articles" ? "articles" : "tweets";
+                const rawItems = Array.isArray(payload.items) ? payload.items : [];
+                const items = [];
+
+                if (mode === "articles") {
+                    for (const item of rawItems) {
+                        const article = await fetchProfileArticleForBatch(item);
+                        if (article) items.push(article);
+                    }
+                } else {
+                    for (const item of rawItems) {
+                        items.push(await enrichProfileTweetForBatch(item));
+                    }
+                }
+
+                const result = await postProfileCapturePayload({
+                    ...payload,
+                    mode,
+                    items,
+                });
+                sendResponse({ success: result.success !== false, result, enriched_count: items.length });
+            } catch (err) {
+                console.error("[x2md] 博主批量抓取失败：", err);
+                sendResponse({ success: false, error: err.message || String(err) });
+            }
+        })();
+        return true;
+    }
+
+    if (message.action === "open_options") {
+        chrome.runtime.openOptionsPage();
+        sendResponse({ success: true });
+        return false;
+    }
 
     if (message.action === "save_tweet") {
         (async () => {

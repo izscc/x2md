@@ -445,6 +445,52 @@
             </div>
         </div>
 
+        <!-- X 博主批量抓取 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🐾</div>
+                <div>
+                    <h2>X 博主批量抓取</h2>
+                    <p>在博主主页菜单栏显示猫爪按钮，按时间范围批量保存原创推文或 Articles 长文</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-label">显示猫爪按钮</div>
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <input type="checkbox" id="showXProfileCaptureButton"
+                            style="width:16px; height:16px; cursor:pointer;" checked />
+                        <label for="showXProfileCaptureButton"
+                            style="margin-left: 8px; font-size:13px; cursor:pointer;">在 X 博主主页 / Articles 页面显示批量抓取菜单</label>
+                    </div>
+                </div>
+                <div class="section-divider"></div>
+                <div class="form-row">
+                    <div class="form-label">推文时间范围</div>
+                    <div style="flex:1; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <select class="form-input" id="profileCaptureRange" style="width:160px;">
+                            <option value="today">当日</option>
+                            <option value="month">当月</option>
+                            <option value="all">全部</option>
+                            <option value="days">自定义天数</option>
+                        </select>
+                        <input class="form-input" type="number" id="profileCaptureDays" min="1" max="3650"
+                            placeholder="7" style="width:100px;" />
+                        <span class="form-hint" style="margin:0;">选择“自定义天数”时生效</span>
+                    </div>
+                </div>
+                <div class="section-divider"></div>
+                <div class="form-row">
+                    <div class="form-label">批量保存路径</div>
+                    <div style="flex:1">
+                        <input class="form-input" type="text" id="profileCaptureSavePath"
+                            placeholder="留空则使用主保存路径，并自动建立博主子目录" style="width:100%" />
+                        <div class="form-hint">最终会在该路径下自动建立“博主昵称/handle”子目录；留空时使用第一个主保存路径。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 服务设置 -->
         <div class="card">
             <div class="card-header">
