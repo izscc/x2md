@@ -192,7 +192,11 @@ test("extractArticleMarkdown keeps X article copy-button code blocks", () => {
         style: { display: "block" },
         children: [
             elementNode("button", {
-                children: [textNode("复制到剪贴板")],
+                attrs: { "aria-label": "复制到剪贴板" },
+                children: [],
+            }),
+            elementNode("div", {
+                children: [textNode("text")],
             }),
             elementNode("div", {
                 children: [textNode("npm i -g openskills")],

@@ -256,11 +256,12 @@ async function fetchNoteContent(articleUrl) {
                                     || document.querySelector('h1');
                                 const title = titleEl ? titleEl.innerText.trim() : document.title.replace(/\s*[-|]\s*X\s*$/, '').trim();
 
+                                const extractionContainer = container.closest("article") || container;
                                 let contentStr = "";
                                 try {
-                                    contentStr = extractArticleMarkdown(container);
+                                    contentStr = extractArticleMarkdown(extractionContainer);
                                 } catch (e) {
-                                    contentStr = container.innerText || "";
+                                    contentStr = extractionContainer.innerText || "";
                                 }
 
                                 function normalizeArticleImageUrl(src) {
@@ -838,6 +839,62 @@ function buildCopyPayloadFromNoteResult(noteResult, fallbackTitle = "") {
     return { text, markdown };
 }
 
+function hasMarkdownCodeFence(content) {
+    return /```[\s\S]*?```/.test(String(content || ""));
+}
+
+function extractMarkdownCodeFences(content) {
+    return Array.from(String(content || "").matchAll(/```[\s\S]*?```/g), (match) => match[0]);
+}
+
+function mergeMissingCodeFences(content, sourceContent) {
+    let merged = String(content || "");
+    for (const fence of extractMarkdownCodeFences(sourceContent)) {
+        if (merged.includes(fence)) continue;
+        const firstCodeLine = fence.split("\n").find((line, index) => index > 0 && line.trim() && line.trim() !== "```") || "";
+        if (firstCodeLine && merged.includes(firstCodeLine.trim())) continue;
+        merged = `${merged.trim()}\n\n${fence}`.trim();
+    }
+    return merged;
+}
+
+async function enrichArticleContentFromStatusApi(data = {}) {
+    if (data.type !== "article" || !String(data.url || "").includes("/status/")) return data;
+    try {
+        const apiData = await fetchFullTweetData({
+            ...data,
+            type: "tweet",
+            url: data.url,
+        });
+        const apiArticle = apiData.x_article_api;
+        if (!apiArticle?.content) return data;
+
+        const currentContent = String(data.article_content || data.content || "").trim();
+        const apiContent = String(apiArticle.content || "").trim();
+        const shouldPreferApi =
+            !currentContent ||
+            (!hasMarkdownCodeFence(currentContent) && hasMarkdownCodeFence(apiContent)) ||
+            apiContent.length > currentContent.length * 1.15;
+
+        const nextContent = shouldPreferApi
+            ? apiContent
+            : mergeMissingCodeFences(currentContent, apiContent);
+
+        return {
+            ...data,
+            article_title: apiArticle.title || data.article_title || data.title || "Untitled",
+            article_content: nextContent,
+            images: Array.from(new Set([...(data.images || []), ...(apiArticle.images || []), ...(apiData.images || [])])),
+            image_alt_texts: mergeImageAltTextMaps(data.image_alt_texts, apiData.image_alt_texts, apiArticle.image_alt_texts),
+            videos: Array.from(new Set([...(data.videos || []), ...(apiArticle.videos || []), ...(apiData.videos || [])])),
+            published: apiArticle.published || data.published || apiData.published || "",
+        };
+    } catch (error) {
+        console.warn("[x2md] Article 接口补全失败，保留当前页面提取结果：", error);
+        return data;
+    }
+}
+
 async function resolveCopyContentText(copyData = {}) {
     let articleUrl = normalizeArticleUrl(copyData.note_article_url || copyData.article_url || "");
     let enrichedData = copyData;
@@ -1099,7 +1156,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     }
                 }
 
+                data = await enrichArticleContentFromStatusApi(data);
+                const articleContentBeforeTranslation = String(data.article_content || data.content || "");
                 data = applyTranslationOverrideToData(data);
+                if (data.type === "article" && articleContentBeforeTranslation) {
+                    data.article_content = mergeMissingCodeFences(data.article_content || data.content || "", articleContentBeforeTranslation);
+                }
 
                 // --------- 统一填补长文专栏中的遗留视频占位符 ---------
                 let contentToFix = data.article_content || data.content || "";

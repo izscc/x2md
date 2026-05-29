@@ -7,7 +7,7 @@
         "css", "csv", "diff", "dockerfile", "elixir", "fish", "f#", "go", "graphql", "haskell",
         "html", "ini", "java", "javascript", "json", "json5", "jsx", "kotlin", "less", "lua",
         "makefile", "markdown", "md", "mermaid", "objc", "objective-c", "patch", "perl", "php",
-        "plaintext", "powershell", "ps1", "py", "python", "rb", "ruby", "rs", "rust", "scss",
+        "plaintext", "text", "powershell", "ps1", "py", "python", "rb", "ruby", "rs", "rust", "scss",
         "sh", "shell", "sql", "svg", "swift", "toml", "ts", "tsx", "typescript", "txt", "xml",
         "yaml", "yml", "zsh",
     ]);
@@ -210,28 +210,36 @@
         if (node.nodeType !== 1) return "";
         const tag = getTagName(node);
         if (tag === "button" || tag === "svg") return "";
-        return Array.from(node.childNodes || [])
+        const parts = Array.from(node.childNodes || [])
             .map(collectTextWithoutButtons)
-            .join("");
+            .filter((part) => part !== "");
+        return ["div", "p", "pre", "section", "article"].includes(tag) ? parts.join("\n") : parts.join("");
     }
 
     function extractTwitterArticleCodeBlockMarkdown(element) {
-        const text = getNodeText(element).trim();
-        if (!/^(复制到剪贴板|Copy code|Copy to clipboard)/i.test(text)) return "";
-
         let hasCopyButton = false;
         walkElementTree(element, (node) => {
             if (hasCopyButton || getTagName(node) !== "button") return;
             const label = getNodeText(node).trim();
-            hasCopyButton = /^(复制到剪贴板|Copy code|Copy to clipboard)$/i.test(label);
+            const ariaLabel = safeGetAttribute(node, "aria-label") || "";
+            hasCopyButton = !label ||
+                /^(复制到剪贴板|Copy code|Copy to clipboard)$/i.test(label) ||
+                /^(复制到剪贴板|Copy code|Copy to clipboard)$/i.test(ariaLabel);
         });
         if (!hasCopyButton) return "";
 
-        const code = collectTextWithoutButtons(element)
+        const rawText = collectTextWithoutButtons(element)
             .replace(/^(复制到剪贴板|Copy code|Copy to clipboard)\s*/i, "")
             .replace(/\u200b/g, "")
             .trimEnd();
-        return code ? formatCodeFence(code) : "";
+        const lines = rawText.split("\n").map((line) => line.trimEnd());
+        if (lines.length < 2) return "";
+
+        const firstLine = lines[0].trim().toLowerCase();
+        const firstLineIsLanguage = CODE_LANGUAGE_LABELS.has(firstLine);
+        const code = firstLineIsLanguage ? lines.slice(1).join("\n").trimEnd() : rawText;
+        const language = firstLineIsLanguage && firstLine !== "text" ? firstLine : "";
+        return code ? formatCodeFence(code, language) : "";
     }
 
     function normalizeCodeLanguageLabel(node) {

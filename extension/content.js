@@ -332,15 +332,16 @@ function detectAndExtractArticle() {
 
     if (!bodyContainer) return null; // 无法定位专有正文容器时直接放弃，让背景去真实页面解析
 
+    const extractionContainer = bodyContainer.closest?.("article, [role='article']") || bodyContainer;
     let article_content = "";
     try {
-        article_content = extractArticleMarkdown(bodyContainer);
+        article_content = extractArticleMarkdown(extractionContainer);
         if (!article_content) {
-            article_content = bodyContainer.innerText.trim().slice(0, 5000);
+            article_content = extractionContainer.innerText.trim().slice(0, 5000);
         }
     } catch (e) {
         console.error("[x2md] DFS提取失败: ", e);
-        article_content = bodyContainer.innerText.trim().slice(0, 5000);
+        article_content = extractionContainer.innerText.trim().slice(0, 5000);
     }
 
     // ── 源 URL：Note 页面 → 找关联的 /status/ 链接 ─
