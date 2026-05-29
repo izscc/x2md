@@ -263,6 +263,43 @@ async function fetchNoteContent(articleUrl) {
                                     contentStr = container.innerText || "";
                                 }
 
+                                function normalizeArticleImageUrl(src) {
+                                    if (!src || !String(src).includes("pbs.twimg.com")) return "";
+                                    if (String(src).includes("profile_images") || String(src).includes("emoji")) return "";
+                                    try {
+                                        const url = new URL(src);
+                                        url.searchParams.set("name", "orig");
+                                        return url.href;
+                                    } catch (error) {
+                                        return src;
+                                    }
+                                }
+
+                                function collectArticleImages(root) {
+                                    const urls = [];
+                                    const seen = new Set();
+                                    const scope = root || document;
+                                    scope.querySelectorAll("img").forEach(img => {
+                                        if (img.closest('[data-testid="videoComponent"]')) return;
+                                        const candidates = [img.currentSrc, img.src, img.getAttribute("src")].filter(Boolean);
+                                        const srcset = img.getAttribute("srcset") || "";
+                                        if (srcset) {
+                                            candidates.push(...srcset.split(",").map(part => part.trim().split(/\s+/)[0]).filter(Boolean));
+                                        }
+                                        for (const candidate of candidates) {
+                                            if (String(candidate).includes("video_thumb")) continue;
+                                            const normalized = normalizeArticleImageUrl(candidate);
+                                            if (!normalized || seen.has(normalized)) continue;
+                                            seen.add(normalized);
+                                            urls.push(normalized);
+                                        }
+                                    });
+                                    return urls;
+                                }
+
+                                const mediaScope = container.closest("article") || container;
+                                const articleImages = collectArticleImages(mediaScope);
+
                                 // ── 提取页面内所有的 MP4 真实链接并按 ID 分组求最高清 ──
                                 const allMp4s = document.documentElement.innerHTML.match(/https?:\/\/video\.twimg\.com\/[^"'\s\\]+?\.mp4(?:\?tag=\d+)?/g) || [];
                                 const cleanMp4s = allMp4s.map(url => url.replace(/\\/g, ''));
@@ -298,24 +335,36 @@ async function fetchNoteContent(articleUrl) {
 
                                 const finalVideos = Array.from(new Set(extractedVideos));
 
-                                // ── 封面图补充（如有则放顶部） ─────────────────────────────
+                                // ── 图片兜底：status 页面里的文章图片有时不在 richText 容器内 ────────
+                                const imageSet = new Set(articleImages);
                                 let coverImg = "";
                                 document.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
                                     if (img.closest('[data-testid="simpleTweet"]')) return;
-                                    const src = img.src || '';
-                                    if (src && src.includes('pbs.twimg.com') && !src.includes('profile_images')) {
-                                        const u = new URL(src);
-                                        u.searchParams.set('name', 'orig');
-                                        if (!contentStr.includes(u.href)) coverImg += `![](${u.href})\n\n`;
+                                    const imageUrl = normalizeArticleImageUrl(img.currentSrc || img.src || img.getAttribute("src") || "");
+                                    if (!imageUrl) return;
+                                    imageSet.add(imageUrl);
+                                    const bareUrl = imageUrl.split("?")[0];
+                                    if (!contentStr.includes(imageUrl) && !contentStr.includes(bareUrl)) {
+                                        coverImg += `![](${imageUrl})\n\n`;
                                     }
                                 });
+
+                                const finalImages = Array.from(imageSet);
+                                const existingMarkdown = coverImg + contentStr;
+                                const missingImages = finalImages.filter(imageUrl => {
+                                    const bareUrl = imageUrl.split("?")[0];
+                                    return !existingMarkdown.includes(imageUrl) && !existingMarkdown.includes(bareUrl);
+                                });
+                                if (missingImages.length > 0) {
+                                    contentStr = `${contentStr.trim()}\n\n${missingImages.map(url => `![](${url})`).join("\n\n")}`.trim();
+                                }
 
                                 const plainText = [title, container.innerText || ""]
                                     .map((part) => String(part || "").trim())
                                     .filter(Boolean)
                                     .join("\n\n");
 
-                                return { title, content: coverImg + contentStr, plainText, images: [], videos: finalVideos }; // 放开视频包裹以并入 payload
+                                return { title, content: coverImg + contentStr, plainText, images: finalImages, videos: finalVideos }; // 放开视频包裹以并入 payload
                             },
                         },
                         (results) => {
@@ -747,6 +796,21 @@ function normalizeArticleUrl(url) {
     return String(url || "").replace("twitter.com", "x.com");
 }
 
+function normalizeArticleToStatusUrl(url) {
+    const normalized = normalizeArticleUrl(url).split("?")[0].replace(/\/$/, "");
+    const match = normalized.match(/^https?:\/\/x\.com\/([^/]+)\/article\/(\d+)$/i);
+    if (!match) return "";
+    return `https://x.com/${match[1]}/status/${match[2]}`;
+}
+
+function isXArticleUrl(url) {
+    return /\/(?:i\/article|[^/]+\/article)\/\d+(?:$|[?#/])/.test(String(url || ""));
+}
+
+function isXStatusUrl(url) {
+    return /\/status\/\d+(?:$|[?#/])/.test(String(url || ""));
+}
+
 function extractArticleUrlFromText(text) {
     const match = String(text || "").match(/https?:\/\/(?:x|twitter)\.com\/(?:i\/article|[^/]+\/article)\/\d+/i);
     return match ? normalizeArticleUrl(match[0]) : "";
@@ -781,9 +845,10 @@ async function resolveCopyContentText(copyData = {}) {
     }
 
     if (articleUrl) {
-        const noteResult = await fetchNoteContent(articleUrl);
+        const statusUrl = normalizeArticleToStatusUrl(articleUrl);
+        const noteResult = (statusUrl ? await fetchNoteContent(statusUrl) : null) || await fetchNoteContent(articleUrl);
         const payload = buildCopyPayloadFromNoteResult(noteResult, enrichedData.text || copyData.text || "");
-        if (payload?.text) return { ...payload, source: "x_article", articleUrl };
+        if (payload?.text) return { ...payload, source: "x_article", articleUrl, statusUrl };
     }
 
     const text = String(enrichedData.text || copyData.text || "").trim();
@@ -837,35 +902,39 @@ async function enrichProfileTweetForBatch(tweetData) {
 async function fetchProfileArticleForBatch(articleData = {}) {
     const rawArticleUrl = normalizeArticleUrl(articleData.article_url || "");
     const rawUrl = normalizeArticleUrl(articleData.url || "");
-    let articleUrl = rawArticleUrl || (rawUrl.includes("/article/") ? rawUrl : "");
-    const sourceTweetUrl = normalizeArticleUrl(
+    let articleUrl = rawArticleUrl || (isXArticleUrl(rawUrl) ? rawUrl : "");
+    const statusFromArticle = normalizeArticleToStatusUrl(articleUrl || rawUrl);
+    let sourceTweetUrl = normalizeArticleUrl(
         articleData.tweet_url ||
         articleData.status_url ||
-        (rawUrl.includes("/status/") ? rawUrl : "")
+        (isXStatusUrl(rawUrl) ? rawUrl : "") ||
+        statusFromArticle
     );
     let enrichedData = articleData;
 
-    if (!articleUrl && sourceTweetUrl) {
+    if (sourceTweetUrl) {
         enrichedData = await fetchFullTweetData({
             ...articleData,
             type: "tweet",
             url: sourceTweetUrl,
         });
-        articleUrl = extractArticleUrlFromText(enrichedData.text);
+        articleUrl = articleUrl || extractArticleUrlFromText(enrichedData.text);
     }
 
-    let noteResult = articleUrl ? await fetchNoteContent(articleUrl) : null;
-    if ((!noteResult || !noteResult.content) && sourceTweetUrl) {
-        noteResult = await fetchNoteContent(sourceTweetUrl);
+    // X 的 /article/ 页面经常缺少完整媒体上下文；优先用对应 /status/ 页面提取。
+    let noteResult = sourceTweetUrl ? await fetchNoteContent(sourceTweetUrl) : null;
+    if ((!noteResult || !noteResult.content) && articleUrl) {
+        noteResult = await fetchNoteContent(articleUrl);
     }
     if (!noteResult || !noteResult.content) {
         return null;
     }
-    const finalUrl = articleUrl || sourceTweetUrl;
+    const finalUrl = sourceTweetUrl || articleUrl;
     return {
         ...enrichedData,
         type: "article",
         url: finalUrl,
+        article_url: articleUrl || rawArticleUrl || "",
         source_tweet_url: sourceTweetUrl,
         article_title: noteResult.title || enrichedData.article_title || enrichedData.title || "Untitled",
         article_content: noteResult.content,
@@ -941,11 +1010,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     // 【关键修复】即使是解析长文，也必须对母推文本身调用 GraphQL 获取其自带的高清视频或原图，防止富媒体遗失！
                     let enrichedData = await fetchFullTweetData(data);
 
-                    const noteResult = await fetchNoteContent(data.note_article_url);
+                    const noteStatusUrl = normalizeArticleToStatusUrl(data.note_article_url);
+                    const noteResult = (noteStatusUrl ? await fetchNoteContent(noteStatusUrl) : null) || await fetchNoteContent(data.note_article_url);
                     if (noteResult && noteResult.content) {
                         // 剔除已被内联插入成功的外联原图，其余在数组末尾透传以防丢失
                         const mergedImages = [];
-                        for (const img of (enrichedData.images || [])) {
+                        for (const img of [...(enrichedData.images || []), ...(noteResult.images || [])]) {
                             const cleanImg = img.split('?')[0];
                             if (!noteResult.content.includes(cleanImg)) {
                                 mergedImages.push(img);
@@ -956,7 +1026,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             type: "article",
                             article_title: noteResult.title || enrichedData.text?.slice(0, 50) || "Note",
                             article_content: noteResult.content,
-                            images: mergedImages,
+                            images: Array.from(new Set(mergedImages)),
                             image_alt_texts: mergeImageAltTextMaps(data.image_alt_texts, enrichedData.image_alt_texts, noteResult.image_alt_texts),
                             url: enrichedData.url,  // 保留 /status/ 链接作为源
                         };
@@ -980,11 +1050,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         const articleUrl = articleMatch[0].replace("twitter.com", "x.com");
                         console.log("[x2md] 在推文提取文本中发现长文(Note)链接，切换提取模式：", articleUrl);
 
-                        const noteResult = await fetchNoteContent(articleUrl);
+                        const articleStatusUrl = normalizeArticleToStatusUrl(articleUrl);
+                        const noteResult = (articleStatusUrl ? await fetchNoteContent(articleStatusUrl) : null) || await fetchNoteContent(articleUrl);
                         if (noteResult && noteResult.content) {
                             // 同样去除已被内联插入的长文明图
                             const mergedImages = [];
-                            for (const img of (data.images || [])) {
+                            for (const img of [...(data.images || []), ...(noteResult.images || [])]) {
                                 const cleanImg = img.split('?')[0];
                                 if (!noteResult.content.includes(cleanImg)) {
                                     mergedImages.push(img);
@@ -1007,7 +1078,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 // 如果 noteResult.title 不存在或为空，则采用推文原始内容的首行作为备用标题，避免生成带 untitled 名称的文件
                                 article_title: noteResult.title || (data.text ? data.text.trim().split('\n')[0].replace(/https?:\/\/\S+/g, '').replace(/[\n\t]/g, '').slice(0, 50).trim() : "Untitled"),
                                 article_content: prefix + noteResult.content,
-                                images: mergedImages,
+                                images: Array.from(new Set(mergedImages)),
                                 image_alt_texts: mergeImageAltTextMaps(data.image_alt_texts, noteResult.image_alt_texts),
                             };
                         } else {

@@ -485,6 +485,18 @@ def build_profile_article_markdown(article: dict, profile: dict) -> str:
     for video_url in article.get("videos") or []:
         content = content.replace(f"[MEDIA_VIDEO_URL:{video_url}]", f"🎞️ [视频]({video_url})")
 
+    image_lines = []
+    for image_url in article.get("images") or []:
+        normalized_image_url = normalize_image_url(str(image_url).strip())
+        if not normalized_image_url:
+            continue
+        bare_image_url = normalized_image_url.split("?")[0]
+        if normalized_image_url in content or bare_image_url in content:
+            continue
+        image_lines.append(f"![]({normalized_image_url})")
+    if image_lines:
+        content = content.rstrip() + "\n\n" + "\n\n".join(dict.fromkeys(image_lines))
+
     return f"""---
 title: "{safe_title}"
 tags: []
@@ -881,7 +893,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.8"})
+            self._respond(200, {"status": "ok", "version": "1.1.9"})
 
         elif path == "/config":
             # 返回当前配置

@@ -77,7 +77,11 @@ class ProfileCaptureTests(unittest.TestCase):
                     "url": "https://x.com/alice/article/123",
                     "published": "2026-05-28T08:00:00Z",
                     "article_title": "Long Note",
-                    "article_content": "body",
+                    "article_content": "body\n\n![](https://pbs.twimg.com/media/existing.jpg?format=jpg&name=orig)",
+                    "images": [
+                        "https://pbs.twimg.com/media/existing.jpg?format=jpg&name=small",
+                        "https://pbs.twimg.com/media/new.jpg?format=jpg&name=small",
+                    ],
                 }
             ],
         }
@@ -89,6 +93,8 @@ class ProfileCaptureTests(unittest.TestCase):
             content = f.read()
         self.assertIn("# Long Note", content)
         self.assertIn("body", content)
+        self.assertEqual(content.count("existing.jpg"), 1)
+        self.assertIn("https://pbs.twimg.com/media/new.jpg?format=jpg&name=orig", content)
 
 
 if __name__ == "__main__":
