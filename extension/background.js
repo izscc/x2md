@@ -256,7 +256,7 @@ async function fetchNoteContent(articleUrl) {
                                     || document.querySelector('h1');
                                 const title = titleEl ? titleEl.innerText.trim() : document.title.replace(/\s*[-|]\s*X\s*$/, '').trim();
 
-                                const extractionContainer = container.closest("article") || container;
+                                const extractionContainer = container;
                                 let contentStr = "";
                                 try {
                                     contentStr = extractArticleMarkdown(extractionContainer);
@@ -298,8 +298,7 @@ async function fetchNoteContent(articleUrl) {
                                     return urls;
                                 }
 
-                                const mediaScope = container.closest("article") || container;
-                                const articleImages = collectArticleImages(mediaScope);
+                                const articleImages = collectArticleImages(container);
 
                                 // ── 提取页面内所有的 MP4 真实链接并按 ID 分组求最高清 ──
                                 const allMp4s = document.documentElement.innerHTML.match(/https?:\/\/video\.twimg\.com\/[^"'\s\\]+?\.mp4(?:\?tag=\d+)?/g) || [];
@@ -336,22 +335,9 @@ async function fetchNoteContent(articleUrl) {
 
                                 const finalVideos = Array.from(new Set(extractedVideos));
 
-                                // ── 图片兜底：status 页面里的文章图片有时不在 richText 容器内 ────────
-                                const imageSet = new Set(articleImages);
-                                let coverImg = "";
-                                document.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
-                                    if (img.closest('[data-testid="simpleTweet"]')) return;
-                                    const imageUrl = normalizeArticleImageUrl(img.currentSrc || img.src || img.getAttribute("src") || "");
-                                    if (!imageUrl) return;
-                                    imageSet.add(imageUrl);
-                                    const bareUrl = imageUrl.split("?")[0];
-                                    if (!contentStr.includes(imageUrl) && !contentStr.includes(bareUrl)) {
-                                        coverImg += `![](${imageUrl})\n\n`;
-                                    }
-                                });
-
-                                const finalImages = Array.from(imageSet);
-                                const existingMarkdown = coverImg + contentStr;
+                                // 只允许正文容器内的图片作为兜底列表，避免把 status 卡片预览图整体前置。
+                                const finalImages = Array.from(new Set(articleImages));
+                                const existingMarkdown = contentStr;
                                 const missingImages = finalImages.filter(imageUrl => {
                                     const bareUrl = imageUrl.split("?")[0];
                                     return !existingMarkdown.includes(imageUrl) && !existingMarkdown.includes(bareUrl);
@@ -365,7 +351,7 @@ async function fetchNoteContent(articleUrl) {
                                     .filter(Boolean)
                                     .join("\n\n");
 
-                                return { title, content: coverImg + contentStr, plainText, images: finalImages, videos: finalVideos }; // 放开视频包裹以并入 payload
+                                return { title, content: contentStr, plainText, images: finalImages, videos: finalVideos }; // 放开视频包裹以并入 payload
                             },
                         },
                         (results) => {

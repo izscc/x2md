@@ -81,5 +81,31 @@ class ImageAltMarkdownTests(unittest.TestCase):
         self.assertIn("> ![](https://pbs.twimg.com/media/quote.jpg?name=orig)\n> ```\n> Quoted image description\n> ```", content)
 
 
+class ArticleImageOrderTests(unittest.TestCase):
+    def test_article_images_follow_existing_markdown_order_without_frontloading(self):
+        _, content = build_markdown({
+            "type": "article",
+            "article_title": "Article with images",
+            "article_content": (
+                "第一段\n\n"
+                "![](https://pbs.twimg.com/media/inline.jpg?format=jpg&name=orig)\n\n"
+                "第二段"
+            ),
+            "url": "https://x.com/a/status/1",
+            "handle": "@alice",
+            "images": [
+                "https://pbs.twimg.com/media/inline.jpg?format=jpg&name=small",
+                "https://pbs.twimg.com/media/missing.jpg?format=jpg&name=small",
+            ],
+        }, BASE_CFG)
+
+        body = content.split("---\n", 2)[-1].strip()
+        self.assertTrue(body.startswith("第一段"), body)
+        self.assertEqual(content.count("inline.jpg"), 1)
+        self.assertLess(content.index("第一段"), content.index("inline.jpg"))
+        self.assertLess(content.index("第二段"), content.index("missing.jpg"))
+        self.assertIn("![](https://pbs.twimg.com/media/missing.jpg?format=jpg&name=orig)", content)
+
+
 if __name__ == "__main__":
     unittest.main()

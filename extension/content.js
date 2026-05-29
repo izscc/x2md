@@ -332,7 +332,7 @@ function detectAndExtractArticle() {
 
     if (!bodyContainer) return null; // 无法定位专有正文容器时直接放弃，让背景去真实页面解析
 
-    const extractionContainer = bodyContainer.closest?.("article, [role='article']") || bodyContainer;
+    const extractionContainer = bodyContainer;
     let article_content = "";
     try {
         article_content = extractArticleMarkdown(extractionContainer);
@@ -413,31 +413,11 @@ function detectAndExtractArticle() {
     });
     const finalVideos = Array.from(new Set(extractedVideos));
 
-    // ── 封面图全局搜集附加 ──
-    // 很多文章的首图其实是在推文上方，或者是特定的 article-cover
-    let coverImg = "";
-    document.querySelectorAll('[data-testid="tweetPhoto"] img, img[alt="Article cover image"]').forEach(img => {
-        if (img.closest('[data-testid="simpleTweet"]')) return;
-        const src = img.src || '';
-        if (src && src.includes('pbs.twimg.com') && !src.includes('profile_images')) {
-            const cleanSrc = src.split('?')[0];
-            const u = new URL(src);
-            u.searchParams.set('name', 'orig');
-            if (!article_content.includes(cleanSrc) && !coverImg.includes(u.href)) {
-                const altFence = typeof formatImageAltFence === "function" ? formatImageAltFence(getMeaningfulAltText(img)) : "";
-                coverImg += `![](${u.href})${altFence}\n\n`;
-            }
-        }
-    });
-
-    article_content = coverImg + article_content;
-
-    // 从富文本层级以及整体推文获取图片比对去重（确保首字母/剩余插图不丢失图片）
+    // 只从长文正文容器补充未内联的图片。不要扫描整条推文卡片，
+    // 否则 status 页的预览/母贴图片会被挪到正文开头，破坏 Article 原始顺序。
     const extractedImages = [];
-    document.querySelectorAll('[data-testid="twitterArticleRichTextView"] img, img').forEach(img => {
+    bodyContainer.querySelectorAll('img').forEach(img => {
         const src = img.src || '';
-        const parent = img.closest('[data-testid="tweetPhoto"], [data-testid="article-cover-image"]');
-        if (parent) return; // 已经在封面中处理了
 
         if (src.includes('pbs.twimg.com') && !src.includes('profile_images') && !src.includes('emoji')) {
             const cleanImg = src.split('?')[0];
@@ -462,7 +442,7 @@ function detectAndExtractArticle() {
         article_title: articleTitle,
         article_content: article_content,
         images: extractedImages,
-        image_alt_texts: extractImageAltTexts(document),
+        image_alt_texts: extractImageAltTexts(bodyContainer),
         videos: finalVideos,
         graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
     };
