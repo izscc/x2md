@@ -2999,31 +2999,77 @@ async function scrollAndCollectProfileTweets(profile, options = {}) {
     return Array.from(collected.values());
 }
 
+function extractProfileArticleUrl(container) {
+    const links = container ? container.querySelectorAll('a[href*="/article/"]') : [];
+    for (const link of links) {
+        const href = link.getAttribute("href") || link.href || "";
+        const match = href.match(/\/(?:i\/article|[^/]+\/article)\/(\d+)(?:$|[?#])/);
+        if (match) return normalizeXUrl(new URL(href, location.origin).href);
+    }
+    return "";
+}
+
+function extractProfileArticleCardTitle(container, fallbackText = "") {
+    const lines = (container?.innerText || fallbackText || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    return lines.find((line) =>
+        !line.startsWith("@") &&
+        !/^(\d+[Kk万]?|·|Reply|Repost|Like|View|Download|回复|转发|喜欢|查看|显示更多|关注|正在关注)/.test(line)
+    ) || "";
+}
+
 function collectVisibleProfileArticles(profile) {
     const found = [];
     const seen = new Set();
+    const pushArticle = (articleData) => {
+        const key = articleData.article_url || articleData.tweet_url || articleData.url;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        found.push(articleData);
+    };
+
+    document.querySelectorAll('article[data-testid="tweet"], article[role="article"]').forEach((article) => {
+        if (isProfileRetweetArticle(article)) return;
+        const status = parseProfileStatusLink(article, profile.handle);
+        const directArticleUrl = extractProfileArticleUrl(article);
+        if (!status && !directArticleUrl) return;
+
+        const { author, handle } = extractAuthorBasic(article);
+        const articleHandle = handle || `@${profile.handle}`;
+        if (articleHandle.replace(/^@/, "").toLowerCase() !== profile.handle.toLowerCase()) return;
+
+        const timeEl = article.querySelector("time");
+        pushArticle({
+            type: "article",
+            url: directArticleUrl || status.url,
+            article_url: directArticleUrl,
+            tweet_url: status?.url || "",
+            tweet_id: status?.tweetId || "",
+            article_title: extractProfileArticleCardTitle(article),
+            author: author || profile.displayName || profile.handle,
+            handle: articleHandle,
+            author_url: profile.profileUrl,
+            published: timeEl?.getAttribute("datetime") || "",
+            graphql_operation_ids: extractDiscoveredGraphQLOperationIds(),
+        });
+    });
+
     document.querySelectorAll('a[href*="/article/"]').forEach((link) => {
         const href = link.getAttribute("href") || link.href || "";
         const match = href.match(/\/(?:i\/article|[^/]+\/article)\/(\d+)(?:$|[?#])/);
         if (!match) return;
         const url = normalizeXUrl(new URL(href, location.origin).href);
-        if (seen.has(url)) return;
-        seen.add(url);
+        if (!url) return;
         const card = link.closest('article, [data-testid="cellInnerDiv"]') || link.parentElement;
         const timeEl = card?.querySelector?.("time");
-        const lines = (card?.innerText || link.innerText || "")
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean);
-        const title = lines.find((line) =>
-            !line.startsWith("@") &&
-            !/^(\d+[Kk万]?|·|Reply|Repost|Like|View|回复|转发|喜欢|查看)/.test(line)
-        ) || "";
-        found.push({
+        pushArticle({
             type: "article",
             url,
             article_url: url,
-            article_title: title,
+            tweet_url: card ? (parseProfileStatusLink(card, profile.handle)?.url || "") : "",
+            article_title: extractProfileArticleCardTitle(card, link.innerText),
             author: profile.displayName || profile.handle,
             handle: `@${profile.handle}`,
             author_url: profile.profileUrl,

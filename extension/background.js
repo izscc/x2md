@@ -835,22 +835,44 @@ async function enrichProfileTweetForBatch(tweetData) {
 }
 
 async function fetchProfileArticleForBatch(articleData = {}) {
-    const articleUrl = normalizeArticleUrl(articleData.url || articleData.article_url || "");
-    if (!articleUrl) return null;
-    const noteResult = await fetchNoteContent(articleUrl);
+    const rawArticleUrl = normalizeArticleUrl(articleData.article_url || "");
+    const rawUrl = normalizeArticleUrl(articleData.url || "");
+    let articleUrl = rawArticleUrl || (rawUrl.includes("/article/") ? rawUrl : "");
+    const sourceTweetUrl = normalizeArticleUrl(
+        articleData.tweet_url ||
+        articleData.status_url ||
+        (rawUrl.includes("/status/") ? rawUrl : "")
+    );
+    let enrichedData = articleData;
+
+    if (!articleUrl && sourceTweetUrl) {
+        enrichedData = await fetchFullTweetData({
+            ...articleData,
+            type: "tweet",
+            url: sourceTweetUrl,
+        });
+        articleUrl = extractArticleUrlFromText(enrichedData.text);
+    }
+
+    let noteResult = articleUrl ? await fetchNoteContent(articleUrl) : null;
+    if ((!noteResult || !noteResult.content) && sourceTweetUrl) {
+        noteResult = await fetchNoteContent(sourceTweetUrl);
+    }
     if (!noteResult || !noteResult.content) {
         return null;
     }
+    const finalUrl = articleUrl || sourceTweetUrl;
     return {
-        ...articleData,
+        ...enrichedData,
         type: "article",
-        url: articleUrl,
-        article_title: noteResult.title || articleData.article_title || articleData.title || "Untitled",
+        url: finalUrl,
+        source_tweet_url: sourceTweetUrl,
+        article_title: noteResult.title || enrichedData.article_title || enrichedData.title || "Untitled",
         article_content: noteResult.content,
         text: noteResult.plainText || "",
         images: noteResult.images || [],
         videos: noteResult.videos || [],
-        published: articleData.published || "",
+        published: enrichedData.published || articleData.published || "",
     };
 }
 
