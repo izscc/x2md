@@ -829,6 +829,10 @@ function hasMarkdownCodeFence(content) {
     return /```[\s\S]*?```/.test(String(content || ""));
 }
 
+function countMarkdownImages(content) {
+    return Array.from(String(content || "").matchAll(/!\[[^\]]*\]\((https?:\/\/pbs\.twimg\.com\/media\/[^)]+)\)/g)).length;
+}
+
 function extractMarkdownCodeFences(content) {
     return Array.from(String(content || "").matchAll(/```[\s\S]*?```/g), (match) => match[0]);
 }
@@ -857,9 +861,12 @@ async function enrichArticleContentFromStatusApi(data = {}) {
 
         const currentContent = String(data.article_content || data.content || "").trim();
         const apiContent = String(apiArticle.content || "").trim();
+        const currentImageCount = countMarkdownImages(currentContent);
+        const apiImageCount = countMarkdownImages(apiContent);
         const shouldPreferApi =
             !currentContent ||
             (!hasMarkdownCodeFence(currentContent) && hasMarkdownCodeFence(apiContent)) ||
+            apiImageCount > currentImageCount ||
             apiContent.length > currentContent.length * 1.15;
 
         const nextContent = shouldPreferApi

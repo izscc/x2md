@@ -82,7 +82,7 @@ class ImageAltMarkdownTests(unittest.TestCase):
 
 
 class ArticleImageOrderTests(unittest.TestCase):
-    def test_article_images_follow_existing_markdown_order_without_frontloading(self):
+    def test_article_images_use_markdown_body_order_without_fallback_dump(self):
         _, content = build_markdown({
             "type": "article",
             "article_title": "Article with images",
@@ -103,8 +103,7 @@ class ArticleImageOrderTests(unittest.TestCase):
         self.assertTrue(body.startswith("第一段"), body)
         self.assertEqual(content.count("inline.jpg"), 1)
         self.assertLess(content.index("第一段"), content.index("inline.jpg"))
-        self.assertLess(content.index("第二段"), content.index("missing.jpg"))
-        self.assertIn("![](https://pbs.twimg.com/media/missing.jpg?format=jpg&name=orig)", content)
+        self.assertNotIn("missing.jpg", content)
 
 
 if __name__ == "__main__":

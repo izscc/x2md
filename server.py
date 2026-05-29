@@ -802,13 +802,6 @@ tags: []
             lines_list.append(">")
             lines_list.append(f"> 原文：{q_url}")
 
-    def content_has_image(content_text, img_url):
-        normalized = normalize_image_url(str(img_url or "").strip())
-        if not normalized:
-            return True
-        bare_url = normalized.split("?")[0]
-        return normalized in (content_text or "") or bare_url in (content_text or "")
-
     # [新增过滤器] 如果开启了视频下载，防重踢掉对应的占位图（封面）
     if download_video and videos:
         images = [img for img in images if "video_thumb" not in img]
@@ -824,24 +817,6 @@ tags: []
             lines.append(text_result)
 
         append_unused_videos(lines, text_result)
-
-        # X Article 的正文 Markdown 已经按页面顺序内联图片。
-        # images 只作为兜底：仅把正文里没有出现过的遗留图片补到末尾，避免整组图片被置顶并重复。
-        missing_images = []
-        seen_missing_images = set()
-        for img_url in images:
-            normalized_img_url = normalize_image_url(str(img_url or "").strip())
-            if not normalized_img_url or content_has_image(text_result, normalized_img_url):
-                continue
-            if normalized_img_url in seen_missing_images:
-                continue
-            seen_missing_images.add(normalized_img_url)
-            missing_images.append(normalized_img_url)
-        if missing_images:
-            if lines and lines[-1] != "":
-                lines.append("")
-            for img_url in missing_images:
-                append_image(lines, img_url)
     else:
         # 普通推文：只输出推文原文
         text_result = text.strip()
@@ -913,7 +888,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.13"})
+            self._respond(200, {"status": "ok", "version": "1.1.14"})
 
         elif path == "/config":
             # 返回当前配置
