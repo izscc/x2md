@@ -1,6 +1,6 @@
 import unittest
 
-from server import build_markdown
+from server import build_markdown, sanitize_unicode_text
 
 
 BASE_CFG = {
@@ -104,6 +104,21 @@ class ArticleImageOrderTests(unittest.TestCase):
         self.assertEqual(content.count("inline.jpg"), 1)
         self.assertLess(content.index("第一段"), content.index("inline.jpg"))
         self.assertNotIn("missing.jpg", content)
+
+
+class UnicodeSanitizerTests(unittest.TestCase):
+    def test_lone_surrogate_is_removed_before_utf8_write(self):
+        _, content = build_markdown({
+            "type": "article",
+            "article_title": "Bad unicode \ud83d",
+            "article_content": "正文里有非法字符：\ud83d，但保存不应失败",
+            "url": "https://x.com/a/status/1",
+            "handle": "@alice",
+        }, BASE_CFG)
+
+        cleaned = sanitize_unicode_text(content)
+        self.assertNotIn("\ud83d", cleaned)
+        cleaned.encode("utf-8")
 
 
 if __name__ == "__main__":

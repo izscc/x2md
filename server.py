@@ -92,6 +92,25 @@ _config_cache: Optional[dict] = None
 _video_executor = ThreadPoolExecutor(max_workers=3)
 
 
+def sanitize_unicode_text(value) -> str:
+    """移除 JSON/网页里偶发的孤立 surrogate，避免 UTF-8 写文件失败。"""
+    return re.sub(r"[\ud800-\udfff]", "", str(value or ""))
+
+
+def sanitize_unicode_payload(value):
+    """递归清理 payload 中无法编码为 UTF-8 的非法 Unicode 片段。"""
+    if isinstance(value, str):
+        return sanitize_unicode_text(value)
+    if isinstance(value, list):
+        return [sanitize_unicode_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            sanitize_unicode_text(key): sanitize_unicode_payload(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def load_config() -> dict:
     """加载配置文件，优先返回缓存，不存在则从磁盘读取"""
     global _config_cache
@@ -888,7 +907,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.14"})
+            self._respond(200, {"status": "ok", "version": "1.1.15"})
 
         elif path == "/config":
             # 返回当前配置
@@ -912,6 +931,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         try:
             data = json.loads(body.decode("utf-8"))
+            data = sanitize_unicode_payload(data)
             logger.info(f"接收到请求: type={data.get('type','?')} platform={data.get('platform','?')} url={data.get('url','')[:80]}")
         except json.JSONDecodeError:
             self._respond(400, {"error": "Invalid JSON"})
@@ -951,13 +971,15 @@ class X2MDHandler(BaseHTTPRequestHandler):
         for save_path in save_paths:
             try:
                 os.makedirs(save_path, exist_ok=True)
-                filepath = os.path.join(save_path, filename + ".md")
+                safe_filename = sanitize_unicode_text(filename) or "untitled"
+                safe_content = sanitize_unicode_text(content)
+                filepath = os.path.join(save_path, safe_filename + ".md")
                 # 避免同名文件覆盖
                 if os.path.exists(filepath):
                     ts = datetime.now().strftime("%H%M%S")
-                    filepath = os.path.join(save_path, f"{filename}_{ts}.md")
+                    filepath = os.path.join(save_path, f"{safe_filename}_{ts}.md")
                 with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(content)
+                    f.write(safe_content)
                 logger.info(f"✅ 已保存：{filepath}")
                 saved_files.append(filepath)
             except Exception as e:
@@ -992,6 +1014,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
         self._respond(200, {"success": True, "config": cfg})
 
     def _respond(self, code: int, payload: dict):
+        payload = sanitize_unicode_payload(payload)
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
