@@ -19,6 +19,7 @@ a = Analysis(
     ],
     hiddenimports=[
         'server',
+        'autostart',
         'setup_wizard',
         'pystray',
         'pystray._darwin' if sys.platform == 'darwin' else 'pystray._win32',
@@ -89,7 +90,7 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName': 'X2MD',
             'CFBundleDisplayName': 'X2MD',
-            'CFBundleShortVersionString': '1.1.15',
+            'CFBundleShortVersionString': '1.1.16',
             'LSUIElement': True,  # 无 Dock 图标，仅菜单栏显示
         },
     )

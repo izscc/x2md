@@ -20,6 +20,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
+from autostart import is_autostart_enabled, set_autostart_enabled
+
 
 def _build_ssl_context():
     """构建 SSL 上下文：优先使用 certifi 证书包，否则回退到不验证模式"""
@@ -907,12 +909,15 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.15"})
+            self._respond(200, {"status": "ok", "version": "1.1.16"})
 
         elif path == "/config":
             # 返回当前配置
             cfg = load_config()
             self._respond(200, cfg)
+
+        elif path == "/autostart":
+            self._respond(200, {"success": True, "enabled": is_autostart_enabled()})
 
         elif path == "/profile-capture/state":
             query = parse_qs(urlparse(self.path).query)
@@ -943,6 +948,8 @@ class X2MDHandler(BaseHTTPRequestHandler):
             self._handle_profile_capture(data)
         elif path == "/config":
             self._handle_config_update(data)
+        elif path == "/autostart":
+            self._handle_autostart_update(data)
         else:
             self._respond(404, {"error": "Not Found"})
 
@@ -1012,6 +1019,16 @@ class X2MDHandler(BaseHTTPRequestHandler):
         save_config(cfg)
         logger.info(f"配置已更新：{data}")
         self._respond(200, {"success": True, "config": cfg})
+
+    def _handle_autostart_update(self, data: dict):
+        """更新开机自动运行状态"""
+        try:
+            enabled = bool(data.get("enabled"))
+            actual = set_autostart_enabled(enabled)
+            self._respond(200, {"success": True, "enabled": actual})
+        except Exception as e:
+            logger.error(f"开机自动运行设置失败：{e}")
+            self._respond(500, {"success": False, "error": str(e), "enabled": is_autostart_enabled()})
 
     def _respond(self, code: int, payload: dict):
         payload = sanitize_unicode_payload(payload)

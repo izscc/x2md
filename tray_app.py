@@ -13,6 +13,8 @@ import subprocess
 import logging
 import urllib.request
 
+from autostart import is_autostart_enabled, set_autostart_enabled
+
 # ─────────────────────────────────────────────
 # 路径工具
 # ─────────────────────────────────────────────
@@ -121,6 +123,10 @@ def start_server_thread():
 
     cfg = load_config()
     port = cfg.get("port", 9527)
+    if check_server_alive(port):
+        logger.info(f"检测到服务已在运行，复用 http://127.0.0.1:{port}")
+        return None
+
     server = HTTPServer(("127.0.0.1", port), X2MDHandler)
     _server_ref = server
 
@@ -193,6 +199,10 @@ def run_tray():
     def on_restart(icon, item):
         restart_server()
 
+    def on_toggle_autostart(icon, item):
+        set_autostart_enabled(not is_autostart_enabled())
+        icon.update_menu()
+
     def on_open_log(icon, item):
         log_file = os.path.join(APP_DIR, "x2md.log")
         if sys.platform == "darwin":
@@ -219,6 +229,7 @@ def run_tray():
         pystray.MenuItem(f"端口：{port}", None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("⚙️ 打开设置向导", on_open_wizard),
+        pystray.MenuItem("开机自动运行", on_toggle_autostart, checked=lambda item: is_autostart_enabled()),
         pystray.MenuItem("📂 打开扩展文件夹", on_open_ext_folder),
         pystray.MenuItem("📋 查看日志", on_open_log),
         pystray.MenuItem("🔄 重启服务", on_restart),
@@ -239,6 +250,9 @@ def run_cli_mode():
     logger.info("⚠️ pystray 未安装，进入命令行模式")
     logger.info("🚀 X2MD 服务已启动，按 Ctrl+C 停止")
     t = start_server_thread()
+    if t is None:
+        logger.info("服务已在运行，命令行模式退出。")
+        return
     try:
         t.join()
     except KeyboardInterrupt:

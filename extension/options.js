@@ -11,8 +11,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnAdd").addEventListener("click", addPath);
     document.getElementById("btnAddCustomPath").addEventListener("click", addCustomPath);
     document.getElementById("btnSave").addEventListener("click", saveConfig);
+    document.getElementById("enableAutostart").addEventListener("change", saveAutostart);
 
     loadConfig();
+    loadAutostart();
     checkStatus();
 });
 
@@ -186,6 +188,39 @@ function checkStatus() {
         const online = resp && resp.online;
         dot.className = "status-indicator " + (online ? "online" : "offline");
         txt.textContent = online ? "本地服务运行中 ✓" : "服务未启动，请运行 start_server.sh";
+    });
+}
+
+function loadAutostart() {
+    chrome.runtime.sendMessage({ action: "get_autostart" }, (resp) => {
+        const checkbox = document.getElementById("enableAutostart");
+        const hint = document.getElementById("autostartHint");
+        if (resp && resp.success) {
+            checkbox.checked = !!resp.enabled;
+            checkbox.disabled = false;
+            hint.textContent = "开启后，登录 macOS 时自动启动 X2MD App。";
+        } else {
+            checkbox.disabled = true;
+            hint.textContent = "无法读取开机自动运行状态，请确认本地服务在线。";
+        }
+    });
+}
+
+function saveAutostart() {
+    const checkbox = document.getElementById("enableAutostart");
+    const hint = document.getElementById("autostartHint");
+    checkbox.disabled = true;
+    chrome.runtime.sendMessage({ action: "set_autostart", enabled: checkbox.checked }, (resp) => {
+        checkbox.disabled = false;
+        if (resp && resp.success) {
+            checkbox.checked = !!resp.enabled;
+            hint.textContent = resp.enabled ? "已开启：登录 macOS 时会自动启动 X2MD App。" : "已关闭：登录时不会自动启动 X2MD。";
+            showToast(resp.enabled ? "✅ 已开启开机自动运行" : "已关闭开机自动运行");
+        } else {
+            checkbox.checked = !checkbox.checked;
+            hint.textContent = "设置失败，请确认本地服务在线。";
+            showToast("❌ 开机自动运行设置失败", true);
+        }
     });
 }
 

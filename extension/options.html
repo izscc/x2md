@@ -502,6 +502,19 @@
             </div>
             <div class="card-body">
                 <div class="form-row">
+                    <div class="form-label">开机自动运行</div>
+                    <div style="flex:1">
+                        <div style="display:flex; align-items:center;">
+                            <input type="checkbox" id="enableAutostart"
+                                style="width:16px; height:16px; cursor:pointer;" />
+                            <label for="enableAutostart"
+                                style="margin-left: 8px; font-size:13px; cursor:pointer;">登录 macOS 后自动启动 X2MD App</label>
+                        </div>
+                        <div class="form-hint" id="autostartHint">正在读取开机自动运行状态…</div>
+                    </div>
+                </div>
+                <div class="section-divider"></div>
+                <div class="form-row">
                     <div class="form-label">服务端口</div>
                     <input class="form-input" type="number" id="portInput" placeholder="9527" min="1024" max="65535" />
                 </div>

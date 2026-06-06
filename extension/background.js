@@ -1358,6 +1358,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.action === "get_autostart") {
+        (async () => {
+            try {
+                const resp = await fetch(`${SERVER_BASE}/autostart`);
+                const json = await resp.json();
+                sendResponse({ success: json.success !== false, enabled: !!json.enabled });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
+    if (message.action === "set_autostart") {
+        (async () => {
+            try {
+                const resp = await fetch(`${SERVER_BASE}/autostart`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ enabled: !!message.enabled })
+                });
+                const json = await resp.json();
+                sendResponse({ success: json.success !== false, enabled: !!json.enabled, error: json.error });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
     if (message.action === "ping") {
         (async () => {
             try {
