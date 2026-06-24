@@ -88,11 +88,11 @@ export function isAutostartEnabled(opts: { home?: string; platform?: NodeJS.Plat
 }
 
 export function setAutostartEnabled(enabled: boolean, opts: { home?: string; dryRun?: boolean; platform?: NodeJS.Platform; args?: string[]; cwd?: string } = {}): boolean {
+  const dryRun = Boolean(opts.dryRun || process.env.X2MD_AUTOSTART_DRY_RUN === "1");
+  if (dryRun) return enabled;
   if ((opts.platform || platform()) !== "darwin") return false;
   const home = opts.home || homedir();
   const path = plistPath(LABEL, home);
-  const dryRun = Boolean(opts.dryRun || process.env.X2MD_AUTOSTART_DRY_RUN === "1");
-  if (dryRun) return enabled;
 
   if (!enabled) {
     removeLaunchAgent(LABEL, home, dryRun);
