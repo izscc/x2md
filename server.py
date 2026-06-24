@@ -909,7 +909,7 @@ class X2MDHandler(BaseHTTPRequestHandler):
 
         if path == "/ping":
             # 心跳检测
-            self._respond(200, {"status": "ok", "version": "1.1.16"})
+            self._respond(200, {"status": "ok", "version": "1.1.17"})
 
         elif path == "/config":
             # 返回当前配置

@@ -104,6 +104,13 @@
         return `\`\`\`${cleanLanguage}\n${cleanCode.replace(/```/g, "``\u200b`")}\n\`\`\``;
     }
 
+    function cleanArticleMarkdownText(value) {
+        return String(value || "")
+            .replace(/\u200b/g, "")
+            .replace(/\r\n/g, "\n")
+            .trim();
+    }
+
     function readArticleCodeText(value, depth = 0) {
         if (!value || depth > 3) return "";
         if (typeof value === "string") return value;
@@ -178,6 +185,9 @@
         const type = String(entity?.type || "").toUpperCase();
         const data = entity?.data || {};
         if (type === "DIVIDER") return "---";
+        if (type === "MARKDOWN" || typeof data.markdown === "string") {
+            return cleanArticleMarkdownText(data.markdown);
+        }
         if (isArticleCodeEntity(entity)) {
             return formatArticleCodeFence(readArticleCodeText(data), readArticleCodeLanguage(data));
         }
@@ -248,7 +258,7 @@
         return {
             title,
             content,
-            plainText: [title, blocks.map((block) => block?.text || "").filter(Boolean).join("\n\n")]
+            plainText: [title, body || blocks.map((block) => block?.text || "").filter(Boolean).join("\n\n")]
                 .filter(Boolean)
                 .join("\n\n"),
             images: Array.from(new Set(images)),
