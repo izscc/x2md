@@ -23,6 +23,7 @@ export default {
       "app/ui/settings/index.html": "views/settings/index.html",
       "app/ui/settings/styles.css": "views/settings/styles.css",
       "assets/icon.png": "views/assets/icon.png",
+      "assets/tray-icon.png": "views/assets/tray-icon.png",
     },
     mac: {
       bundleCEF: false,

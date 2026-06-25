@@ -35,6 +35,7 @@ function copySettingsViews(appPath) {
   const assetsTarget = join(viewsRoot, "assets");
   mkdirSync(assetsTarget, { recursive: true });
   cpSync("assets/icon.png", join(assetsTarget, "icon.png"));
+  cpSync("assets/tray-icon.png", join(assetsTarget, "tray-icon.png"));
 
   for (const file of ["index.html", "styles.css", "settings.js"]) {
     if (!existsSync(join(settingsTarget, file))) throw new Error(`settings view copy missing ${file}`);
