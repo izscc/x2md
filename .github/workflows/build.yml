@@ -118,6 +118,9 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 同步扩展版本
+        run: node scripts/sync-extension-version.mjs
+
       - name: 压缩浏览器扩展
         run: |
           cd extension

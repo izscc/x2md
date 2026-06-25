@@ -12,7 +12,7 @@
     "test": "npm run test:js && npm run test:python",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test",
-    "postbuild:extension": "node scripts/copy-extension-to-apps.mjs",
+    "postbuild:extension": "npm run sync:extension-version && node scripts/copy-extension-to-apps.mjs",
     "smoke:mac": "node scripts/smoke-packaged-mac.mjs",
     "smoke:mac:autostart": "X2MD_SMOKE_AUTOSTART=1 node scripts/smoke-packaged-mac.mjs",
     "smoke:mac:first-run": "X2MD_SMOKE_FIRST_RUN=1 node scripts/smoke-packaged-mac.mjs",
@@ -25,7 +25,8 @@
     "smoke:mac:menu-visible": "X2MD_SMOKE_MENU_VISIBLE=1 node scripts/smoke-packaged-mac.mjs",
     "acceptance:mac:auto": "npm run check && npm run build:mac && npm run smoke:mac && npm run smoke:mac:startup-time && npm run smoke:mac:port-conflict && npm run smoke:mac:autostart && npm run smoke:mac:login-autostart && npm run smoke:mac:first-run && npm run smoke:mac:extension-health && npm run smoke:chrome-extension-load && npm run smoke:mac:menu-visible && npm run smoke:mac:release && npm run check:release-artifacts",
     "check:release-artifacts": "node scripts/check-release-artifacts.mjs",
-    "smoke:mac:startup-time": "node scripts/smoke-mac-startup-time.mjs"
+    "smoke:mac:startup-time": "node scripts/smoke-mac-startup-time.mjs",
+    "sync:extension-version": "node scripts/sync-extension-version.mjs"
   },
   "dependencies": {
     "electrobun": "^1.18.1"
