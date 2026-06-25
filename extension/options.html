@@ -1,615 +1,363 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-
 <head>
-    <meta charset="UTF-8" />
-    <title>X2MD 设置</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>X2MD 设置</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f5f7;
+      --surface: rgba(255,255,255,.86);
+      --surface-strong: rgba(255,255,255,.98);
+      --surface-soft: rgba(255,255,255,.62);
+      --border: rgba(60,60,67,.12);
+      --border-strong: rgba(60,60,67,.2);
+      --text: #111114;
+      --muted: rgba(60,60,67,.68);
+      --muted-strong: rgba(60,60,67,.82);
+      --accent: #0a84ff;
+      --accent-soft: rgba(10,132,255,.13);
+      --danger: #ff3b30;
+      --green: #34c759;
+      --shadow: 0 1px 2px rgba(15,23,42,.04), 0 18px 42px rgba(15,23,42,.08);
+      --radius-card: 22px;
+      --radius-control: 14px;
+      --sidebar-width: 236px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
+    }
 
-        :root {
-            --bg: #0f1117;
-            --surface: #16181c;
-            --surface2: #1e2028;
-            --border: #2f3336;
-            --accent: #1d9bf0;
-            --accent-hover: #1a8cd8;
-            --text: #e7e9ea;
-            --text-muted: #71767b;
-            --danger: #f4212e;
-            --success: #00ba7c;
-            --radius: 10px;
-        }
+    * { box-sizing: border-box; }
+    html { scrollbar-gutter: stable; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(10,132,255,.08), transparent 30%),
+        radial-gradient(circle at 100% 0%, rgba(140,140,160,.06), transparent 24%),
+        var(--bg);
+      color: var(--text);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
+    }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; border: 0; }
+    h1,h2,h3,p { margin: 0; }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+    .surface, .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px) saturate(180%);
+      -webkit-backdrop-filter: blur(22px) saturate(180%);
+    }
 
-        body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            padding: 32px 16px;
-        }
+    .shell {
+      width: min(1120px, calc(100vw - 28px));
+      min-height: 100dvh;
+      margin: 0 auto;
+      padding: 18px 0 28px;
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0,1fr);
+      gap: 16px;
+    }
+    .sidebar {
+      position: sticky;
+      top: 14px;
+      align-self: start;
+      border-radius: calc(var(--radius-card) + 6px);
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .brand-card { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .brand-mark {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      flex: 0 0 auto;
+      display: block;
+      box-shadow: 0 8px 22px rgba(10,132,255,.18);
+    }
+    .brand-copy { display: grid; gap: 2px; min-width: 0; }
+    h1 { font-size: 22px; line-height: 1.06; letter-spacing: -.04em; }
+    .brand-copy p { color: var(--muted); font-size: 12px; line-height: 1.32; }
 
-        .page {
-            width: 100%;
-            max-width: 700px;
-        }
+    .status-card {
+      display: grid;
+      gap: 4px;
+      padding: 12px;
+      border-radius: 16px;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+    }
+    .status {
+      position: relative;
+      padding-left: 14px;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .status::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: .48em;
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--danger);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
+    }
+    .status.is-online::before { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 18%, transparent); }
+    .service-info { color: var(--muted); font-size: 12px; word-break: break-word; }
 
-        /* 顶部标题栏 */
-        .top-bar {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 32px;
-        }
+    .panel-nav { display: grid; gap: 6px; }
+    .nav-item {
+      width: 100%; min-height: 54px; padding: 10px 12px; border-radius: 15px;
+      background: transparent; border: 1px solid transparent; display: grid; gap: 1px; text-align: left;
+      transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+    }
+    .nav-item strong { font-size: 14px; line-height: 1.18; }
+    .nav-item span { font-size: 12px; color: var(--muted); }
+    .nav-item:hover { background: var(--surface-soft); border-color: var(--border-strong); }
+    .nav-item.is-active { background: var(--accent-soft); border-color: rgba(10,132,255,.3); box-shadow: inset 0 0 0 1px rgba(10,132,255,.05); }
+    .nav-item:active, button:active { transform: translateY(1px); }
 
-        .top-bar-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #1d9bf0, #0d6efd);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            flex-shrink: 0;
-        }
+    .sidebar-actions { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .detail { min-width: 0; display: grid; align-content: start; gap: 14px; }
+    .detail-head { display: grid; gap: 5px; padding: 2px 2px 0; }
+    .section-label { color: var(--muted-strong); font-size: 12px; font-weight: 750; }
+    .detail-head h2 { font-size: clamp(34px, 4vw, 50px); line-height: .98; letter-spacing: -.06em; }
+    .lede { color: var(--muted); font-size: 15px; max-width: 58ch; font-weight: 560; }
 
-        .top-bar h1 {
-            font-size: 22px;
-            font-weight: 700;
-        }
+    .panel-stack { display: grid; gap: 14px; }
+    .panel[hidden] { display: none; }
+    .panel-grid { display: grid; grid-template-columns: repeat(12, minmax(0,1fr)); gap: 14px; }
+    .span-12 { grid-column: span 12; }
+    .span-8 { grid-column: span 8; }
+    .span-7 { grid-column: span 7; }
+    .span-6 { grid-column: span 6; }
+    .span-5 { grid-column: span 5; }
+    .span-4 { grid-column: span 4; }
+    .card { border-radius: var(--radius-card); padding: 18px; min-width: 0; }
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+    .card-title { display: flex; align-items: flex-start; gap: 11px; min-width: 0; }
+    .card-icon {
+      width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; flex: 0 0 auto;
+      background: var(--surface-strong); border: 1px solid var(--border); font-size: 17px; line-height: 1;
+    }
+    .card h3 { font-size: 18px; line-height: 1.16; letter-spacing: -.03em; }
+    .card p { color: var(--muted); font-size: 13px; margin-top: 3px; }
 
-        .top-bar p {
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-top: 2px;
-        }
+    .field { display: grid; gap: 7px; margin: 0 0 14px; font-weight: 650; }
+    .field:last-child { margin-bottom: 0; }
+    .field span, .form-label { font-size: 13px; font-weight: 700; }
+    .field-hint, .form-hint { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.45; }
+    input, select {
+      width: 100%; min-height: 42px; border-radius: var(--radius-control); border: 1px solid var(--border-strong);
+      background: var(--surface-strong); padding: 10px 12px; font-weight: 560;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+    }
+    input::placeholder { color: color-mix(in srgb, var(--muted) 72%, transparent); }
+    input:focus, select:focus, button:focus-visible { outline: none; border-color: rgba(10,132,255,.42); box-shadow: 0 0 0 4px rgba(10,132,255,.14); }
 
-        /* 服务状态卡片 */
-        .status-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 24px;
-        }
+    .path-picker { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; }
+    .path-picker.three { grid-template-columns: minmax(0,1fr) auto auto; }
+    .path-list { display: grid; gap: 10px; }
+    .path-row {
+      display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center;
+      padding: 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface-strong);
+    }
+    .custom-path-row { grid-template-columns: minmax(120px,.55fr) minmax(220px,1.45fr) auto; align-items: end; }
+    .custom-path-row .field { margin: 0; }
+    .custom-path-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .empty-state { padding: 18px; border-radius: 15px; border: 1px dashed var(--border-strong); color: var(--muted); font-weight: 650; text-align: center; background: var(--surface-soft); }
 
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            flex-shrink: 0;
-            transition: background .3s;
-        }
+    .format-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+    .format-chip {
+      min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border-strong);
+      background: var(--surface-strong); font-weight: 750; transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .format-chip:hover { transform: translateY(-1px); }
+    .format-chip.is-active { color: var(--accent); background: var(--accent-soft); border-color: rgba(10,132,255,.34); box-shadow: inset 0 0 0 1px rgba(10,132,255,.06); }
 
-        .status-indicator.online {
-            background: var(--success);
-            box-shadow: 0 0 8px var(--success);
-        }
+    .switch { display: flex; align-items: flex-start; gap: 11px; padding: 13px 0; border-top: 1px solid var(--border); }
+    .switch:first-of-type { border-top: 0; padding-top: 0; }
+    .switch input { appearance: none; position: relative; flex: 0 0 auto; width: 46px; height: 28px; min-height: 28px; padding: 0; border-radius: 999px; background: rgba(120,120,128,.22); border: 1px solid var(--border-strong); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
+    .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-strong); box-shadow: 0 1px 2px rgba(15,23,42,.18); transition: transform 160ms ease; }
+    .switch input:checked { background: var(--accent); border-color: rgba(10,132,255,.55); }
+    .switch input:checked::after { transform: translateX(18px); }
+    .switch span { display: grid; gap: 3px; }
+    .switch strong { font-size: 14px; line-height: 1.2; }
+    .switch small { color: var(--muted); font-size: 12px; line-height: 1.35; }
 
-        .status-indicator.offline {
-            background: var(--danger);
-            box-shadow: 0 0 8px var(--danger);
-        }
+    .form-row { display: grid; gap: 8px; margin-bottom: 14px; }
+    .inline-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .inline-row select { max-width: 170px; }
+    .number-small { max-width: 120px; }
 
-        .status-info {
-            flex: 1;
-        }
+    .primary, .secondary, .soft, .danger {
+      min-height: 40px; padding: 0 14px; border-radius: 13px; font-weight: 700;
+      transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease; white-space: nowrap;
+    }
+    .primary { background: var(--accent); color: #fff; box-shadow: 0 10px 24px rgba(10,132,255,.24); }
+    .secondary, .soft { background: var(--surface-strong); color: var(--text); border: 1px solid var(--border-strong); }
+    .danger { color: var(--danger); background: var(--surface-strong); border: 1px solid var(--border-strong); }
+    .primary:hover, .secondary:hover, .soft:hover, .danger:hover { transform: translateY(-1px); }
+    .btn-remove { min-width: 40px; padding: 0 12px; }
+    .btn-add { width: 100%; justify-content: center; margin-top: 10px; border-style: dashed; color: var(--muted-strong); }
 
-        .status-info strong {
-            font-size: 14px;
-        }
+    .section-divider { height: 1px; background: var(--border); margin: 16px 0; }
+    .visually-hidden { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0 0 0 0)!important; white-space:nowrap!important; border:0!important; }
 
-        .status-info span {
-            font-size: 12px;
-            color: var(--text-muted);
-            display: block;
-            margin-top: 2px;
-        }
+    #toast { position: fixed; right: 24px; bottom: 24px; z-index: 20; padding: 12px 16px; border-radius: 14px; background: rgba(34,197,94,.95); color: #fff; font-weight: 700; box-shadow: 0 18px 42px rgba(15,23,42,.16); opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity 180ms ease, transform 180ms ease; }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { background: rgba(255,59,48,.96); }
 
-        .btn-refresh {
-            padding: 6px 14px;
-            border-radius: 20px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--accent);
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background .15s;
-        }
-
-        .btn-refresh:hover {
-            background: #1d9bf015;
-        }
-
-        /* 卡片通用 */
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
-
-        .card-header {
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .card-header-icon {
-            font-size: 18px;
-        }
-
-        .card-header h2 {
-            font-size: 15px;
-            font-weight: 600;
-        }
-
-        .card-header p {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-top: 1px;
-        }
-
-        .card-body {
-            padding: 16px 20px;
-        }
-
-        /* 路径列表 */
-        .path-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-
-        .path-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px 12px;
-            animation: fadeIn .2s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-4px);
-            }
-
-            to {
-                opacity: 1;
-                transform: none;
-            }
-        }
-
-        .path-row-icon {
-            font-size: 15px;
-            flex-shrink: 0;
-        }
-
-        .path-row input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: var(--text);
-            font-size: 13px;
-            font-family: 'Inter', monospace;
-        }
-
-        .path-row input::placeholder {
-            color: var(--text-muted);
-        }
-
-        .custom-path-name {
-            max-width: 150px;
-            font-family: 'Inter', -apple-system, sans-serif !important;
-        }
-
-        .custom-path-target {
-            min-width: 0;
-        }
-
-        .btn-remove {
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 4px;
-            font-size: 16px;
-            line-height: 1;
-            transition: color .15s;
-            flex-shrink: 0;
-        }
-
-        .btn-remove:hover {
-            color: var(--danger);
-        }
-
-        .btn-add {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            background: transparent;
-            border: 1px dashed var(--border);
-            color: var(--text-muted);
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            cursor: pointer;
-            width: 100%;
-            transition: all .15s;
-        }
-
-        .btn-add:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        /* 通用表单行 */
-        .form-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 14px;
-        }
-
-        .form-row:last-child {
-            margin-bottom: 0;
-        }
-
-        .form-label {
-            font-size: 13px;
-            color: var(--text-muted);
-            flex-shrink: 0;
-            width: 100px;
-        }
-
-        .form-input {
-            flex: 1;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 8px 12px;
-            color: var(--text);
-            font-size: 13px;
-            font-family: monospace;
-            outline: none;
-            transition: border-color .15s;
-        }
-
-        .form-input:focus {
-            border-color: var(--accent);
-        }
-
-        .form-hint {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 4px;
-            line-height: 1.5;
-        }
-
-        /* 保存按钮 */
-        .btn-save {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--accent);
-            border: none;
-            border-radius: 20px;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 600;
-            padding: 10px 24px;
-            cursor: pointer;
-            margin-top: 4px;
-            transition: background .15s, transform .1s;
-        }
-
-        .btn-save:hover {
-            background: var(--accent-hover);
-        }
-
-        .btn-save:active {
-            transform: scale(0.97);
-        }
-
-        /* Toast */
-        #toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--success);
-            color: #fff;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            box-shadow: 0 4px 16px rgba(0, 186, 124, .4);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity .3s;
-            z-index: 9999;
-        }
-
-        #toast.show {
-            opacity: 1;
-        }
-
-        #toast.error {
-            background: var(--danger);
-            box-shadow: 0 4px 16px rgba(244, 33, 46, .4);
-        }
-
-        /* 文件命名占位说明 */
-        .tag-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px;
-        }
-
-        .tag {
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-family: monospace;
-            color: var(--accent);
-        }
-
-        .section-divider {
-            height: 1px;
-            background: var(--border);
-            margin: 16px 0;
-        }
-    </style>
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .panel-grid { grid-template-columns: 1fr; }
+      .span-12,.span-8,.span-7,.span-6,.span-5,.span-4 { grid-column: span 1; }
+      .path-picker, .path-picker.three, .custom-path-row { grid-template-columns: 1fr; }
+      .custom-path-actions { justify-content: flex-start; }
+    }
+  </style>
 </head>
-
 <body>
-    <div class="page">
-        <!-- 标题 -->
-        <div class="top-bar">
-            <div class="top-bar-icon">🔖</div>
-            <div>
-                <h1>X2MD 设置</h1>
-                <p>配置 X / LINUX DO / 飞书 / 微信公众号 → Obsidian Markdown 保存规则</p>
-            </div>
+  <main class="shell">
+    <aside class="sidebar surface">
+      <section class="brand-card" aria-label="X2MD 设置">
+        <img class="brand-mark" src="icons/icon128.png" alt="X2MD" />
+        <div class="brand-copy">
+          <h1>设置</h1>
+          <p>和桌面 App 保持一致，只改常用项。</p>
         </div>
+      </section>
 
-        <!-- 服务状态 -->
-        <div class="status-card">
-            <div class="status-indicator offline" id="statusDot"></div>
-            <div class="status-info">
-                <strong id="statusText">检测本地服务…</strong>
-                <span id="statusSub">正在连接 localhost:<span id="portLabel">9527</span></span>
-            </div>
-            <button class="btn-refresh" id="btnRefresh">刷新</button>
-        </div>
+      <section class="status-card">
+        <p id="statusText" class="status" aria-live="polite">检测本地服务…</p>
+        <p id="statusSub" class="service-info">正在连接 localhost:<span id="portLabel">9527</span></p>
+      </section>
 
-        <!-- 保存路径 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">📁</div>
-                <div>
-                    <h2>保存路径</h2>
-                    <p>支持添加多个路径，保存时同步写入所有路径</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="path-list" id="pathList"></div>
-                <button class="btn-add" id="btnAdd">
-                    <span>＋</span> 添加保存路径
-                </button>
-            </div>
-        </div>
+      <nav class="panel-nav" role="tablist" aria-label="设置分类">
+        <button class="nav-item is-active" data-panel-button="save" role="tab" aria-selected="true" type="button"><strong>保存位置</strong><span>内容放到哪里</span></button>
+        <button class="nav-item" data-panel-button="media" role="tab" aria-selected="false" type="button"><strong>视频</strong><span>下载和提醒</span></button>
+        <button class="nav-item" data-panel-button="capture" role="tab" aria-selected="false" type="button"><strong>网页按钮</strong><span>保存和抓取入口</span></button>
+        <button class="nav-item" data-panel-button="system" role="tab" aria-selected="false" type="button"><strong>启动与工具</strong><span>端口、文件名</span></button>
+      </nav>
 
-        <!-- X / Twitter 自定义保存菜单 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🔖</div>
-                <div>
-                    <h2>X 书签自定义菜单</h2>
-                    <p>配置后，鼠标悬停 X/Twitter 书签按钮时显示 Apple 风格自定义保存入口</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="path-list" id="customPathList"></div>
-                <button class="btn-add" id="btnAddCustomPath">
-                    <span>＋</span> 添加自定义保存路径
-                </button>
-                <div class="form-hint">
-                    例如名称填“生图类”，路径填 Obsidian 中对应子目录。菜单标题最多显示 5 个中文字符，点击后只保存到该路径。
-                </div>
-            </div>
-        </div>
+      <div class="sidebar-actions">
+        <button class="primary" id="btnSave" type="button">保存更改</button>
+        <button class="secondary" id="btnRefresh" type="button">检查服务</button>
+      </div>
+    </aside>
 
-        <!-- X 博主批量抓取 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🐾</div>
-                <div>
-                    <h2>X 博主批量抓取</h2>
-                    <p>在博主主页菜单栏显示猫爪按钮，按时间范围批量保存原创推文或 Articles 长文</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">显示猫爪按钮</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="showXProfileCaptureButton"
-                            style="width:16px; height:16px; cursor:pointer;" checked />
-                        <label for="showXProfileCaptureButton"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">在 X 博主主页 / Articles 页面显示批量抓取菜单</label>
-                    </div>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">推文时间范围</div>
-                    <div style="flex:1; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                        <select class="form-input" id="profileCaptureRange" style="width:160px;">
-                            <option value="today">当日</option>
-                            <option value="month">当月</option>
-                            <option value="all">全部</option>
-                            <option value="days">自定义天数</option>
-                        </select>
-                        <input class="form-input" type="number" id="profileCaptureDays" min="1" max="3650"
-                            placeholder="7" style="width:100px;" />
-                        <span class="form-hint" style="margin:0;">选择“自定义天数”时生效</span>
-                    </div>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">批量保存路径</div>
-                    <div style="flex:1">
-                        <input class="form-input" type="text" id="profileCaptureSavePath"
-                            placeholder="留空则使用主保存路径，并自动建立博主子目录" style="width:100%" />
-                        <div class="form-hint">最终会在该路径下自动建立“博主昵称/handle”子目录；留空时使用第一个主保存路径。</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <section class="detail">
+      <header class="detail-head">
+        <p id="panelLabel" class="section-label">保存位置</p>
+        <h2 id="panelTitle">内容保存到哪里</h2>
+        <p id="panelDescription" class="lede">选择一个主目录。额外保存位置只在需要分类时再打开。</p>
+      </header>
 
-        <!-- 服务设置 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">⚙️</div>
-                <div>
-                    <h2>服务设置</h2>
-                    <p>本地服务器和文件命名规则</p>
+      <div class="panel-stack">
+        <section class="panel" data-panel-section="save">
+          <div class="panel-grid">
+            <article class="card span-8">
+              <div class="card-head">
+                <div class="card-title"><div class="card-icon">📁</div><div><h3>主要保存位置</h3><p>保存的 Markdown 文件默认放在这里。</p></div></div>
+              </div>
+              <div class="field">
+                <span>保存到</span>
+                <div class="path-picker">
+                  <input id="primarySavePath" readonly placeholder="还未选择保存文件夹" />
+                  <button id="choosePrimarySavePath" class="soft" type="button">选择文件夹</button>
                 </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">开机自动运行</div>
-                    <div style="flex:1">
-                        <div style="display:flex; align-items:center;">
-                            <input type="checkbox" id="enableAutostart"
-                                style="width:16px; height:16px; cursor:pointer;" />
-                            <label for="enableAutostart"
-                                style="margin-left: 8px; font-size:13px; cursor:pointer;">登录 macOS 后自动启动 X2MD App</label>
-                        </div>
-                        <div class="form-hint" id="autostartHint">正在读取开机自动运行状态…</div>
-                    </div>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">服务端口</div>
-                    <input class="form-input" type="number" id="portInput" placeholder="9527" min="1024" max="65535" />
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">文件命名</div>
-                    <div style="flex:1">
-                        <input class="form-input" type="text" id="filenameFormat"
-                            placeholder="{date}_{author}_{summary}" style="width:100%" />
-                        <div class="form-hint">支持的变量：</div>
-                        <div class="tag-group">
-                            <span class="tag">{date}</span>
-                            <span class="tag">{author}</span>
-                            <span class="tag">{handle}</span>
-                            <span class="tag">{summary}</span>
-                            <span class="tag">{timestamp}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">文件名限长</div>
-                    <input class="form-input" type="number" id="maxLen" placeholder="60" min="20" max="200" />
-                </div>
-            </div>
-        </div>
+                <small class="field-hint">点击“选择文件夹”，不用手动输入完整路径。</small>
+              </div>
+            </article>
 
-        <!-- 媒体下载设置 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">🎞️</div>
-                <div>
-                    <h2>媒体下载设置</h2>
-                    <p>管理推文视频的大文件直接下载与警告参数</p>
+            <article class="card span-4">
+              <div class="card-head">
+                <div class="card-title"><div class="card-icon">Aa</div><div><h3>文件名</h3><p>通常不用改，X2MD 会自动用标题命名。</p></div></div>
+              </div>
+              <div class="field">
+                <span>文件名格式</span>
+                <input id="filenameFormat" class="visually-hidden" readonly aria-hidden="true" tabindex="-1" />
+                <div id="filenameFormatChips" class="format-picker" role="group" aria-label="文件名格式">
+                  <button class="format-chip" type="button" data-filename-format="{summary}">标题</button>
+                  <button class="format-chip" type="button" data-filename-format="{summary}_{date}">标题 + 日期</button>
+                  <button class="format-chip" type="button" data-filename-format="{author}_{summary}">作者 + 标题</button>
+                  <button class="format-chip" type="button" data-filename-format="{summary}_{date}_{author}">标题 + 日期 + 作者</button>
                 </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">视频自动下载</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="enableVideoDownload" style="width:16px; height:16px; cursor:pointer;"
-                            checked />
-                        <label for="enableVideoDownload"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">开启该功能后，视频会被自动下载到下方路径</label>
-                    </div>
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">视频保存路径</div>
-                    <input class="form-input" type="text" id="videoSavePath" placeholder="/Users/.../视频/2026" />
-                </div>
-                <div class="section-divider"></div>
-                <div class="form-row">
-                    <div class="form-label">警告阈值(分钟)</div>
-                    <div style="flex:1">
-                        <input class="form-input" type="number" id="videoDurationThreshold" placeholder="5" min="1"
-                            max="60" style="width: 100px;" />
-                        <div class="form-hint">当推特视频时长超过此分钟数时，将弹窗向您确认是否仍然下载文件。</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                <small id="filenameFormatPreview" class="field-hint">示例：一篇中文长标题</small>
+              </div>
+              <label class="field">
+                <span>最长标题字数</span>
+                <input id="maxLen" type="number" min="20" max="200" />
+                <small class="field-hint">按中文字符数计算，默认 100 个字。</small>
+              </label>
+            </article>
 
-        <!-- 站点快捷保存 -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon">📌</div>
-                <div>
-                    <h2>站点快捷保存</h2>
-                    <p>控制 linux.do、飞书、微信公众号页面右上角的一键保存 MD 小图标</p>
+            <article class="card span-12">
+              <div class="card-head">
+                <div class="card-title"><div class="card-icon">🏷</div><div><h3>额外保存位置</h3><p id="customSaveSummary">没有额外位置。大多数用户不用设置。</p></div></div>
+                <button id="btnAddCustomPath" class="soft" type="button">新增位置</button>
+              </div>
+              <div id="customPathList" class="path-list" aria-label="额外保存位置列表"></div>
+              <small class="field-hint">每个位置需要一个好记的名称和一个本机目录。留空的项目不会保存。</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" data-panel-section="media" hidden>
+          <div class="panel-grid">
+            <article class="card span-7">
+              <div class="card-head"><div class="card-title"><div class="card-icon">🎞</div><div><h3>视频文件</h3><p>保存内容时，是否把视频也下载到本机。</p></div></div></div>
+              <label class="switch"><input id="enableVideoDownload" type="checkbox" /><span><strong>自动下载视频</strong><small>关闭后只保存视频链接，不占本机空间。</small></span></label>
+              <div class="field">
+                <span>视频保存到</span>
+                <div class="path-picker">
+                  <input id="videoSavePath" readonly placeholder="还未选择视频保存文件夹" />
+                  <button id="chooseVideoSavePath" class="soft" type="button">选择文件夹</button>
                 </div>
-            </div>
-            <div class="card-body">
-                <div class="form-row">
-                    <div class="form-label">显示小图标</div>
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <input type="checkbox" id="showSiteSaveIcon" style="width:16px; height:16px; cursor:pointer;"
-                            checked />
-                        <label for="showSiteSaveIcon"
-                            style="margin-left: 8px; font-size:13px; cursor:pointer;">在 linux.do 话题页、飞书知识库、飞书云文档、微信公众号文章页面显示悬浮保存按钮</label>
-                    </div>
-                </div>
-                <div class="form-hint">关闭后仍可使用既有的站内触发方式，例如 linux.do 的点赞保存。</div>
-            </div>
-        </div>
+              </div>
+            </article>
+            <article class="card span-5">
+              <div class="card-head"><div class="card-title"><div class="card-icon">⏱</div><div><h3>长视频提醒</h3><p>避免误下载超大视频。</p></div></div></div>
+              <label class="field"><span>超过几分钟时提醒</span><input id="videoDurationThreshold" class="number-small" type="number" min="1" max="60" /></label>
+            </article>
+          </div>
+        </section>
 
-        <!-- 保存按钮 -->
-        <button class="btn-save" id="btnSave">
-            <span>💾</span> 保存设置
-        </button>
-    </div>
+        <section class="panel" data-panel-section="capture" hidden>
+          <div class="panel-grid">
+            <article class="card span-6">
+              <div class="card-head"><div class="card-title"><div class="card-icon">📌</div><div><h3>网页上的快捷按钮</h3><p>在支持的网站上显示保存和抓取入口。</p></div></div></div>
+              <label class="switch"><input id="showSiteSaveIcon" type="checkbox" /><span><strong>显示保存按钮</strong><small>在 linux.do、飞书、微信公众号页面显示悬浮保存按钮。</small></span></label>
+              <label class="switch"><input id="showXProfileCaptureButton" type="checkbox" /><span><strong>显示博主抓取按钮</strong><small>在 X 博主主页 / Articles 页面显示批量抓取菜单。</small></span></label>
+            </article>
+            <article class="card span-6">
+              <div class="card-head"><div class="card-title"><div class="card-icon">🐾</div><div><h3>抓取范围</h3><p>默认抓取当天内容，范围越大耗时越久。</p></div></div></div>
+              <div class="field"><span>抓取哪些内容</span><div class="inline-row"><select id="profileCaptureRange"><option value="today">今天</option><option value="month">本月</option><option value="days">最近几天</option><option value="all">全部</option></select><input class="number-small" id="profileCaptureDays" type="number" min="1" max="3650" /></div><small class="field-hint">选择“最近几天”时使用天数。</small></div>
+              <div class="field"><span>批量保存到</span><div class="path-picker three"><input id="profileCaptureSavePath" readonly placeholder="留空则使用主保存路径" /><button id="chooseProfileCaptureSavePath" class="soft" type="button">选择文件夹</button><button id="clearProfileCaptureSavePath" class="soft" type="button">用主目录</button></div><small class="field-hint">最终会自动建立“博主昵称/handle”子目录。</small></div>
+            </article>
+          </div>
+        </section>
 
-    <div id="toast"></div>
+        <section class="panel" data-panel-section="system" hidden>
+          <div class="panel-grid">
+            <article class="card span-6">
+              <div class="card-head"><div class="card-title"><div class="card-icon">⚙</div><div><h3>本地服务</h3><p>扩展通过本地 App 保存文件。</p></div></div></div>
+              <label class="switch"><input id="enableAutostart" type="checkbox" /><span><strong>登录后自动启动</strong><small id="autostartHint">正在读取开机自动运行状态…</small></span></label>
+              <label class="field"><span>服务端口</span><input id="portInput" class="number-small" type="number" min="1024" max="65535" /></label>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
 
-    <script src="options.js"></script>
+  <div id="toast"></div>
+  <script src="options.js"></script>
 </body>
-
 </html>

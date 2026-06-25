@@ -126,8 +126,8 @@ p {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
+  object-fit: cover;
   width: 46px;
   height: 46px;
   flex: 0 0 auto;
@@ -669,7 +669,7 @@ summary:focus-visible {
 .custom-path-row {
   display: grid;
   grid-template-columns: minmax(110px, 0.62fr) minmax(220px, 1.5fr) auto;
-  align-items: end;
+  align-items: start;
   gap: 10px;
   padding: 12px;
   border-radius: 16px;
@@ -689,7 +689,9 @@ summary:focus-visible {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+  padding-top: 25px;
 }
 
 .custom-path-choose,
@@ -719,6 +721,7 @@ summary:focus-visible {
 
   .custom-path-actions {
     justify-content: flex-start;
+    padding-top: 0;
   }
 
   .custom-paths-toolbar {

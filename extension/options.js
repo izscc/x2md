@@ -1,297 +1,338 @@
-// options.js - 全部用 addEventListener，不依赖 inline onclick（规避 CSP）
+// options.js - Chrome 扩展设置页，保持与桌面 App 设置页一致的交互模型
+
+const DEFAULT_FILENAME_FORMAT = "{summary}";
+const DEFAULT_FILENAME_LENGTH = 100;
+const PANEL_META = {
+    save: { label: "保存位置", title: "内容保存到哪里", description: "选择一个主目录。额外保存位置只在需要分类时再打开。" },
+    media: { label: "视频", title: "视频如何保存", description: "控制视频下载、保存目录和长视频提醒。" },
+    capture: { label: "网页按钮", title: "网页上显示哪些入口", description: "控制保存按钮、博主抓取按钮和抓取范围。" },
+    system: { label: "启动与工具", title: "本地服务和启动方式", description: "设置端口、登录后自动启动和服务检查。" },
+};
+const FILENAME_PRESETS = [
+    { value: "{summary}", label: "标题" },
+    { value: "{summary}_{date}", label: "标题 + 日期" },
+    { value: "{author}_{summary}", label: "作者 + 标题" },
+    { value: "{summary}_{date}_{author}", label: "标题 + 日期 + 作者" },
+];
 
 let currentConfig = {};
+const $ = (id) => document.getElementById(id);
 
-// ─────────────────────────────────────────────
-// 初始化
-// ─────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-    // 绑定按钮事件（不使用 inline onclick）
-    document.getElementById("btnRefresh").addEventListener("click", checkStatus);
-    document.getElementById("btnAdd").addEventListener("click", addPath);
-    document.getElementById("btnAddCustomPath").addEventListener("click", addCustomPath);
-    document.getElementById("btnSave").addEventListener("click", saveConfig);
-    document.getElementById("enableAutostart").addEventListener("change", saveAutostart);
+function sendMessage(message) {
+    return new Promise((resolve) => chrome.runtime.sendMessage(message, (resp) => resolve(resp || {})));
+}
 
-    loadConfig();
-    loadAutostart();
-    checkStatus();
-});
+function getPort() {
+    return Number($("portInput")?.value || currentConfig.port || 9527) || 9527;
+}
 
-// ─────────────────────────────────────────────
-// 加载配置
-// ─────────────────────────────────────────────
-function loadConfig() {
-    chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
-        if (resp && resp.success && resp.config) {
-            currentConfig = resp.config;
-            applyConfigToUI(resp.config);
-        } else {
-            showToast("无法读取配置，请确认服务已启动", true);
+function apiBase() {
+    return `http://127.0.0.1:${getPort()}`;
+}
+
+function showToast(message, isError = false) {
+    const toast = $("toast");
+    toast.textContent = message;
+    toast.className = isError ? "show error" : "show";
+    setTimeout(() => { toast.className = ""; }, 2400);
+}
+
+function setStatus(text, sub = "", online = false) {
+    const status = $("statusText");
+    status.textContent = text;
+    status.classList.toggle("is-online", online);
+    $("statusSub").textContent = sub || `正在连接 localhost:${getPort()}`;
+}
+
+function showPanel(panel) {
+    const meta = PANEL_META[panel] || PANEL_META.save;
+    $("panelLabel").textContent = meta.label;
+    $("panelTitle").textContent = meta.title;
+    $("panelDescription").textContent = meta.description;
+    document.querySelectorAll("[data-panel-button]").forEach((button) => {
+        const active = button.dataset.panelButton === panel;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    document.querySelectorAll("[data-panel-section]").forEach((section) => {
+        section.hidden = section.dataset.panelSection !== panel;
+    });
+    localStorage.setItem("x2md-extension-settings-panel", panel);
+}
+
+function safePanel() {
+    const value = localStorage.getItem("x2md-extension-settings-panel") || "save";
+    return PANEL_META[value] ? value : "save";
+}
+
+function formatPreview(format) {
+    const now = new Date("2026-06-25T10:20:00");
+    return String(format || DEFAULT_FILENAME_FORMAT)
+        .replaceAll("{summary}", "一篇中文长标题")
+        .replaceAll("{date}", now.toISOString().slice(0, 10))
+        .replaceAll("{author}", "作者")
+        .replaceAll("{handle}", "handle")
+        .replaceAll("{timestamp}", "102000");
+}
+
+function ensureCustomFormatChip(format) {
+    const picker = $("filenameFormatChips");
+    const existing = $("filenameFormatCustom");
+    if (FILENAME_PRESETS.some((preset) => preset.value === format)) {
+        existing?.remove();
+        return;
+    }
+    const custom = existing || document.createElement("button");
+    custom.id = "filenameFormatCustom";
+    custom.className = "format-chip";
+    custom.type = "button";
+    custom.textContent = "沿用当前";
+    custom.dataset.filenameFormat = format;
+    if (!existing) {
+        custom.addEventListener("click", () => setFilenameFormat(custom.dataset.filenameFormat || DEFAULT_FILENAME_FORMAT));
+        picker.append(custom);
+    }
+}
+
+function setFilenameFormat(format) {
+    const next = format || DEFAULT_FILENAME_FORMAT;
+    $("filenameFormat").value = next;
+    ensureCustomFormatChip(next);
+    document.querySelectorAll("[data-filename-format]").forEach((button) => {
+        const active = button.dataset.filenameFormat === next;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    $("filenameFormatPreview").textContent = `示例：${formatPreview(next)}`;
+}
+
+async function chooseFolder(currentPath = "") {
+    const response = await fetch(`${apiBase()}/choose-folder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPath }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "文件夹选择失败");
+    return String(result.path || "").trim();
+}
+
+async function chooseFolderForInput(input, label, fallbackPath = "") {
+    setStatus("正在打开文件夹选择器…", `通过 localhost:${getPort()} 调用本机 App`, true);
+    try {
+        const selected = await chooseFolder(input.value.trim() || fallbackPath);
+        if (!selected) {
+            setStatus("已取消选择", `localhost:${getPort()}`, true);
+            return;
         }
-    });
+        input.value = selected;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        setStatus(`已选择${label}`, selected, true);
+    } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error), "请确认 X2MD App 正在运行", false);
+        showToast("无法打开文件夹选择器", true);
+    }
 }
 
-function applyConfigToUI(cfg) {
-    document.getElementById("portInput").value = cfg.port || 9527;
-    document.getElementById("portLabel").textContent = cfg.port || 9527;
-    document.getElementById("filenameFormat").value =
-        cfg.filename_format || "{date}_{author}_{summary}";
-    document.getElementById("maxLen").value = cfg.max_filename_length || 60;
-
-    // 视频设置回显
-    document.getElementById("enableVideoDownload").checked = cfg.enable_video_download !== false;
-    document.getElementById("videoSavePath").value = cfg.video_save_path || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
-    document.getElementById("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
-    document.getElementById("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
-    document.getElementById("showXProfileCaptureButton").checked = cfg.show_x_profile_capture_button !== false;
-    document.getElementById("profileCaptureRange").value = cfg.profile_capture_range || "today";
-    document.getElementById("profileCaptureDays").value = cfg.profile_capture_custom_days || 7;
-    document.getElementById("profileCaptureSavePath").value = cfg.profile_capture_save_path || "";
-
-    renderPaths(cfg.save_paths || []);
-    renderCustomPaths(cfg.custom_save_paths || []);
+function updateCustomSummary(paths = collectCustomPaths(false)) {
+    $("customSaveSummary").textContent = paths.length ? `已添加 ${paths.length} 个额外位置。` : "没有额外位置。大多数用户不用设置。";
 }
 
-// ─────────────────────────────────────────────
-// 路径列表
-// ─────────────────────────────────────────────
-function renderPaths(paths) {
-    const list = document.getElementById("pathList");
-    list.innerHTML = "";
-    paths.forEach((p, i) => {
-        const row = document.createElement("div");
-        row.className = "path-row";
-
-        const icon = document.createElement("span");
-        icon.className = "path-row-icon";
-        icon.textContent = "📂";
-
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = p;
-        input.dataset.index = i;
-        input.placeholder = "/path/to/obsidian/vault";
-
-        const btn = document.createElement("button");
-        btn.className = "btn-remove";
-        btn.title = "删除";
-        btn.textContent = "×";
-        btn.addEventListener("click", () => {
-            const paths2 = collectPaths();
-            paths2.splice(i, 1);
-            renderPaths(paths2);
-        });
-
-        row.appendChild(icon);
-        row.appendChild(input);
-        row.appendChild(btn);
-        list.appendChild(row);
-    });
+function emptyState(text) {
+    const node = document.createElement("div");
+    node.className = "empty-state";
+    node.textContent = text;
+    return node;
 }
 
-function collectPaths() {
-    return [...document.querySelectorAll("#pathList input")]
-        .map(i => i.value.trim())
-        .filter(Boolean);
+function renderPrimaryPath(path = "") {
+    $("primarySavePath").value = path;
 }
 
-function addPath() {
-    const paths = collectPaths();
-    paths.push("");
-    renderPaths(paths);
-    const inputs = document.querySelectorAll("#pathList input");
-    if (inputs.length) inputs[inputs.length - 1].focus();
-}
-
-// ─────────────────────────────────────────────
-// X 书签悬停菜单的自定义保存路径
-// ─────────────────────────────────────────────
 function normalizeCustomPathEntry(entry = {}) {
-    return {
-        name: String(entry.name || "").trim(),
-        path: String(entry.path || "").trim(),
-    };
+    return { name: String(entry.name || "").trim(), path: String(entry.path || "").trim() };
 }
 
-function renderCustomPaths(paths) {
-    const list = document.getElementById("customPathList");
+function addCustomPathRow(item = {}) {
+    const list = $("customPathList");
+    list.querySelector(".empty-state")?.remove();
+    const row = document.createElement("div");
+    row.className = "path-row custom-path-row";
+    row.dataset.customRow = "true";
+
+    const nameLabel = document.createElement("label");
+    nameLabel.className = "field";
+    const nameTitle = document.createElement("span");
+    nameTitle.textContent = "名称";
+    const nameInput = document.createElement("input");
+    nameInput.placeholder = "例如：生图";
+    nameInput.value = item.name || "";
+    nameInput.dataset.field = "name";
+    nameLabel.append(nameTitle, nameInput);
+
+    const pathLabel = document.createElement("label");
+    pathLabel.className = "field";
+    const pathTitle = document.createElement("span");
+    pathTitle.textContent = "保存到";
+    const pathInput = document.createElement("input");
+    pathInput.placeholder = "还未选择文件夹";
+    pathInput.value = item.path || "";
+    pathInput.readOnly = true;
+    pathInput.dataset.field = "path";
+    pathLabel.append(pathTitle, pathInput);
+
+    const actions = document.createElement("div");
+    actions.className = "custom-path-actions";
+    const choose = document.createElement("button");
+    choose.className = "soft";
+    choose.type = "button";
+    choose.textContent = "选择文件夹";
+    const useMain = document.createElement("button");
+    useMain.className = "soft";
+    useMain.type = "button";
+    useMain.textContent = "用主目录";
+    const remove = document.createElement("button");
+    remove.className = "danger btn-remove";
+    remove.type = "button";
+    remove.textContent = "删除";
+    actions.append(choose, useMain, remove);
+
+    const sync = () => updateCustomSummary(collectCustomPaths(false));
+    nameInput.addEventListener("input", sync);
+    pathInput.addEventListener("input", sync);
+    choose.addEventListener("click", () => chooseFolderForInput(pathInput, "额外保存位置", $("primarySavePath").value.trim()));
+    useMain.addEventListener("click", () => { pathInput.value = $("primarySavePath").value.trim(); sync(); });
+    remove.addEventListener("click", () => { row.remove(); if (!list.querySelector("[data-custom-row]")) list.append(emptyState("还没有额外保存位置。需要分类保存时，点击“新增位置”。")); sync(); });
+
+    row.append(nameLabel, pathLabel, actions);
+    list.append(row);
+    sync();
+}
+
+function renderCustomPaths(paths = []) {
+    const list = $("customPathList");
     list.innerHTML = "";
-    paths.map(normalizeCustomPathEntry).forEach((entry, i) => {
-        const row = document.createElement("div");
-        row.className = "path-row";
-
-        const icon = document.createElement("span");
-        icon.className = "path-row-icon";
-        icon.textContent = "🏷️";
-
-        const nameInput = document.createElement("input");
-        nameInput.type = "text";
-        nameInput.value = entry.name;
-        nameInput.dataset.field = "name";
-        nameInput.placeholder = "菜单名，如：生图类";
-        nameInput.className = "custom-path-name";
-
-        const pathInput = document.createElement("input");
-        pathInput.type = "text";
-        pathInput.value = entry.path;
-        pathInput.dataset.field = "path";
-        pathInput.placeholder = "/path/to/obsidian/subfolder";
-        pathInput.className = "custom-path-target";
-
-        const btn = document.createElement("button");
-        btn.className = "btn-remove";
-        btn.title = "删除";
-        btn.textContent = "×";
-        btn.addEventListener("click", () => {
-            const paths2 = collectCustomPaths({ keepIncomplete: true });
-            paths2.splice(i, 1);
-            renderCustomPaths(paths2);
-        });
-
-        row.appendChild(icon);
-        row.appendChild(nameInput);
-        row.appendChild(pathInput);
-        row.appendChild(btn);
-        list.appendChild(row);
-    });
+    const normalized = paths.map(normalizeCustomPathEntry).filter((entry) => entry.name || entry.path);
+    if (!normalized.length) list.append(emptyState("还没有额外保存位置。需要分类保存时，点击“新增位置”。"));
+    normalized.forEach((entry) => addCustomPathRow(entry));
+    updateCustomSummary(normalized.filter((entry) => entry.name && entry.path));
 }
 
-function collectCustomPaths(options = {}) {
-    const keepIncomplete = !!options.keepIncomplete;
-    return [...document.querySelectorAll("#customPathList .path-row")]
+function collectCustomPaths(keepIncomplete = false) {
+    return [...document.querySelectorAll("#customPathList [data-custom-row]")]
         .map((row) => ({
-            name: row.querySelector('input[data-field="name"]')?.value.trim() || "",
-            path: row.querySelector('input[data-field="path"]')?.value.trim() || "",
+            name: row.querySelector('[data-field="name"]')?.value.trim() || "",
+            path: row.querySelector('[data-field="path"]')?.value.trim() || "",
         }))
         .filter((entry) => keepIncomplete ? (entry.name || entry.path) : (entry.name && entry.path));
 }
 
-function addCustomPath() {
-    const paths = collectCustomPaths({ keepIncomplete: true });
-    paths.push({ name: "", path: "" });
-    renderCustomPaths(paths);
-    const inputs = document.querySelectorAll('#customPathList input[data-field="name"]');
-    if (inputs.length) inputs[inputs.length - 1].focus();
+function applyConfigToUI(cfg) {
+    currentConfig = cfg || {};
+    $("portInput").value = cfg.port || 9527;
+    $("portLabel").textContent = cfg.port || 9527;
+    renderPrimaryPath(Array.isArray(cfg.save_paths) ? (cfg.save_paths[0] || "") : "");
+    setFilenameFormat(cfg.filename_format || DEFAULT_FILENAME_FORMAT);
+    $("maxLen").value = cfg.max_filename_length || DEFAULT_FILENAME_LENGTH;
+    $("enableVideoDownload").checked = cfg.enable_video_download !== false;
+    $("videoSavePath").value = cfg.video_save_path || "";
+    $("videoDurationThreshold").value = cfg.video_duration_threshold || 5;
+    $("showSiteSaveIcon").checked = cfg.show_site_save_icon !== false;
+    $("showXProfileCaptureButton").checked = cfg.show_x_profile_capture_button !== false;
+    $("profileCaptureRange").value = cfg.profile_capture_range || "today";
+    $("profileCaptureDays").value = cfg.profile_capture_custom_days || 7;
+    $("profileCaptureSavePath").value = cfg.profile_capture_save_path || "";
+    renderCustomPaths(Array.isArray(cfg.custom_save_paths) ? cfg.custom_save_paths : []);
 }
 
-// ─────────────────────────────────────────────
-// 服务状态检测
-// ─────────────────────────────────────────────
-function checkStatus() {
-    const dot = document.getElementById("statusDot");
-    const txt = document.getElementById("statusText");
-    dot.className = "status-indicator offline";
-    txt.textContent = "检测中…";
-
-    chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
-        const online = resp && resp.online;
-        dot.className = "status-indicator " + (online ? "online" : "offline");
-        txt.textContent = online ? "本地服务运行中 ✓" : "服务未启动，请运行 start_server.sh";
-    });
+async function loadConfig() {
+    const resp = await sendMessage({ action: "get_config" });
+    if (resp && resp.success && resp.config) {
+        applyConfigToUI(resp.config);
+    } else {
+        showToast("无法读取配置，请确认服务已启动", true);
+    }
 }
 
-function loadAutostart() {
-    chrome.runtime.sendMessage({ action: "get_autostart" }, (resp) => {
-        const checkbox = document.getElementById("enableAutostart");
-        const hint = document.getElementById("autostartHint");
-        if (resp && resp.success) {
-            checkbox.checked = !!resp.enabled;
-            checkbox.disabled = false;
-            hint.textContent = "开启后，登录 macOS 时自动启动 X2MD App。";
-        } else {
-            checkbox.disabled = true;
-            hint.textContent = "无法读取开机自动运行状态，请确认本地服务在线。";
-        }
-    });
+async function loadAutostart() {
+    try {
+        const response = await fetch(`${apiBase()}/autostart`);
+        const result = await response.json();
+        $("enableAutostart").checked = Boolean(result.enabled);
+        $("autostartHint").textContent = result.enabled ? "已开启，登录 macOS 后会自动启动。" : "未开启，可在这里直接打开。";
+    } catch {
+        $("autostartHint").textContent = "需要 X2MD App 运行后才能读取。";
+    }
 }
 
-function saveAutostart() {
-    const checkbox = document.getElementById("enableAutostart");
-    const hint = document.getElementById("autostartHint");
-    checkbox.disabled = true;
-    chrome.runtime.sendMessage({ action: "set_autostart", enabled: checkbox.checked }, (resp) => {
-        checkbox.disabled = false;
-        if (resp && resp.success) {
-            checkbox.checked = !!resp.enabled;
-            hint.textContent = resp.enabled ? "已开启：登录 macOS 时会自动启动 X2MD App。" : "已关闭：登录时不会自动启动 X2MD。";
-            showToast(resp.enabled ? "✅ 已开启开机自动运行" : "已关闭开机自动运行");
-        } else {
-            checkbox.checked = !checkbox.checked;
-            hint.textContent = "设置失败，请确认本地服务在线。";
-            showToast("❌ 开机自动运行设置失败", true);
-        }
-    });
+async function saveAutostart() {
+    try {
+        const response = await fetch(`${apiBase()}/autostart`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: $("enableAutostart").checked }),
+        });
+        const result = await response.json().catch(() => ({}));
+        $("enableAutostart").checked = Boolean(result.enabled);
+        $("autostartHint").textContent = result.enabled ? "已开启，登录 macOS 后会自动启动。" : "未开启，可在这里直接打开。";
+        showToast(response.ok ? "启动设置已更新" : "启动设置失败", !response.ok);
+    } catch {
+        showToast("启动设置失败，请确认 App 正在运行", true);
+    }
 }
 
-// ─────────────────────────────────────────────
-// 保存配置
-// ─────────────────────────────────────────────
-function saveConfig() {
-    const port = parseInt(document.getElementById("portInput").value) || 9527;
-    const filenameFormat =
-        document.getElementById("filenameFormat").value.trim() ||
-        "{date}_{author}_{summary}";
-    const maxLen = parseInt(document.getElementById("maxLen").value) || 60;
-    const savePaths = collectPaths();
-    const rawCustomSavePaths = collectCustomPaths({ keepIncomplete: true });
-    const invalidCustomPath = rawCustomSavePaths.find((entry) => (entry.name && !entry.path) || (!entry.name && entry.path));
-    const customSavePaths = collectCustomPaths();
+async function checkStatus() {
+    const resp = await sendMessage({ action: "ping" });
+    const online = Boolean(resp.online);
+    setStatus(online ? "已连接，保存功能可用" : "服务未启动", online ? `本机服务正常，端口 ${getPort()}` : `正在连接 localhost:${getPort()}`, online);
+}
 
-    // 媒体设置读取
-    const enableVideoDownload = document.getElementById("enableVideoDownload").checked;
-    const videoSavePath = document.getElementById("videoSavePath").value.trim() || "/Users/zscc.in/Desktop/船仓文件/Obsidian/OB/00-资料库/附件/视频/2026";
-    const videoDurationThreshold = parseFloat(document.getElementById("videoDurationThreshold").value) || 5;
-    const showSiteSaveIcon = document.getElementById("showSiteSaveIcon").checked;
-    const showXProfileCaptureButton = document.getElementById("showXProfileCaptureButton").checked;
-    const profileCaptureRange = document.getElementById("profileCaptureRange").value || "today";
-    const profileCaptureDays = parseInt(document.getElementById("profileCaptureDays").value, 10) || 7;
-    const profileCaptureSavePath = document.getElementById("profileCaptureSavePath").value.trim();
-
-    if (!savePaths.length) {
-        showToast("请至少添加一个保存路径", true);
+async function saveConfig() {
+    const rawCustom = collectCustomPaths(true);
+    const invalid = rawCustom.find((entry) => (entry.name && !entry.path) || (!entry.name && entry.path));
+    if (invalid) {
+        showToast("额外保存位置需要同时填写名称和路径", true);
         return;
     }
-    if (invalidCustomPath) {
-        showToast("自定义保存路径需要同时填写菜单名和路径", true);
+    const savePath = $("primarySavePath").value.trim();
+    if (!savePath) {
+        showToast("请先选择主要保存位置", true);
+        showPanel("save");
         return;
     }
-
-    const newConfig = {
-        port,
-        filename_format: filenameFormat,
-        max_filename_length: maxLen,
-        save_paths: savePaths,
-        custom_save_paths: customSavePaths,
-        enable_video_download: enableVideoDownload,
-        video_save_path: videoSavePath,
-        video_duration_threshold: videoDurationThreshold,
-        show_site_save_icon: showSiteSaveIcon,
-        show_x_profile_capture_button: showXProfileCaptureButton,
-        profile_capture_range: profileCaptureRange,
-        profile_capture_custom_days: profileCaptureDays,
-        profile_capture_save_path: profileCaptureSavePath,
+    const config = {
+        port: Number($("portInput").value || 9527),
+        save_paths: [savePath],
+        custom_save_paths: collectCustomPaths(false),
+        filename_format: $("filenameFormat").value.trim() || DEFAULT_FILENAME_FORMAT,
+        max_filename_length: Number($("maxLen").value || DEFAULT_FILENAME_LENGTH),
+        enable_video_download: $("enableVideoDownload").checked,
+        video_save_path: $("videoSavePath").value.trim(),
+        video_duration_threshold: Number($("videoDurationThreshold").value || 5),
+        show_site_save_icon: $("showSiteSaveIcon").checked,
+        show_x_profile_capture_button: $("showXProfileCaptureButton").checked,
+        profile_capture_range: $("profileCaptureRange").value,
+        profile_capture_custom_days: Number($("profileCaptureDays").value || 7),
+        profile_capture_save_path: $("profileCaptureSavePath").value.trim(),
+        setup_completed: true,
     };
-
-    document.getElementById("portLabel").textContent = port;
-
-    chrome.runtime.sendMessage({ action: "update_config", config: newConfig }, (resp) => {
-        if (resp && resp.success) {
-            currentConfig = newConfig;
-            showToast("✅ 设置已保存");
-        } else {
-            showToast("❌ 保存失败，服务是否在线？", true);
-        }
-    });
+    const resp = await sendMessage({ action: "update_config", config });
+    showToast(resp.success ? "设置已保存" : "保存失败，服务是否在线？", !resp.success);
+    if (resp.config) applyConfigToUI(resp.config);
+    checkStatus();
 }
 
-// ─────────────────────────────────────────────
-// Toast 提示
-// ─────────────────────────────────────────────
-function showToast(msg, isError = false) {
-    const t = document.getElementById("toast");
-    t.textContent = msg;
-    t.className = "show" + (isError ? " error" : "");
-    clearTimeout(t.__timer);
-    t.__timer = setTimeout(() => { t.className = ""; }, 3000);
-}
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("[data-panel-button]").forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.panelButton || "save")));
+    document.querySelectorAll("[data-filename-format]").forEach((button) => button.addEventListener("click", () => setFilenameFormat(button.dataset.filenameFormat || DEFAULT_FILENAME_FORMAT)));
+    $("btnRefresh").addEventListener("click", checkStatus);
+    $("btnSave").addEventListener("click", saveConfig);
+    $("btnAddCustomPath").addEventListener("click", () => addCustomPathRow());
+    $("choosePrimarySavePath").addEventListener("click", () => chooseFolderForInput($("primarySavePath"), "主要保存位置"));
+    $("chooseVideoSavePath").addEventListener("click", () => chooseFolderForInput($("videoSavePath"), "视频保存位置", $("primarySavePath").value.trim()));
+    $("chooseProfileCaptureSavePath").addEventListener("click", () => chooseFolderForInput($("profileCaptureSavePath"), "博主内容保存位置", $("primarySavePath").value.trim()));
+    $("clearProfileCaptureSavePath").addEventListener("click", () => { $("profileCaptureSavePath").value = ""; showToast("博主内容将使用主目录"); });
+    $("enableAutostart").addEventListener("change", saveAutostart);
+    showPanel(safePanel());
+    loadConfig().then(loadAutostart).then(checkStatus).catch(() => setStatus("服务未启动", `正在连接 localhost:${getPort()}`, false));
+});
