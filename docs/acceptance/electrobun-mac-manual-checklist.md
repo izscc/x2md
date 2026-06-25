@@ -38,7 +38,7 @@ npm run smoke:mac:window-visible
 ## 发布前记录
 
 - 本机自动烟测参考（2026-06-25）：`X2MD_Mac.zip` 约 18MB，解压 `.app` 约 19MB，隔离首次自解压启动到 `/ping` 约 5.1–7.8 秒；复用同一 HOME/App 缓存第二次启动需 ≤ 1 秒（`npm run smoke:mac:startup-time`）。
-- 本机 v2 发布目录：`release/v2.0.0-lite/X2MD_Mac.zip`、`X2MD_Extension.zip`、`SHA256SUMS.txt` 已生成；Windows legacy 包由 CI Windows runner 生成。
+- 本机 v2 发布目录：`release/v2.0.0/X2MD_Mac.zip`、`X2MD_Extension.zip`、`SHA256SUMS.txt` 已生成；Windows legacy 包由 CI Windows runner 生成。
 - `X2MD_Mac.zip` 大小：18 MB，目标 ≤ 30MB。
 - 解压 `.app` 大小：19 MB，目标 ≤ 90MB。
 - 冷启动到 `/ping` 可用：隔离首次自解压约 5.1–7.8 秒；复用同一 HOME/App 缓存第二次启动需 ≤ 1 秒（`npm run smoke:mac:startup-time`）。PRD 的 ≤ 1 秒目标按日常二次启动满足，首次自解压需在 release note 中说明。

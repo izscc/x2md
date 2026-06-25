@@ -1,6 +1,15 @@
 (function (globalScope) {
+    function cleanupTwitterDisplayUrlLineBreaks(text) {
+        return String(text || "").replace(
+            /(^|[^\w])https?:\/\/[ \t]*\n[ \t]*((?:www\.)?[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(?:\/[^\s]*)?)/g,
+            "$1$2",
+        );
+    }
+
     function normalizeSpaces(text) {
-        return String(text || "").replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").trim();
+        return cleanupTwitterDisplayUrlLineBreaks(String(text || "").replace(/\u00a0/g, " "))
+            .replace(/[ \t]+\n/g, "\n")
+            .trim();
     }
 
     function isExpandableTweetTextControl(text) {
@@ -52,6 +61,7 @@
     const exported = {
         applyTranslationOverrideToData,
         buildArticleTranslationSource,
+        cleanupTwitterDisplayUrlLineBreaks,
         isExpandableTweetTextControl,
         normalizeSpaces,
     };

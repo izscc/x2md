@@ -4,7 +4,7 @@
 
 | # | PRD 验收 | 状态 | 证据 |
 | --- | --- | --- | --- |
-| 1 | Mac 用户可下载并运行 Electrobun 版 | 自动通过 | `npm run smoke:mac:release`，`release/v2.0.0-lite/X2MD_Mac.zip` |
+| 1 | Mac 用户可下载并运行 Electrobun 版 | 自动通过 | `npm run smoke:mac:release`，`release/v2.0.0/X2MD_Mac.zip` |
 | 2 | 首次运行可配置保存路径和视频路径 | 自动通过 | `npm run smoke:mac:first-run`、`npm run smoke:mac:window-visible` |
 | 3 | Chrome 扩展无需大改连接新服务 | 自动通过 | `npm run smoke:mac:extension-health`、`npm run smoke:chrome-extension-load` |
 | 4 | `/ping`、`/config`、`/save`、`/profile-capture`、`/autostart` 协议兼容 | 自动通过 | `npm run check` |

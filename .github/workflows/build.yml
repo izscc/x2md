@@ -6,7 +6,7 @@ on:
       version:
         description: '版本号（如 2.0.0）'
         required: false
-        default: '2.0.0-lite'
+        default: '2.0.0'
   push:
     tags:
       - 'v*'

@@ -6,8 +6,15 @@ import { formatDate, formatDateTime } from "./dates.ts";
 import { sanitizeFilename, normalizeImageUrl } from "./filenames.ts";
 import { downloadVideoAsync } from "./media.ts";
 
+function cleanupTwitterDisplayUrlLineBreaks(text: string): string {
+  return text.replace(
+    /(^|[^\w])https?:\/\/[ \t]*\n[ \t]*((?:www\.)?[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(?:\/[^\s]*)?)/g,
+    "$1$2",
+  );
+}
+
 function normalizeTranslationText(value: unknown): string {
-  return String(value ?? "").replace(/\u00a0/g, " ").trim();
+  return cleanupTwitterDisplayUrlLineBreaks(String(value ?? "").replace(/\u00a0/g, " ")).trim();
 }
 
 export function applyTranslationOverride(data: Record<string, any>): Record<string, any> {

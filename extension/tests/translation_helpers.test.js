@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
     applyTranslationOverrideToData,
     buildArticleTranslationSource,
+    cleanupTwitterDisplayUrlLineBreaks,
     isExpandableTweetTextControl,
 } = require("../translation_helpers.js");
 
@@ -48,6 +49,27 @@ test("applyTranslationOverrideToData prefers translated tweet text while preserv
     assert.equal(result.text, "译文正文");
     assert.deepEqual(result.images, ["https://pbs.twimg.com/media/a.jpg"]);
     assert.equal(result.url, "https://x.com/a/status/1");
+});
+
+test("applyTranslationOverrideToData cleans split X display links in translated tweets", () => {
+    const result = applyTranslationOverrideToData({
+        type: "tweet",
+        text: "Original text",
+        prefer_translated_content: true,
+        translation_override: {
+            type: "tweet",
+            text: "实用应用、网站、资源\n\n- http://\nmake.design - AI 设计\n- https://\nAside.com - AI 浏览器",
+        },
+    });
+
+    assert.equal(
+        result.text,
+        "实用应用、网站、资源\n\n- make.design - AI 设计\n- Aside.com - AI 浏览器",
+    );
+});
+
+test("cleanupTwitterDisplayUrlLineBreaks leaves normal text untouched", () => {
+    assert.equal(cleanupTwitterDisplayUrlLineBreaks("访问 https://example.com/path"), "访问 https://example.com/path");
 });
 
 test("applyTranslationOverrideToData prefers translated article title and content", () => {

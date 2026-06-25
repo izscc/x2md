@@ -41,6 +41,24 @@ test("Tweet 译文和图片 alt 写入 Markdown", () => {
   assert.match(content, /!\[1\]\(https:\/\/pbs\.twimg\.com\/media\/watch\.jpg\?format=jpg&name=orig\)\n```\nApple Watch ⌚\n```/);
 });
 
+test("Tweet 译文保存前清理 X 链接协议换行", () => {
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "Original text",
+    url: "https://x.com/a/status/1",
+    handle: "@alice",
+    prefer_translated_content: true,
+    translation_override: {
+      type: "tweet",
+      text: "实用应用、网站、资源\n\n- http://\nmake.design - AI 设计\n- https://\nAside.com - AI 浏览器",
+    },
+  }, baseCfg);
+
+  assert.match(content, /- make\.design - AI 设计/);
+  assert.match(content, /- Aside\.com - AI 浏览器/);
+  assert.doesNotMatch(content, /http:\/\/\nmake\.design/);
+});
+
 test("Article 正文顺序保持，不补 dump 已缺失图片", () => {
   const [, content] = buildMarkdown({
     type: "article",
