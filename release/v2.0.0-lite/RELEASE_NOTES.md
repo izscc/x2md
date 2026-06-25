@@ -13,6 +13,10 @@ Tag release 会包含：
 
 本仓库内 `release/v2.0.0-lite/` 只保存本机可复验的 Mac 包、扩展包和校验文件；Windows zip 以 CI artifact/release 为准。
 
+## 补丁更新
+
+- 2026-06-25：修复 X/Twitter 页面点击“复制正文”时，遇到“显示更多 / Show more”折叠推文只复制可见截断内容的问题；复制前会自动展开并等待正文更新。
+
 ## 主要变化
 
 - Mac 默认使用 Electrobun + 系统 WebView，不再以 PyInstaller Python 包作为主分发路径。

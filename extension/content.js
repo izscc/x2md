@@ -877,6 +877,8 @@ async function requestBackgroundTweetTranslationForCopy(payload) {
 
 async function resolveContentForCopy(article, triggerButton) {
     const scope = article || document;
+    await expandCollapsedTweetText(scope);
+
     const payload = buildCopyContentPayload(article, triggerButton);
     const visibleTranslation = getDisplayedTranslationContentForCopy(article || document) ||
         (article && article !== document ? getDisplayedTranslationContentForCopy(document) : null);
@@ -1105,8 +1107,12 @@ function findExpandableTweetTextControls(scope = document) {
 }
 
 async function expandCollapsedTweetText(scope = document) {
-    const controls = findExpandableTweetTextControls(scope);
+    const ctx = scope || document;
+    const textRoot = ctx === document ? document.body : ctx;
+    const beforeText = normalizeSpaces(textRoot?.innerText || textRoot?.textContent || "");
+    const controls = findExpandableTweetTextControls(ctx);
     if (!controls.length) return 0;
+
     let clicked = 0;
     for (const control of controls.slice(0, 3)) {
         try {
@@ -1114,7 +1120,17 @@ async function expandCollapsedTweetText(scope = document) {
             clicked++;
         } catch (error) { }
     }
-    if (clicked) await delay(180);
+
+    if (!clicked) return 0;
+
+    const started = Date.now();
+    while (Date.now() - started < 1200) {
+        await delay(120);
+        const afterText = normalizeSpaces(textRoot?.innerText || textRoot?.textContent || "");
+        const remainingControls = findExpandableTweetTextControls(ctx).filter((el) => el.isConnected !== false);
+        if (!remainingControls.length || afterText.length > beforeText.length + 8) break;
+    }
+
     return clicked;
 }
 
