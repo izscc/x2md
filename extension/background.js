@@ -1454,13 +1454,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             }
 
                             let prefix = "";
-                            const cleanText = data.text.trim();
-                            if (cleanText !== articleUrl && cleanText !== "") {
-                                // 去除文本中的长文卡片 URL，以免重叠
-                                const textWithoutUrl = cleanText.replace(articleUrl, "").trim();
-                                if (textWithoutUrl) {
-                                    prefix = textWithoutUrl + "\n\n---\n\n";
-                                }
+                            const textWithoutUrl = stripXArticleLinksFromText(data.text || "", articleUrl);
+                            if (textWithoutUrl) {
+                                prefix = textWithoutUrl + "\n\n---\n\n";
                             }
 
                             data = {

@@ -6,6 +6,7 @@ const {
     buildArticleTranslationSource,
     cleanupTwitterDisplayUrlLineBreaks,
     isExpandableTweetTextControl,
+    stripXArticleLinksFromText,
 } = require("../translation_helpers.js");
 
 test("isExpandableTweetTextControl matches tweet truncation controls only", () => {
@@ -70,6 +71,20 @@ test("applyTranslationOverrideToData cleans split X display links in translated 
 
 test("cleanupTwitterDisplayUrlLineBreaks leaves normal text untouched", () => {
     assert.equal(cleanupTwitterDisplayUrlLineBreaks("访问 https://example.com/path"), "访问 https://example.com/path");
+});
+
+test("stripXArticleLinksFromText removes feed article card links only", () => {
+    assert.equal(
+        stripXArticleLinksFromText(
+            "[x.com/i/article/2070348535829262571](https://x.com/i/article/2070348535829262571) x上关于内容创作skill推荐的帖子很多",
+            "https://x.com/Jackywxsz/status/2070348535829262571",
+        ),
+        "x上关于内容创作skill推荐的帖子很多",
+    );
+    assert.equal(
+        stripXArticleLinksFromText("https://x.com/i/article/2070348535829262571", "https://x.com/Jackywxsz/article/2070348535829262571"),
+        "",
+    );
 });
 
 test("applyTranslationOverrideToData prefers translated article title and content", () => {

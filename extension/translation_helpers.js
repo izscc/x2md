@@ -29,6 +29,30 @@
         };
     }
 
+
+
+    function normalizeXArticleUrlForCompare(url) {
+        const match = String(url || "").replace("twitter.com", "x.com").match(/(?:https?:\/\/)?(?:www\.)?x\.com\/(?:i\/article|[^/]+\/(?:article|status))\/(\d+)/i);
+        return match ? match[1] : "";
+    }
+
+    function isSameXArticleUrl(left, right) {
+        const leftId = normalizeXArticleUrlForCompare(left);
+        const rightId = normalizeXArticleUrlForCompare(right);
+        return !!leftId && leftId === rightId;
+    }
+
+    function stripXArticleLinksFromText(text, articleUrl) {
+        if (!articleUrl) return normalizeSpaces(text || "");
+        const articleLinkPattern = /(?:https?:\/\/)?(?:www\.)?(?:x|twitter)\.com\/(?:i\/article|[^/\s)]+\/article)\/\d+(?:[^\s)]*)?/ig;
+        let result = String(text || "");
+        result = result.replace(/\[([^\]]*)\]\((https?:\/\/(?:x|twitter)\.com\/(?:i\/article|[^/)]+\/article)\/\d+[^)]*)\)/ig, (match, label, href) => {
+            return isSameXArticleUrl(href, articleUrl) || isSameXArticleUrl(label, articleUrl) ? "" : match;
+        });
+        result = result.replace(articleLinkPattern, (match) => isSameXArticleUrl(match, articleUrl) ? "" : match);
+        return normalizeSpaces(result).replace(/^[-–—:：|｜\s]+/, "").trim();
+    }
+
     function clonePlainData(data = {}) {
         try {
             return JSON.parse(JSON.stringify(data || {}));
@@ -64,6 +88,7 @@
         cleanupTwitterDisplayUrlLineBreaks,
         isExpandableTweetTextControl,
         normalizeSpaces,
+        stripXArticleLinksFromText,
     };
 
     if (typeof module !== "undefined" && module.exports) {

@@ -60,21 +60,31 @@ export async function showSettingsWindow(appDir = getAppDir(), port?: number): P
   try {
     const { BrowserWindow } = await import("electrobun/bun");
     const configuredPort = port || loadConfig(appDir).port || 9527;
-    const html = settingsHtml(configuredPort);
-    const mode = html.includes("设置页资源未找到") ? "fallback" : "inline";
     if (settingsWindow) {
-      settingsWindow.show?.();
-      settingsWindow.activate?.();
-      log("设置页已打开：复用现有窗口", appDir);
-      return;
+      try {
+        settingsWindow.show?.();
+        settingsWindow.activate?.();
+        log("设置页已打开：复用现有窗口", appDir);
+        return;
+      } catch (error) {
+        settingsWindow = null;
+        log(`设置页旧窗口已关闭，重新创建：${error instanceof Error ? error.message : String(error)}`, appDir);
+      }
     }
+
+    const viewsRoot = settingsViewsRootForExecutable();
+    const entry = join(viewsRoot, "settings", "index.html");
+    const hasPackagedView = existsSync(entry);
+    const windowOptions = hasPackagedView
+      ? { url: settingsUrl(appDir, configuredPort), viewsRoot }
+      : { html: settingsHtml(configuredPort), viewsRoot };
+
     settingsWindow = new BrowserWindow({
       title: "X2MD 设置",
-      html,
-      viewsRoot: settingsViewsRootForExecutable(),
+      ...windowOptions,
       frame: { x: 120, y: 120, width: 980, height: 720 },
     });
-    log(`设置页已打开：${mode} viewsRoot=${settingsViewsRootForExecutable()}`, appDir);
+    log(`设置页已打开：${hasPackagedView ? "views" : "inline"} viewsRoot=${viewsRoot}`, appDir);
   } catch (error) {
     log(`设置页打开失败：${error instanceof Error ? error.message : String(error)}`, appDir);
     console.log("设置页需要在 Electrobun 运行时打开：http://127.0.0.1:9527/config");

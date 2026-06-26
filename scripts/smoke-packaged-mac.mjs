@@ -156,8 +156,8 @@ try {
     if (!log.includes("设置页已打开")) {
       throw new Error(`first-run settings window was not opened\n--- stdout ---\n${output}\n--- log ---\n${log}`);
     }
-    if (!log.includes("设置页已打开：inline")) {
-      throw new Error(`first-run settings window did not load inline HTML\n--- stdout ---\n${output}\n--- log ---\n${log}`);
+    if (!/设置页已打开：(inline|views)/.test(log)) {
+      throw new Error(`first-run settings window did not load settings UI\n--- stdout ---\n${output}\n--- log ---\n${log}`);
     }
     const videoDir = join(home, "videos");
     const configResp = await fetch(`http://127.0.0.1:${port}/config`, {
