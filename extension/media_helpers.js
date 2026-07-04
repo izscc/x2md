@@ -90,6 +90,46 @@
         return result;
     }
 
+    function readArticleUrlValue(value, depth = 0) {
+        if (!value || depth > 3) return "";
+        if (typeof value === "string") return value.trim();
+        if (typeof value !== "object") return "";
+
+        const directKeys = ["url", "href", "expanded_url", "expandedUrl", "unwound_url", "unwoundUrl", "target", "link"];
+        for (const key of directKeys) {
+            const found = readArticleUrlValue(value[key], depth + 1);
+            if (found) return found;
+        }
+        return "";
+    }
+
+    function readArticleLinkUrl(entity) {
+        const type = String(entity?.type || "").toUpperCase();
+        if (!/(LINK|URL)/.test(type)) return "";
+        const url = readArticleUrlValue(entity?.data || entity);
+        if (!/^https?:\/\//i.test(url)) return "";
+        return url.replace(/[\s)]+$/g, "");
+    }
+
+    function applyArticleInlineEntities(text, entityRanges, entities) {
+        let result = String(text || "");
+        const ranges = Array.isArray(entityRanges) ? entityRanges : [];
+        for (const range of [...ranges].sort((left, right) => (right.offset || 0) - (left.offset || 0))) {
+            const offset = Number(range?.offset || 0);
+            const length = Number(range?.length || 0);
+            if (!Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) continue;
+            if (offset < 0 || offset + length > result.length) continue;
+
+            const url = readArticleLinkUrl(entities.get(String(range?.key)));
+            if (!url) continue;
+            const label = result.slice(offset, offset + length);
+            if (!label.trim() || label.includes("](") || label.includes("![](")) continue;
+            result = `${result.slice(0, offset)}[${label}](${url})${result.slice(offset + length)}`;
+        }
+        return result;
+    }
+
+
     function cleanArticleCodeText(value) {
         return String(value || "")
             .replace(/\u200b/g, "")
@@ -218,7 +258,8 @@
             if (rendered) entityParts.push(rendered);
         }
 
-        const text = applyArticleInlineStyles(block?.text || "", block?.inlineStyleRanges).trim();
+        const inlineText = applyArticleInlineEntities(block?.text || "", block?.entityRanges, entities);
+        const text = applyArticleInlineStyles(inlineText, block?.inlineStyleRanges).trim();
         if (isArticleCodeBlock(block)) {
             return formatArticleCodeFence(block?.text || "", readArticleCodeLanguage(block?.data || {}));
         }

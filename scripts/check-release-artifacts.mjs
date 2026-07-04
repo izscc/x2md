@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
-const releaseDir = "release/v2.0.2";
+const releaseDir = "release/v2.0.3";
 const macZip = join(releaseDir, "X2MD_Mac.zip");
 const extZip = join(releaseDir, "X2MD_Extension.zip");
 const sums = join(releaseDir, "SHA256SUMS.txt");

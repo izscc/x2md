@@ -40,5 +40,47 @@ function testMarkdownAtomicEntityIsPreserved() {
     assert.strictEqual((article.content.match(/```/g) || []).length, 2, article.content);
 }
 
+function testGraphqlLinkEntityIsRenderedInline() {
+    const result = {
+        article: {
+            article_results: {
+                result: {
+                    title: "Article with link",
+                    content_state: {
+                        blocks: [
+                            {
+                                type: "unstyled",
+                                text: "可以用 Devilstore/Glados-Railgun-checkin 里面的自动签到。",
+                                entityRanges: [{ key: 0, offset: 4, length: 33 }],
+                                inlineStyleRanges: [],
+                                data: {},
+                            },
+                        ],
+                        entityMap: [
+                            {
+                                key: 0,
+                                value: {
+                                    type: "LINK",
+                                    mutability: "MUTABLE",
+                                    data: { url: "https://github.com/Devilstore/Glados-Railgun-checkin" },
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
+        },
+    };
+
+    const article = extractArticleMarkdownFromGraphQL(result);
+
+    assert(article, "article should be parsed");
+    assert(
+        article.content.includes("[Devilstore/Glados-Railgun-checkin](https://github.com/Devilstore/Glados-Railgun-checkin)"),
+        article.content,
+    );
+}
+
 testMarkdownAtomicEntityIsPreserved();
+testGraphqlLinkEntityIsRenderedInline();
 console.log("media_helpers tests passed");
