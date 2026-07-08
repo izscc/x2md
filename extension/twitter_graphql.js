@@ -10,6 +10,8 @@
         "zy39CwTyYhU-_0LP7dljjg",
     ];
 
+    const GRAPHQL_OPS_STORAGE_KEY = "graphql_ops_v1";
+
     function normalizeOperationIdList(ids) {
         const source = Array.isArray(ids) ? ids : [];
         return Array.from(new Set(source.filter((id) => typeof id === "string" && id.trim() !== "")));
@@ -20,6 +22,172 @@
             ...(Array.isArray(discoveredIds) ? discoveredIds : []),
             ...(Array.isArray(fallbackIds) ? fallbackIds : []),
         ]);
+    }
+
+
+    function normalizeGraphQLOperationCache(value, now = Date.now()) {
+        const source = value && typeof value === "object" ? value : {};
+        const normalized = {
+            TweetDetail: normalizeOperationIdList(source.TweetDetail),
+            TweetResultByRestId: normalizeOperationIdList(source.TweetResultByRestId),
+        };
+        if (Number.isFinite(source.updated_at)) {
+            normalized.updated_at = source.updated_at;
+        } else if (normalized.TweetDetail.length || normalized.TweetResultByRestId.length) {
+            normalized.updated_at = now;
+        }
+        return normalized;
+    }
+
+    function hasGraphQLOperationCache(value) {
+        const normalized = normalizeGraphQLOperationCache(value);
+        return normalized.TweetDetail.length > 0 || normalized.TweetResultByRestId.length > 0;
+    }
+
+    function classifyGraphQLHttpStatus(status) {
+        if (status === 401 || status === 403) return "AUTH_REQUIRED";
+        if (status === 404) return "NOT_FOUND";
+        if (status === 429) return "RATE_LIMITED";
+        if (status >= 500) return "X_UPSTREAM_ERROR";
+        return "GRAPHQL_HTTP_ERROR";
+    }
+
+    function graphQLErrorMessage(code) {
+        const messages = {
+            AUTH_REQUIRED: "需要登录 X 后重试",
+            RATE_LIMITED: "X 接口繁忙，请稍后再试",
+            NOT_FOUND: "推文不存在或已删除",
+            RESTRICTED: "内容受限，无法获取完整数据",
+            ARTICLE_RENDER_TIMEOUT: "长文未加载完成，请打开文章页后再保存",
+            SERVER_OFFLINE: "本机 X2MD 服务未启动",
+            PATH_DENIED: "保存路径不可写",
+            X_UPSTREAM_ERROR: "X 接口暂时不可用",
+            GRAPHQL_HTTP_ERROR: "X 接口请求失败",
+        };
+        return messages[code] || messages.GRAPHQL_HTTP_ERROR;
+    }
+
+    function getGraphQLRetryDelayMs(resp, attempt, now = Date.now()) {
+        const resetHeader = resp?.headers?.get?.("x-rate-limit-reset");
+        const resetSeconds = Number(resetHeader);
+        if (Number.isFinite(resetSeconds) && resetSeconds > 0) {
+            const resetDelay = resetSeconds * 1000 - now;
+            if (resetDelay > 0) return Math.min(resetDelay, 30000);
+        }
+        const safeAttempt = Math.max(0, Number(attempt) || 0);
+        return Math.min(1000 * 2 ** safeAttempt, 8000);
+    }
+
+    function cardValueToString(value) {
+        if (value == null) return "";
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+        if (typeof value !== "object") return "";
+        return String(
+            value.string_value ??
+            value.boolean_value ??
+            value.scribe_key ??
+            value.image_value?.url ??
+            value.player_value?.url ??
+            ""
+        );
+    }
+
+    function readCardBindingMap(card) {
+        const map = {};
+        const values = card?.legacy?.binding_values || card?.binding_values || card?.bindingValues || [];
+        if (Array.isArray(values)) {
+            for (const item of values) {
+                const key = String(item?.key || item?.name || "");
+                if (!key) continue;
+                map[key] = cardValueToString(item?.value ?? item);
+            }
+        } else if (values && typeof values === "object") {
+            for (const [key, value] of Object.entries(values)) map[key] = cardValueToString(value);
+        }
+        return map;
+    }
+
+    function firstCardValue(map, keys) {
+        for (const key of keys) {
+            const value = map[key];
+            if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+        }
+        return "";
+    }
+
+    function numberFromCardValue(value) {
+        const text = String(value || "").replace(/,/g, "").trim();
+        if (!text) return undefined;
+        const match = text.match(/-?\d+(?:\.\d+)?/);
+        if (!match) return undefined;
+        const num = Number(match[0]);
+        return Number.isFinite(num) ? num : undefined;
+    }
+
+    function extractPollFromTweetResult(result) {
+        const tweet = result?.tweet || result;
+        const card = tweet?.card || tweet?.legacy?.card || result?.card || result?.legacy?.card;
+        const map = readCardBindingMap(card);
+        const options = [];
+        for (let index = 1; index <= 4; index += 1) {
+            const label = firstCardValue(map, [
+                `choice${index}_label`, `choice${index}_text`, `poll${index}label`, `poll${index}_label`, `option${index}_label`,
+            ]);
+            if (!label) continue;
+            const votes = numberFromCardValue(firstCardValue(map, [
+                `choice${index}_count`, `choice${index}_votes`, `poll${index}count`, `poll${index}_count`, `option${index}_count`,
+            ]));
+            const percent = numberFromCardValue(firstCardValue(map, [
+                `choice${index}_percentage`, `choice${index}_percent`, `poll${index}percent`, `poll${index}_percent`, `option${index}_percent`,
+            ]));
+            options.push({ label, votes, percent });
+        }
+        if (options.length < 2) return null;
+        const totalVotes = numberFromCardValue(firstCardValue(map, ["counts_are_final_total", "total_votes", "vote_count", "count"]));
+        const inferredTotal = options.reduce((sum, option) => sum + (Number.isFinite(option.votes) ? option.votes : 0), 0);
+        const end = firstCardValue(map, ["end_datetime_utc", "end_time", "poll_end", "endDateTime"]);
+        return {
+            options,
+            total_votes: totalVotes || inferredTotal || undefined,
+            end: end || undefined,
+        };
+    }
+
+    function normalizeCommunityNote(note) {
+        if (!note || typeof note !== "object") return null;
+        const text = String(
+            note.text ??
+            note.summary ??
+            note.body ??
+            note.note_text ??
+            note.data_v1?.summary ??
+            ""
+        ).trim();
+        if (!text) return null;
+        const source = String(
+            note.source_url ??
+            note.source ??
+            note.url ??
+            note.data_v1?.source_url ??
+            ""
+        ).trim();
+        const helpfulness = Number(note.helpfulness_score ?? note.rating ?? note.score ?? 0);
+        return { text, source: source || undefined, helpfulness: Number.isFinite(helpfulness) ? helpfulness : 0 };
+    }
+
+    function extractCommunityNotesFromTweetResult(result) {
+        const tweet = result?.tweet || result;
+        const candidates = [
+            tweet?.birdwatch_pivot?.note,
+            tweet?.birdwatch_pivot,
+            tweet?.birdwatch_note,
+            tweet?.community_note,
+            ...(Array.isArray(tweet?.birdwatch_notes) ? tweet.birdwatch_notes : []),
+            ...(Array.isArray(tweet?.community_notes) ? tweet.community_notes : []),
+        ];
+        const notes = candidates.map(normalizeCommunityNote).filter(Boolean);
+        notes.sort((left, right) => (right.helpfulness || 0) - (left.helpfulness || 0));
+        return notes.map(({ text, source }) => ({ text, source }));
     }
 
     function extractGraphQLOperationIdsFromUrls(urls) {
@@ -302,6 +470,7 @@
     const exported = {
         TWEET_DETAIL_OPERATION_IDS,
         TWEET_RESULT_OPERATION_IDS,
+        GRAPHQL_OPS_STORAGE_KEY,
         buildGraphQLRequestPlans,
         buildGraphQLUrl,
         extractGraphQLOperationIdsFromUrls,
@@ -309,7 +478,14 @@
         extractScriptUrlsFromHtml,
         extractTimelineTweets,
         extractMainTweetResult,
+        extractPollFromTweetResult,
+        extractCommunityNotesFromTweetResult,
         mergeOperationIds,
+        normalizeGraphQLOperationCache,
+        hasGraphQLOperationCache,
+        classifyGraphQLHttpStatus,
+        graphQLErrorMessage,
+        getGraphQLRetryDelayMs,
         matchesTweetId,
     };
 

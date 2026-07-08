@@ -9,17 +9,66 @@
 
 importScripts("media_helpers.js");
 importScripts("twitter_graphql.js");
-importScripts("twitter_graphql.js");
 importScripts("translation_helpers.js");
 importScripts("save_response.js");
 
 const SERVER_BASE = "http://127.0.0.1:9527";
 const TWITTER_BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 const GRAPHQL_DISCOVERY_CACHE = new Map();
+const GRAPHQL_STORAGE_CACHE_KEY = typeof GRAPHQL_OPS_STORAGE_KEY === "string" ? GRAPHQL_OPS_STORAGE_KEY : "graphql_ops_v1";
 const PLAIN_TEXT_TRANSLATE_CHUNK_SIZE = 2600;
 const USER_BY_SCREEN_NAME_OPERATION_IDS = ["2qvSHpkWTMS9i0zJAwDNiA"];
 const USER_TWEETS_OPERATION_IDS = ["hr4gzZONlq23okjU8fIe_A"];
 const USER_ARTICLES_TWEETS_OPERATION_IDS = ["tC8Mkunj-1cqFwXmw0DQRg"];
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+function noteGraphQLError(options, code) {
+    if (options?.errorSink && code && !options.errorSink.code) {
+        options.errorSink.code = code;
+        options.errorSink.message = graphQLErrorMessage(code);
+    }
+}
+
+
+function chromeStorageGet(key) {
+    return new Promise((resolve) => {
+        try {
+            if (typeof chrome === "undefined" || !chrome.storage?.local) return resolve(undefined);
+            chrome.storage.local.get(key, (items) => resolve(items?.[key]));
+        } catch (error) {
+            resolve(undefined);
+        }
+    });
+}
+
+function chromeStorageSet(key, value) {
+    return new Promise((resolve) => {
+        try {
+            if (typeof chrome === "undefined" || !chrome.storage?.local) return resolve(false);
+            chrome.storage.local.set({ [key]: value }, () => resolve(true));
+        } catch (error) {
+            resolve(false);
+        }
+    });
+}
+
+async function readStoredGraphQLOperationIds() {
+    const cached = normalizeGraphQLOperationCache(await chromeStorageGet(GRAPHQL_STORAGE_CACHE_KEY));
+    return hasGraphQLOperationCache(cached) ? cached : { TweetDetail: [], TweetResultByRestId: [] };
+}
+
+async function writeStoredGraphQLOperationIds(ids) {
+    const normalized = normalizeGraphQLOperationCache(ids);
+    if (!hasGraphQLOperationCache(normalized)) return;
+    await chromeStorageSet(GRAPHQL_STORAGE_CACHE_KEY, {
+        TweetDetail: normalized.TweetDetail,
+        TweetResultByRestId: normalized.TweetResultByRestId,
+        updated_at: Date.now(),
+    });
+}
 
 function hasDiscoveredOperationIds(ids) {
     return Array.isArray(ids?.TweetDetail) && ids.TweetDetail.length > 0 ||
@@ -82,6 +131,7 @@ async function discoverGraphQLOperationIdsFromPage(pageUrl) {
 
             if (hasDiscoveredOperationIds(discovered)) {
                 GRAPHQL_DISCOVERY_CACHE.set(cacheKey, discovered);
+                await writeStoredGraphQLOperationIds(discovered);
                 return discovered;
             }
         }
@@ -430,9 +480,13 @@ async function fetchViaGraphQL(tweetId, options = {}) {
         const csrfToken = await getCookieValue("ct0");
         if (!csrfToken) {
             console.warn("[x2md] 未找到 ct0 cookie，跳过 GraphQL");
+            noteGraphQLError(options, "AUTH_REQUIRED");
             return null;
         }
         let discoveredOperationIds = options.graphqlOperationIds || {};
+        if (!hasDiscoveredOperationIds(discoveredOperationIds)) {
+            discoveredOperationIds = await readStoredGraphQLOperationIds();
+        }
         if (!hasDiscoveredOperationIds(discoveredOperationIds) && options.pageUrl) {
             discoveredOperationIds = await discoverGraphQLOperationIdsFromPage(options.pageUrl);
         }
@@ -451,13 +505,25 @@ async function fetchViaGraphQL(tweetId, options = {}) {
 
         for (const plan of plans) {
             const url = buildGraphQLUrl(plan);
-            const resp = await fetch(url, {
-                credentials: "include",
-                headers,
-            });
+            let resp = null;
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+                resp = await fetch(url, {
+                    credentials: "include",
+                    headers,
+                });
+
+                if (resp.status !== 429 || attempt === 3) break;
+
+                const delayMs = getGraphQLRetryDelayMs(resp, attempt);
+                console.warn(`[x2md] ${plan.operationName}(${plan.operationId}) 被限流，${delayMs}ms 后重试 (${attempt + 1}/3)`);
+                await sleep(delayMs);
+            }
 
             if (!resp.ok) {
-                console.warn(`[x2md] ${plan.operationName}(${plan.operationId}) 返回 ${resp.status}`);
+                const code = classifyGraphQLHttpStatus(resp.status);
+                noteGraphQLError(options, code);
+                console.warn(`[x2md] ${plan.operationName}(${plan.operationId}) 返回 ${resp.status} (${code})`);
+                if (code === "AUTH_REQUIRED" || code === "RATE_LIMITED") break;
                 continue;
             }
 
@@ -687,6 +753,8 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
         handle,
         published,
         x_article_api: graphqlArticle,
+        poll_data: extractPollFromTweetResult(tweet || result),
+        community_notes: extractCommunityNotesFromTweetResult(tweet || result),
     };
 
     if (!options.skipQuote) {
@@ -751,9 +819,11 @@ async function fetchFullTweetData(tweetData) {
     console.log("[x2md] 开始获取完整推文：", tweetId);
 
     // 策略1：GraphQL API
+    const graphQLError = {};
     let apiResult = await fetchViaGraphQL(tweetId, {
         graphqlOperationIds: tweetData.graphql_operation_ids,
         pageUrl: tweetData.url,
+        errorSink: graphQLError,
     });
 
     // 策略2：oEmbed（GraphQL 失败时）
@@ -764,7 +834,7 @@ async function fetchFullTweetData(tweetData) {
 
     if (!apiResult) {
         console.log("[x2md] 所有 API 均失败，使用 DOM 原始数据");
-        return tweetData;
+        return graphQLError.code ? { ...tweetData, _x2md_warning_code: graphQLError.code, _x2md_warning: graphQLError.message } : tweetData;
     }
 
     console.log(`[x2md] API 获取成功：text=${apiResult.text.slice(0, 50)} images=${apiResult.images.length}`);
@@ -1573,7 +1643,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data)
                 });
-                sendResponse(await parseSaveResponse(resp));
+                const parsed = await parseSaveResponse(resp);
+                if (data._x2md_warning_code) {
+                    parsed.warning_code = data._x2md_warning_code;
+                    parsed.warning = data._x2md_warning || graphQLErrorMessage(data._x2md_warning_code);
+                }
+                sendResponse(parsed);
 
             } catch (err) {
                 console.error("[x2md] 后台处理或请求失败：", err);
@@ -1643,7 +1718,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data)
                 });
-                sendResponse(await parseSaveResponse(resp));
+                const parsed = await parseSaveResponse(resp);
+                if (data._x2md_warning_code) {
+                    parsed.warning_code = data._x2md_warning_code;
+                    parsed.warning = data._x2md_warning || graphQLErrorMessage(data._x2md_warning_code);
+                }
+                sendResponse(parsed);
             } catch (err) {
                 sendResponse({ success: false, error: err.message || String(err) });
             }
@@ -1718,7 +1798,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     signal: AbortSignal.timeout(2000)
                 });
                 const json = await resp.json();
-                sendResponse({ online: json.status === "ok" });
+                sendResponse({
+                    online: json.status === "ok",
+                    version: json.version || "",
+                    port: new URL(SERVER_BASE).port || "9527",
+                });
             } catch {
                 sendResponse({ online: false });
             }

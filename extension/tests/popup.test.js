@@ -7,6 +7,7 @@ function runPopup(responses) {
     const elements = {
         dot: { className: "" },
         "status-text": { textContent: "" },
+        "status-hint": { textContent: "" },
         "path-list": { innerHTML: "" },
     };
     const context = {
@@ -25,17 +26,19 @@ function runPopup(responses) {
 
 test("popup shows service online and configured paths", () => {
     const elements = runPopup({
-        ping: { online: true },
+        ping: { online: true, version: "2.0.4", port: "9527" },
         get_config: { success: true, config: { save_paths: ["/vault/md"] } },
     });
     assert.equal(elements.dot.className, "dot online");
-    assert.equal(elements["status-text"].textContent, "服务运行中");
+    assert.equal(elements["status-text"].textContent, "服务在线");
+    assert.equal(elements["status-hint"].textContent, "v2.0.4 · 127.0.0.1:9527");
     assert.match(elements["path-list"].innerHTML, /\/vault\/md/);
 });
 
 test("popup shows service offline and config error", () => {
     const elements = runPopup({ ping: { online: false }, get_config: { success: false } });
     assert.equal(elements.dot.className, "dot offline");
-    assert.equal(elements["status-text"].textContent, "服务未启动");
-    assert.match(elements["path-list"].innerHTML, /无法读取配置/);
+    assert.equal(elements["status-text"].textContent, "本机服务未启动");
+    assert.equal(elements["status-hint"].textContent, "请打开 X2MD.app 后重试");
+    assert.match(elements["path-list"].innerHTML, /请先启动本机 X2MD 服务/);
 });

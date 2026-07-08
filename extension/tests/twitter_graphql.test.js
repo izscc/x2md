@@ -4,12 +4,20 @@ const assert = require("node:assert/strict");
 const {
     TWEET_DETAIL_OPERATION_IDS,
     TWEET_RESULT_OPERATION_IDS,
+    GRAPHQL_OPS_STORAGE_KEY,
     buildGraphQLRequestPlans,
     extractGraphQLOperationIdsFromUrls,
     extractGraphQLOperationIdsFromScriptText,
     extractScriptUrlsFromHtml,
     extractTimelineTweets,
     extractMainTweetResult,
+    extractPollFromTweetResult,
+    extractCommunityNotesFromTweetResult,
+    normalizeGraphQLOperationCache,
+    hasGraphQLOperationCache,
+    classifyGraphQLHttpStatus,
+    graphQLErrorMessage,
+    getGraphQLRetryDelayMs,
 } = require("../twitter_graphql.js");
 
 test("buildGraphQLRequestPlans prioritizes current TweetDetail candidate before legacy hash", () => {
@@ -155,4 +163,85 @@ test("extractMainTweetResult supports both TweetDetail and TweetResultByRestId s
 
     assert.equal(extractMainTweetResult(detail, tweetId), direct);
     assert.equal(extractMainTweetResult(byRestId, tweetId), direct);
+});
+
+
+test("normalizeGraphQLOperationCache keeps unique operation ids with timestamp", () => {
+    const normalized = normalizeGraphQLOperationCache({
+        TweetDetail: ["LIVE", "LIVE", ""],
+        TweetResultByRestId: ["RESULT"],
+    }, 12345);
+
+    assert.equal(GRAPHQL_OPS_STORAGE_KEY, "graphql_ops_v1");
+    assert.deepEqual(normalized, {
+        TweetDetail: ["LIVE"],
+        TweetResultByRestId: ["RESULT"],
+        updated_at: 12345,
+    });
+    assert.equal(hasGraphQLOperationCache(normalized), true);
+    assert.equal(hasGraphQLOperationCache({ TweetDetail: [], TweetResultByRestId: [] }), false);
+});
+
+test("classifyGraphQLHttpStatus maps user-facing error codes", () => {
+    assert.equal(classifyGraphQLHttpStatus(401), "AUTH_REQUIRED");
+    assert.equal(classifyGraphQLHttpStatus(403), "AUTH_REQUIRED");
+    assert.equal(classifyGraphQLHttpStatus(404), "NOT_FOUND");
+    assert.equal(classifyGraphQLHttpStatus(429), "RATE_LIMITED");
+    assert.equal(classifyGraphQLHttpStatus(503), "X_UPSTREAM_ERROR");
+    assert.equal(classifyGraphQLHttpStatus(400), "GRAPHQL_HTTP_ERROR");
+});
+
+
+test("GraphQL error codes have user-facing messages", () => {
+    assert.equal(graphQLErrorMessage("AUTH_REQUIRED"), "需要登录 X 后重试");
+    assert.equal(graphQLErrorMessage("RATE_LIMITED"), "X 接口繁忙，请稍后再试");
+});
+
+test("getGraphQLRetryDelayMs respects rate-limit reset with bounded fallback", () => {
+    const response = { headers: { get: (name) => name === "x-rate-limit-reset" ? "11" : "" } };
+    assert.equal(getGraphQLRetryDelayMs(response, 0, 10000), 1000);
+    assert.equal(getGraphQLRetryDelayMs({ headers: { get: () => "" } }, 2, 10000), 4000);
+});
+
+
+test("extractPollFromTweetResult reads poll card binding values", () => {
+    const poll = extractPollFromTweetResult({
+        card: {
+            legacy: {
+                binding_values: [
+                    { key: "choice1_label", value: { string_value: "选项 A" } },
+                    { key: "choice1_count", value: { string_value: "120" } },
+                    { key: "choice1_percentage", value: { string_value: "42" } },
+                    { key: "choice2_label", value: { string_value: "选项 B" } },
+                    { key: "choice2_count", value: { string_value: "166" } },
+                    { key: "choice2_percentage", value: { string_value: "58" } },
+                    { key: "end_datetime_utc", value: { string_value: "2026-07-10 12:00 UTC" } },
+                ],
+            },
+        },
+    });
+
+    assert.deepEqual(poll, {
+        options: [
+            { label: "选项 A", votes: 120, percent: 42 },
+            { label: "选项 B", votes: 166, percent: 58 },
+        ],
+        total_votes: 286,
+        end: "2026-07-10 12:00 UTC",
+    });
+});
+
+
+test("extractCommunityNotesFromTweetResult reads birdwatch notes", () => {
+    const notes = extractCommunityNotesFromTweetResult({
+        birdwatch_notes: [
+            { text: "低相关", source_url: "https://example.com/low", helpfulness_score: 1 },
+            { text: "这是社群笔记", source_url: "https://example.com/high", helpfulness_score: 9 },
+        ],
+    });
+
+    assert.deepEqual(notes, [
+        { text: "这是社群笔记", source: "https://example.com/high" },
+        { text: "低相关", source: "https://example.com/low" },
+    ]);
 });

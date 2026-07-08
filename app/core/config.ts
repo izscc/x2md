@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 
-export const VERSION = "2.0.2";
+export const VERSION = "2.0.4";
 
 export type X2MDConfig = Record<string, unknown> & {
   port: number;

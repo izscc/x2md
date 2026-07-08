@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { handleApiRequest, listenErrorMessage, resolveListenPort, startHttpServer } from "../main/http-server.ts";
-import { configPath, logPath } from "../core/config.ts";
+import { configPath, logPath, VERSION } from "../core/config.ts";
 
 function tempApp(): string {
   return mkdtempSync(join(tmpdir(), "x2md-api-"));
@@ -18,7 +18,9 @@ async function json(res: Response): Promise<any> {
 test("GET /ping 返回版本", async () => {
   const res = await handleApiRequest(new Request("http://127.0.0.1:9527/ping"), { appDir: tempApp() });
   assert.equal(res.status, 200);
-  assert.equal((await json(res)).status, "ok");
+  const body = await json(res);
+  assert.equal(body.status, "ok");
+  assert.equal(body.version, VERSION);
 });
 
 test("GET /status 返回服务状态摘要", async () => {

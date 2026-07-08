@@ -443,3 +443,45 @@ test("开启自启时日志路径跟随目标 home", () => {
   const plist = readFileSync(plistPath(LABEL, home), "utf8");
   assert.match(plist, new RegExp(join(home, "Library", "Logs", "x2md-autostart.log").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
+
+
+test("Poll 结构化写入 Front Matter 和正文", () => {
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "你选哪个？",
+    url: "https://x.com/a/status/2",
+    handle: "@alice",
+    poll_data: {
+      options: [
+        { label: "选项 A", percent: 42, votes: 120 },
+        { label: "选项 B", percent: 58, votes: 166 },
+      ],
+      end: "2026-07-10 12:00 UTC",
+      total_votes: 286,
+    },
+  }, baseCfg);
+
+  assert.match(content, /poll: true/);
+  assert.match(content, /poll_end: "2026-07-10 12:00 UTC"/);
+  assert.match(content, /### 投票/);
+  assert.match(content, /- \[ \] 选项 A — 42%（120 票）/);
+  assert.match(content, /截止：2026-07-10 12:00 UTC · 总计 286 票/);
+});
+
+
+test("Community Notes 结构化写入 Front Matter 和正文", () => {
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "被注记的推文",
+    url: "https://x.com/a/status/3",
+    handle: "@alice",
+    community_notes: [
+      { text: "这条推文缺少上下文。", source: "https://example.com/source" },
+    ],
+  }, baseCfg);
+
+  assert.match(content, /has_community_notes: true/);
+  assert.match(content, /> \[!note\] 社群笔记/);
+  assert.match(content, /> 这条推文缺少上下文。/);
+  assert.match(content, /> 来源：https:\/\/example.com\/source/);
+});

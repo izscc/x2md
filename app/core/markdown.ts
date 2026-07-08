@@ -87,6 +87,55 @@ function appendImage(lines: string[], imgUrl: string, label = "", prefix = "", a
   appendAltFence(lines, getImageAltText(origUrl, altMap), prefix);
 }
 
+function formatPollOption(option: Record<string, any>): string {
+  const label = String(option.label || option.text || "").trim();
+  if (!label) return "";
+  const details: string[] = [];
+  const percent = Number(option.percent ?? option.percentage);
+  if (Number.isFinite(percent)) details.push(`${percent}%`);
+  const votes = Number(option.votes ?? option.count);
+  if (Number.isFinite(votes)) details.push(`${votes} 票`);
+  const suffix = details.length > 1 ? `${details[0]}（${details.slice(1).join("，")}）` : details[0];
+  return `- [ ] ${label}${suffix ? ` — ${suffix}` : ""}`;
+}
+
+function appendPollBlock(lines: string[], poll: unknown): void {
+  if (!poll || typeof poll !== "object") return;
+  const data = poll as Record<string, any>;
+  const options = Array.isArray(data.options) ? data.options.map(formatPollOption).filter(Boolean) : [];
+  if (options.length < 2) return;
+  lines.push("");
+  lines.push("### 投票");
+  lines.push(...options);
+  const meta: string[] = [];
+  if (data.end) meta.push(`截止：${data.end}`);
+  if (Number.isFinite(Number(data.total_votes))) meta.push(`总计 ${Number(data.total_votes)} 票`);
+  if (meta.length) {
+    lines.push("");
+    lines.push(meta.join(" · "));
+  }
+}
+
+function appendCommunityNotesBlock(lines: string[], notesValue: unknown): void {
+  const notes = Array.isArray(notesValue) ? notesValue : [];
+  const normalized = notes
+    .map((note) => (note && typeof note === "object" ? note as Record<string, any> : null))
+    .filter((note): note is Record<string, any> => Boolean(note && String(note.text || "").trim()));
+  if (!normalized.length) return;
+
+  for (const note of normalized) {
+    lines.push("");
+    lines.push("> [!note] 社群笔记");
+    for (const line of String(note.text || "").trim().split(/\r?\n/)) {
+      lines.push(line.trim() ? `> ${line}` : ">");
+    }
+    if (note.source) {
+      lines.push(">");
+      lines.push(`> 来源：${note.source}`);
+    }
+  }
+}
+
 export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): [string, string] {
   const data = applyTranslationOverride(input);
   const author = data.author || "unknown";
@@ -104,6 +153,8 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   const threadTweets: Array<Record<string, any>> = Array.isArray(data.thread_tweets) ? data.thread_tweets : [];
   const quoteTweet = data.quote_tweet || {};
   const platform = data.platform || "Twitter/X";
+  const pollData = data.poll_data || data.poll;
+  const communityNotes = Array.isArray(data.community_notes) ? data.community_notes : [];
 
   const dateStr = formatDate();
   const datetimeStr = formatDateTime();
@@ -135,7 +186,9 @@ tags: []
 类别: "[[剪报]]"
 阅读状态: false
 整理: false
----
+poll: ${pollData ? "true" : "false"}
+has_community_notes: ${communityNotes.length ? "true" : "false"}
+${pollData && typeof pollData === "object" && pollData.end ? `poll_end: "${String(pollData.end).replace(/"/g, "'")}"\n` : ""}---
 `;
 
   const lines: string[] = [];
@@ -228,6 +281,8 @@ tags: []
       images.forEach((imgUrl, index) => appendImage(lines, imgUrl, String(index + 1), "", imageAltTexts));
     }
     appendUnusedVideos(lines, textResult);
+    appendPollBlock(lines, pollData);
+    appendCommunityNotesBlock(lines, communityNotes);
     appendQuoteTweet(lines, quoteTweet);
 
     threadTweets.forEach((tweet, idx) => {

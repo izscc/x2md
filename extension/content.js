@@ -2871,10 +2871,13 @@ function handleSaveResponse(resp) {
             savedName = parts[parts.length - 1].replace(/\.md$/, "");
             if (savedName.length > 28) savedName = savedName.slice(0, 28) + "…";
         }
-        showToast("已保存到 Obsidian" + (savedName ? `\n📄 ${savedName}` : ""), "success", 4500);
+        const warning = resp.warning ? `\n⚠️ ${String(resp.warning).slice(0, 36)}` : "";
+        showToast("已保存到 Obsidian" + (savedName ? `\n📄 ${savedName}` : "") + warning, "success", warning ? 6500 : 4500);
     } else {
         const errMsg = resp?.result?.errors?.[0] || resp?.error || "未知错误";
-        showToast(`保存失败：${String(errMsg).slice(0, 40)}`, "error", 5000);
+        const code = resp?.code || resp?.error_code || resp?.result?.code || resp?.result?.error_code;
+        const prefix = code ? `${code}：` : "";
+        showToast(`保存失败：${prefix}${String(errMsg).slice(0, 40)}`, "error", 5000);
     }
 }
 
