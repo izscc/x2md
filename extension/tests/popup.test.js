@@ -33,7 +33,7 @@ test("popup shows service online and configured paths", () => {
         get_history: { success: true, history: [{ title: "最近保存标题", saved_at: "2026-07-09T00:00:00.000Z" }] },
     });
     assert.equal(elements.dot.className, "dot online");
-    assert.equal(elements["status-text"].textContent, "服务在线");
+    assert.equal(elements["status-text"].textContent, "本机服务已就绪");
     assert.equal(elements["status-hint"].textContent, "v2.0.4 · 127.0.0.1:9527");
     assert.match(elements["path-list"].innerHTML, /\/vault\/md/);
     assert.match(elements["history-list"].innerHTML, /最近保存标题/);
@@ -56,4 +56,16 @@ test("popup shows extension upgrade hint", () => {
         get_history: { success: true, history: [] },
     });
     assert.equal(elements["status-hint"].textContent, "请升级扩展到 v3.0.0");
+});
+
+
+test("popup escapes paths and history values returned by the local service", () => {
+    const elements = runPopup({
+        ping: { online: true, version: "3.1.0", extension_version: "3.1.0", min_extension_version: "3.1.0", port: "9527" },
+        get_config: { success: true, config: { save_paths: ["<img src=x onerror=alert(1)>" ] } },
+        get_history: { success: true, history: [{ title: "<script>alert(1)</script>", saved_at: "2026-07-09T00:00:00.000Z" }] },
+    });
+    assert.match(elements["path-list"].innerHTML, /&lt;img/);
+    assert.doesNotMatch(elements["path-list"].innerHTML, /<img/);
+    assert.match(elements["history-list"].innerHTML, /&lt;script&gt;/);
 });

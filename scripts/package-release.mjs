@@ -29,7 +29,7 @@ if (existsSync("artifacts/stable-macos-arm64-update.json")) {
   writeFileSync(join(releaseDir, "update.json"), JSON.stringify({ version, notes: `X2MD v${version}` }, null, 2), "utf8");
 }
 
-writeFileSync(join(releaseDir, "RELEASE_NOTES.md"), `# X2MD v${version}\n\n- X2MD 3.0：增强 X GraphQL 可靠性、结构化 Markdown、书签/Profile 批量导出、图片本地化、升级提示与发布产物校验。\n`, "utf8");
+writeFileSync(join(releaseDir, "RELEASE_NOTES.md"), `# X2MD v${version}\n\n- 浏览器扩展采用与设置页一致的 Apple 风格视觉：更清晰的服务状态、保存位置与最近保存信息。\n- 加固扩展弹窗对本地服务返回文本的渲染，避免路径或标题作为 HTML 执行。\n- 新增保存管线性能与架构改进 PRD，为后续并发媒体、本地原子写入和模块化提供实施路径。\n`, "utf8");
 const sums = execFileSync("shasum", ["-a", "256", "X2MD_Mac.zip", "X2MD_Extension.zip", "X2MD_Windows_Lite.zip", "update.json"], { cwd: releaseDir, encoding: "utf8" });
 writeFileSync(join(releaseDir, "SHA256SUMS.txt"), sums, "utf8");
 console.log(`packaged release ${releaseDir}`);
