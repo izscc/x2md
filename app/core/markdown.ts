@@ -70,7 +70,8 @@ function getImageAltText(imgUrl: string, altMap: unknown): string {
     const value = map[key];
     if (typeof value === "string" && value.trim()) return compactAlt(value);
   }
-  return "";
+  const fallback = map.__x2md_fallback_alt;
+  return typeof fallback === "string" && fallback.trim() ? compactAlt(fallback) : "";
 }
 
 function appendAltFence(lines: string[], altText: unknown, prefix = ""): void {
@@ -421,7 +422,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
 
     if (images.length) {
       lines.push("");
-      images.forEach((imgUrl, index) => appendImage(lines, imgUrl, String(index + 1), "", imageAltTexts));
+      images.forEach((imgUrl, index) => appendImage(lines, imgUrl, "", "", index === 0 ? imageAltTexts : { ...imageAltTexts, __x2md_fallback_alt: "" }));
     }
     appendUnusedVideos(lines, textResult);
     appendPollBlock(lines, pollData);
@@ -440,7 +441,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
       if (twImages.length) {
         lines.push("");
         const twImageAltTexts = tweet.image_alt_texts || {};
-        twImages.forEach((imgUrl, i) => appendImage(lines, imgUrl, `${idx + 2}-${i + 1}`, "", twImageAltTexts));
+        twImages.forEach((imgUrl, i) => appendImage(lines, imgUrl, "", "", i === 0 ? twImageAltTexts : { ...twImageAltTexts, __x2md_fallback_alt: "" }));
       }
       if (twVideos.length) {
         lines.push("");

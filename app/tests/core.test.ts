@@ -38,7 +38,7 @@ test("Tweet 译文和图片 alt 写入 Markdown", () => {
 
   assert.match(content, /译文正文/);
   assert.doesNotMatch(content, /Original text/);
-  assert.match(content, /!\[1\]\(https:\/\/pbs\.twimg\.com\/media\/watch\.jpg\?format=jpg&name=orig\)\n```\nApple Watch ⌚\n```/);
+  assert.match(content, /!\[\]\(https:\/\/pbs\.twimg\.com\/media\/watch\.jpg\?format=jpg&name=orig\)\n```\nApple Watch ⌚\n```/);
 });
 
 test("Tweet 译文保存前清理 X 链接协议换行", () => {

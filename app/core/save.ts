@@ -55,8 +55,14 @@ function imageExtension(url: string, contentType = ""): string {
   }
 }
 
+function isTwitterPayload(data: Record<string, any>): boolean {
+  const platform = String(data.platform || "").toLowerCase();
+  const url = String(data.url || "");
+  return platform === "x" || platform.includes("twitter") || /https?:\/\/(?:x|twitter)\.com\//i.test(url);
+}
+
 async function localizeImages(data: Record<string, any>, cfg: Record<string, any>, saveRoot: string): Promise<Record<string, any>> {
-  if (!cfg.download_images) return data;
+  if (!cfg.download_images || isTwitterPayload(data)) return data;
   const images = Array.isArray(data.images) ? data.images : [];
   if (!images.length) return data;
 

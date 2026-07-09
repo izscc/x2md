@@ -37,6 +37,22 @@ function collectImageAltText(map, rawUrl, img) {
     if (normalized && alt) map[normalized] = alt;
 }
 
+
+function extractVisibleImageDescriptionText(root = document) {
+    const candidates = Array.from(root.querySelectorAll?.('[role="dialog"], [aria-modal="true"], div') || []);
+    for (const el of candidates) {
+        const text = (el.innerText || el.textContent || "").split("\n").map((line) => line.trim()).filter(Boolean);
+        const labelIndex = text.findIndex((line) => /^(图片描述|图像描述|Image description)$/i.test(line));
+        if (labelIndex < 0) continue;
+        const body = text.slice(labelIndex + 1)
+            .filter((line) => !/^@\w{1,20}$/.test(line) && !/^(关闭|Close|ALT)$/i.test(line))
+            .join("\n")
+            .trim();
+        if (body.length > 8) return body;
+    }
+    return "";
+}
+
 function extractImageAltTexts(container) {
     if (!container) return {};
     const result = {};
@@ -57,6 +73,8 @@ function extractImageAltTexts(container) {
             });
         }
     });
+    const visibleDescription = extractVisibleImageDescriptionText(document);
+    if (visibleDescription) result.__x2md_fallback_alt = visibleDescription;
     return result;
 }
 
