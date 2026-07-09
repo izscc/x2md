@@ -82,6 +82,10 @@ function appendAltFence(lines: string[], altText: unknown, prefix = ""): void {
 }
 
 function appendImage(lines: string[], imgUrl: string, label = "", prefix = "", altMap?: unknown): void {
+  if (imgUrl.startsWith("![[") && imgUrl.endsWith("]]")) {
+    lines.push(`${prefix}${imgUrl}`);
+    return;
+  }
   const origUrl = normalizeImageUrl(imgUrl);
   lines.push(`${prefix}![${label}](${origUrl})`);
   appendAltFence(lines, getImageAltText(origUrl, altMap), prefix);

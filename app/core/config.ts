@@ -24,6 +24,9 @@ export type X2MDConfig = Record<string, unknown> & {
   custom_front_matter_template: string;
   local_api_token: string;
   require_local_api_token: boolean;
+  download_images: boolean;
+  image_attachment_path: string;
+  image_embed_style: "markdown" | "obsidian";
   profile_capture_range: string;
   profile_capture_custom_days: number;
   profile_capture_save_path: string;
@@ -61,6 +64,9 @@ export const DEFAULT_CONFIG: X2MDConfig = {
   custom_front_matter_template: "",
   local_api_token: "",
   require_local_api_token: false,
+  download_images: false,
+  image_attachment_path: "X2MD-attachments",
+  image_embed_style: "markdown",
   profile_capture_range: "today",
   profile_capture_custom_days: 7,
   profile_capture_save_path: "",
@@ -125,6 +131,9 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   cfg.custom_front_matter_template = String(cfg.custom_front_matter_template || "");
   cfg.local_api_token = String(cfg.local_api_token || "").trim() || randomUUID();
   cfg.require_local_api_token = boolValue(cfg.require_local_api_token, DEFAULT_CONFIG.require_local_api_token);
+  cfg.download_images = boolValue(cfg.download_images, DEFAULT_CONFIG.download_images);
+  cfg.image_attachment_path = String(cfg.image_attachment_path || "").trim() || DEFAULT_CONFIG.image_attachment_path;
+  cfg.image_embed_style = String(cfg.image_embed_style) === "obsidian" ? "obsidian" : "markdown";
   cfg.show_site_save_icon = boolValue(cfg.show_site_save_icon, DEFAULT_CONFIG.show_site_save_icon);
   cfg.show_x_profile_capture_button = boolValue(cfg.show_x_profile_capture_button, DEFAULT_CONFIG.show_x_profile_capture_button);
   return cfg;

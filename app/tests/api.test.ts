@@ -155,6 +155,107 @@ test("POST /save 写入 Markdown 并拒绝未知自定义路径", async () => {
   assert.match(logText, /保存失败：自定义保存路径无效/);
 });
 
+test("POST /save 默认保持远程图片链接", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ save_paths: [mdDir] }),
+  }), { appDir });
+
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "tweet",
+      text: "remote image",
+      url: "https://x.com/a/status/19",
+      images: ["https://pbs.twimg.com/media/abc.jpg?format=jpg&name=small"],
+    }),
+  }), { appDir });
+  const body = await json(res);
+  const md = readFileSync(body.saved[0], "utf8");
+  assert.equal(res.status, 200);
+  assert.match(md, /!\[1\]\(https:\/\/pbs\.twimg\.com\/media\/abc\.jpg\?format=jpg&name=orig\)/);
+});
+
+test("POST /save 开启后下载图片到附件目录", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      save_paths: [mdDir],
+      download_images: true,
+      image_attachment_path: "attachments",
+    }),
+  }), { appDir });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(new Uint8Array([1, 2, 3]), {
+    headers: { "content-type": "image/jpeg" },
+  })) as unknown as typeof fetch;
+  try {
+    const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "tweet",
+        text: "local image",
+        url: "https://x.com/a/status/190",
+        images: ["https://pbs.twimg.com/media/abc?format=jpg&name=small"],
+      }),
+    }), { appDir });
+    const body = await json(res);
+    const md = readFileSync(body.saved[0], "utf8");
+    assert.equal(res.status, 200);
+    assert.equal(existsSync(join(mdDir, "attachments", "190", "image_1.jpg")), true);
+    assert.match(md, /!\[1\]\(attachments\/190\/image_1\.jpg\)/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      save_paths: [mdDir],
+      download_images: true,
+      image_attachment_path: "attachments",
+    }),
+  }), { appDir });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
+  try {
+    const imageUrl = "https://pbs.twimg.com/media/missing.jpg";
+    const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "tweet",
+        text: "missing image",
+        url: "https://x.com/a/status/191",
+        images: [imageUrl],
+      }),
+    }), { appDir });
+    const body = await json(res);
+    const md = readFileSync(body.saved[0], "utf8");
+    assert.equal(res.status, 200);
+    assert.match(md, /!\[1\]\(https:\/\/pbs\.twimg\.com\/media\/missing\.jpg\?name=orig\)/);
+    assert.match(md, /图片本地化失败：/);
+    assert.match(md, /HTTP 404/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 
 
 test("POST /config 标记端口变更，并保留视频和博主配置", async () => {

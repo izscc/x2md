@@ -133,7 +133,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       if (!hasValidLocalApiToken(request, config)) {
         return json({ success: false, error: "Invalid local API token" }, 401);
       }
-      const result = savePayload(data, config, appDir);
+      const result = await savePayload(data, config, appDir);
       log(result.success ? `保存成功：${(result.saved || []).join(",")}` : `保存失败：${(result.errors || []).join(";")}`, appDir);
       if (result.success) void notifySaveSuccess(config, result);
       return json(result, result.success ? 200 : 500);

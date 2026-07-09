@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 
 import { resolveSavePathsForRequest, type X2MDConfig } from "./config.ts";
 import { sanitizeFilename } from "./filenames.ts";
@@ -40,13 +40,65 @@ function appendSaveHistory(data: Record<string, any>, saved: string[], appDir = 
   writeFileSync(historyPath(appDir), JSON.stringify(history, null, 2), "utf8");
 }
 
-export function savePayload(data: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): Record<string, any> {
+function statusIdFromUrl(url: unknown): string {
+  return String(url || "").match(/\/status\/(\d+)/)?.[1] || "misc";
+}
+
+function imageExtension(url: string, contentType = ""): string {
+  const fromType = contentType.includes("png") ? ".png" : contentType.includes("webp") ? ".webp" : contentType.includes("gif") ? ".gif" : contentType.includes("jpeg") || contentType.includes("jpg") ? ".jpg" : "";
+  if (fromType) return fromType;
+  try {
+    const ext = extname(new URL(url).pathname);
+    return ext || ".jpg";
+  } catch {
+    return ".jpg";
+  }
+}
+
+async function localizeImages(data: Record<string, any>, cfg: Record<string, any>, saveRoot: string): Promise<Record<string, any>> {
+  if (!cfg.download_images) return data;
+  const images = Array.isArray(data.images) ? data.images : [];
+  if (!images.length) return data;
+
+  const root = String(cfg.image_attachment_path || "X2MD-attachments");
+  const statusId = statusIdFromUrl(data.url);
+  const attachDir = root.startsWith("/") ? join(root, statusId) : join(saveRoot, root, statusId);
+  const displayRoot = root.startsWith("/") ? root : root.replace(/^\.?\//, "");
+  const nextImages: string[] = [];
+  const failures: string[] = [];
+  mkdirSync(attachDir, { recursive: true });
+
+  for (let index = 0; index < images.length; index += 1) {
+    const url = String(images[index] || "");
+    try {
+      const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const filename = `image_${index + 1}${imageExtension(url, response.headers.get("content-type") || "")}`;
+      writeFileSync(join(attachDir, filename), buffer);
+      const relativePath = `${displayRoot}/${statusId}/${filename}`;
+      nextImages.push(cfg.image_embed_style === "obsidian" ? `![[${relativePath}]]` : relativePath);
+    } catch (error) {
+      failures.push(`${url} (${error instanceof Error ? error.message : String(error)})`);
+      nextImages.push(url);
+    }
+  }
+
+  return { ...data, images: nextImages, image_localization_errors: failures };
+}
+
+export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): Promise<Record<string, any>> {
   const [savePaths] = resolveSavePathsForRequest(cfg, data);
   if (!savePaths.length) return { success: false, errors: ["未配置保存路径"] };
 
-  const [filename, content] = buildMarkdown(data, cfg, appDir);
+  const preparedData = await localizeImages(data, cfg, savePaths[0]);
+  const [filename, content] = buildMarkdown(preparedData, cfg, appDir);
   const safeFilename = sanitizeUnicodeText(sanitizeFilename(filename, Number(cfg.max_filename_length || 100))) || "untitled";
-  const safeContent = sanitizeUnicodeText(content);
+  const imageErrors = Array.isArray(preparedData.image_localization_errors) ? preparedData.image_localization_errors : [];
+  const contentWithImageErrors = imageErrors.length
+    ? `${content}\n\n---\n\n图片本地化失败：\n${imageErrors.map((item) => `- ${item}`).join("\n")}\n`
+    : content;
+  const safeContent = sanitizeUnicodeText(contentWithImageErrors);
   const saved: string[] = [];
   const errors: string[] = [];
 
@@ -62,6 +114,6 @@ export function savePayload(data: Record<string, any>, cfg: X2MDConfig | Record<
     }
   }
 
-  if (saved.length) appendSaveHistory(data, saved, appDir);
+  if (saved.length) appendSaveHistory(preparedData, saved, appDir);
   return saved.length ? { success: true, saved, errors } : { success: false, errors };
 }

@@ -28,7 +28,7 @@
 - [x] GraphQL 降级保存时把错误码/中文提示贯穿到保存响应与 toast。
 **Verification:**
 - [x] 新增/更新 `extension/tests/twitter_graphql.test.js`
-- [ ] `npm run test:js -- extension/tests/twitter_graphql.test.js`
+- [x] `npm run test:js -- extension/tests/twitter_graphql.test.js`
 **Dependencies:** Task 1
 **Files likely touched:** `extension/twitter_graphql.js`, `extension/background.js`, `extension/tests/twitter_graphql.test.js`
 **Estimated scope:** Medium
@@ -180,10 +180,10 @@
 
 ## Task 19: 图片本地化
 **Acceptance criteria:**
-- [ ] `download_images=false` 默认保持远程链接。
-- [ ] 开启后下载到附件目录。
-- [ ] 下载失败回退远程 URL 并追加失败列表。
-**Verification:** `npm run test:js -- app/tests/core.test.ts`
+- [x] `download_images=false` 默认保持远程链接。
+- [x] 开启后下载到附件目录。
+- [x] 下载失败回退远程 URL 并追加失败列表。
+**Verification:** `npm run check`
 
 ## Task 20: Quote 两层链与 Retweet 语义
 **Acceptance criteria:**
