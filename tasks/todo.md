@@ -109,9 +109,9 @@
 
 ## Task 9: 时间线卡片完整度校验
 **Acceptance criteria:**
-- [ ] 保存含 statusId 的 Home 卡片时始终触发 `fetchFullTweetData`。
-- [ ] GraphQL 媒体数少于 DOM 媒体数时保留 DOM 媒体补集。
-- [ ] 新增归一化媒体 URL 对比测试。
+- [x] 保存含 statusId 的 Home 卡片时始终触发 `fetchFullTweetData`。
+- [x] GraphQL 媒体数少于 DOM 媒体数时保留 DOM 媒体补集。
+- [x] 新增归一化媒体 URL 对比测试。
 **Verification:** `npm run test:js -- extension/tests/twitter_graphql.test.js extension/tests/media_helpers.test.js`
 
 ## Task 10: Poll 结构化解析

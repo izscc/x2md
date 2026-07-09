@@ -844,7 +844,7 @@ async function fetchFullTweetData(tweetData) {
         ...tweetData,
         _api_fetched: true,
         text: apiResult.text || tweetData.text,
-        images: (apiResult.images && apiResult.images.length > 0) ? apiResult.images : (tweetData.images || []),
+        images: mergeTweetImagesWithDomFallback(apiResult.images, tweetData.images),
         image_alt_texts: mergeImageAltTextMaps(tweetData.image_alt_texts, apiResult.image_alt_texts),
         videos: apiResult.videos || (tweetData.videos || []),
         videoDurations: apiResult.videoDurations || (tweetData.videoDurations || []),

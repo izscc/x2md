@@ -47,6 +47,30 @@
         return raw;
     }
 
+    function normalizeTweetMediaUrlForCompare(url) {
+        const raw = String(url || "").trim();
+        if (!raw) return "";
+        try {
+            const parsed = new URL(raw);
+            parsed.searchParams.delete("name");
+            return `${parsed.origin}${parsed.pathname}?${parsed.searchParams.toString()}`.replace(/\?$/, "");
+        } catch (error) {
+            return raw.replace(/[?&]name=[^&]+/g, "").replace(/[?&]$/, "");
+        }
+    }
+
+    function mergeTweetImagesWithDomFallback(apiImages, domImages) {
+        const merged = [];
+        const seen = new Set();
+        for (const image of [...(Array.isArray(apiImages) ? apiImages : []), ...(Array.isArray(domImages) ? domImages : [])]) {
+            const normalized = normalizeTweetMediaUrlForCompare(image);
+            if (!normalized || seen.has(normalized)) continue;
+            seen.add(normalized);
+            merged.push(image);
+        }
+        return merged;
+    }
+
     function articleMediaInfoToMarkdown(mediaInfo, images) {
         const imageUrl = normalizeArticleImageUrl(mediaInfo?.original_img_url || mediaInfo?.url || "");
         if (!imageUrl) return "";
@@ -383,7 +407,9 @@
         extractArticleMarkdownFromGraphQL,
         extractArticleMediaVideos,
         getVariantBitrate,
+        mergeTweetImagesWithDomFallback,
         normalizeArticleImageUrl,
+        normalizeTweetMediaUrlForCompare,
         selectBestMp4Variant,
     };
 

@@ -5,7 +5,36 @@ const {
   extractArticleMarkdownFromGraphQL,
   extractArticleMediaVideos,
   fillArticleVideoPlaceholders,
+  mergeTweetImagesWithDomFallback,
+  normalizeTweetMediaUrlForCompare,
 } = require("../media_helpers.js");
+
+test("normalizeTweetMediaUrlForCompare ignores only X media size names", () => {
+  assert.equal(
+    normalizeTweetMediaUrlForCompare("https://pbs.twimg.com/media/a.jpg?format=jpg&name=small"),
+    "https://pbs.twimg.com/media/a.jpg?format=jpg",
+  );
+  assert.equal(
+    normalizeTweetMediaUrlForCompare("https://pbs.twimg.com/media/a.jpg?format=jpg&name=orig"),
+    "https://pbs.twimg.com/media/a.jpg?format=jpg",
+  );
+});
+
+test("mergeTweetImagesWithDomFallback keeps DOM media missing from GraphQL", () => {
+  assert.deepEqual(
+    mergeTweetImagesWithDomFallback(
+      ["https://pbs.twimg.com/media/a.jpg?format=jpg&name=orig"],
+      [
+        "https://pbs.twimg.com/media/a.jpg?format=jpg&name=small",
+        "https://pbs.twimg.com/media/b.jpg?format=jpg&name=small",
+      ],
+    ),
+    [
+      "https://pbs.twimg.com/media/a.jpg?format=jpg&name=orig",
+      "https://pbs.twimg.com/media/b.jpg?format=jpg&name=small",
+    ],
+  );
+});
 
 test("extractArticleMediaVideos returns only referenced inline article videos", () => {
   const result = {
