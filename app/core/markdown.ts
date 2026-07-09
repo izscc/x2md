@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { type X2MDConfig } from "./config.ts";
 import { formatDate, formatDateTime } from "./dates.ts";
-import { sanitizeFilename, normalizeImageUrl } from "./filenames.ts";
+import { sanitizeFilename, normalizeImageUrl, normalizeImageUrlForCompare } from "./filenames.ts";
 import { downloadVideoAsync } from "./media.ts";
 
 function cleanupTwitterDisplayUrlLineBreaks(text: string): string {
@@ -80,6 +80,35 @@ function appendAltFence(lines: string[], altText: unknown, prefix = ""): void {
   lines.push(`${prefix}\`\`\``);
   lines.push(`${prefix}${alt}`);
   lines.push(`${prefix}\`\`\``);
+}
+
+function uniqueImageUrls(images: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const image of images) {
+    const key = normalizeImageUrlForCompare(image);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(image);
+  }
+  return result;
+}
+
+function collectQuoteImageKeys(quote: unknown, keys = new Set<string>()): Set<string> {
+  if (!quote || typeof quote !== "object") return keys;
+  const data = quote as Record<string, any>;
+  for (const image of Array.isArray(data.images) ? data.images : []) {
+    const key = normalizeImageUrlForCompare(image);
+    if (key) keys.add(key);
+  }
+  collectQuoteImageKeys(data.quote_tweet, keys);
+  return keys;
+}
+
+function removeQuoteImagesFromMain(images: string[], quote: unknown): string[] {
+  const quoteKeys = collectQuoteImageKeys(quote);
+  if (!quoteKeys.size) return images;
+  return images.filter((image) => !quoteKeys.has(normalizeImageUrlForCompare(image)));
 }
 
 function appendImage(lines: string[], imgUrl: string, label = "", prefix = "", altMap?: unknown): void {
@@ -282,7 +311,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   const url = data.url || "";
   const published = data.published || "";
   const contentType = data.type || "tweet";
-  let images: string[] = Array.isArray(data.images) ? data.images : [];
+  let images: string[] = uniqueImageUrls(Array.isArray(data.images) ? data.images : []);
   const imageAltTexts = data.image_alt_texts || {};
   const videos: string[] = Array.isArray(data.videos) ? data.videos : [];
   const downloadVideo = Boolean(data.download_video) && cfg.enable_video_download !== false;
@@ -290,6 +319,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   const articleTitle = data.article_title || "";
   const threadTweets: Array<Record<string, any>> = Array.isArray(data.thread_tweets) ? data.thread_tweets : [];
   const quoteTweet = data.quote_tweet || {};
+  images = removeQuoteImagesFromMain(images, quoteTweet);
   const platform = data.platform || "Twitter/X";
   const pollData = data.poll_data || data.poll;
   const communityNotes = Array.isArray(data.community_notes) ? data.community_notes : [];
@@ -364,7 +394,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   const appendQuoteTweet = (linesList: string[], quote: Record<string, any>, depth = 1) => {
     if (!quote) return;
     const qText = String(quote.text || "").trim();
-    const qImages: string[] = quote.images || [];
+    const qImages: string[] = uniqueImageUrls(quote.images || []);
     const qImageAltTexts = quote.image_alt_texts || {};
     const qVideos: string[] = quote.videos || [];
     const qUrl = String(quote.url || "").trim();
@@ -432,7 +462,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
 
     threadTweets.forEach((tweet, idx) => {
       const twText = String(tweet.text || "").trim();
-      const twImages: string[] = tweet.images || [];
+      const twImages: string[] = uniqueImageUrls(tweet.images || []);
       const twVideos: string[] = tweet.videos || [];
       const twQuote = tweet.quote_tweet || {};
       if (!twText && !twImages.length && !twVideos.length && !twQuote) return;

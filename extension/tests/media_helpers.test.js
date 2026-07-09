@@ -9,14 +9,14 @@ const {
   normalizeTweetMediaUrlForCompare,
 } = require("../media_helpers.js");
 
-test("normalizeTweetMediaUrlForCompare ignores only X media size names", () => {
+test("normalizeTweetMediaUrlForCompare treats X media extension and format variants as one image", () => {
   assert.equal(
     normalizeTweetMediaUrlForCompare("https://pbs.twimg.com/media/a.jpg?format=jpg&name=small"),
-    "https://pbs.twimg.com/media/a.jpg?format=jpg",
+    "https://pbs.twimg.com/media/a",
   );
   assert.equal(
-    normalizeTweetMediaUrlForCompare("https://pbs.twimg.com/media/a.jpg?format=jpg&name=orig"),
-    "https://pbs.twimg.com/media/a.jpg?format=jpg",
+    normalizeTweetMediaUrlForCompare("https://pbs.twimg.com/media/a?format=jpg&name=orig"),
+    "https://pbs.twimg.com/media/a",
   );
 });
 
@@ -26,6 +26,7 @@ test("mergeTweetImagesWithDomFallback keeps DOM media missing from GraphQL", () 
       ["https://pbs.twimg.com/media/a.jpg?format=jpg&name=orig"],
       [
         "https://pbs.twimg.com/media/a.jpg?format=jpg&name=small",
+        "https://pbs.twimg.com/media/a?format=jpg&name=small",
         "https://pbs.twimg.com/media/b.jpg?format=jpg&name=small",
       ],
     ),

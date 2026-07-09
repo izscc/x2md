@@ -29,6 +29,24 @@ export function normalizeImageUrl(url: unknown): string {
   }
 }
 
+
+export function normalizeImageUrlForCompare(url: unknown): string {
+  const raw = String(url ?? "").trim();
+  if (!raw || !raw.includes("pbs.twimg.com")) return raw;
+  try {
+    const parsed = new URL(raw);
+    parsed.searchParams.delete("name");
+    parsed.searchParams.delete("format");
+    parsed.pathname = parsed.pathname.replace(/\.[a-zA-Z0-9]+$/, "");
+    return `${parsed.origin}${parsed.pathname}?${parsed.searchParams.toString()}`.replace(/\?$/, "");
+  } catch {
+    return raw
+      .replace(/[?&](?:name|format)=[^&]+/g, "")
+      .replace(/\.[a-zA-Z0-9]+(?=$|[?#])/, "")
+      .replace(/[?&]$/, "");
+  }
+}
+
 export function normalizeArticleUrl(url: unknown): string {
   return String(url ?? "").trim().replace("twitter.com", "x.com").split("?")[0].replace(/\/+$/, "");
 }

@@ -52,10 +52,19 @@
         if (!raw) return "";
         try {
             const parsed = new URL(raw);
+            if (parsed.hostname !== "pbs.twimg.com") {
+                parsed.searchParams.delete("name");
+                return `${parsed.origin}${parsed.pathname}?${parsed.searchParams.toString()}`.replace(/\?$/, "");
+            }
             parsed.searchParams.delete("name");
+            parsed.searchParams.delete("format");
+            parsed.pathname = parsed.pathname.replace(/\.[a-zA-Z0-9]+$/, "");
             return `${parsed.origin}${parsed.pathname}?${parsed.searchParams.toString()}`.replace(/\?$/, "");
         } catch (error) {
-            return raw.replace(/[?&]name=[^&]+/g, "").replace(/[?&]$/, "");
+            return raw
+                .replace(/[?&](?:name|format)=[^&]+/g, "")
+                .replace(/\.[a-zA-Z0-9]+(?=$|[?#])/, "")
+                .replace(/[?&]$/, "");
         }
     }
 

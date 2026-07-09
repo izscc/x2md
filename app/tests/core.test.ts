@@ -41,6 +41,50 @@ test("Tweet 译文和图片 alt 写入 Markdown", () => {
   assert.match(content, /!\[\]\(https:\/\/pbs\.twimg\.com\/media\/watch\.jpg\?format=jpg&name=orig\)\n```\nApple Watch ⌚\n```/);
 });
 
+
+test("Tweet 图片去重时合并 jpg 路径和 format 参数变体", () => {
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "重复图片",
+    url: "https://x.com/a/status/2",
+    images: [
+      "https://pbs.twimg.com/media/HMvssQ1a8AAE9Ij.jpg?name=orig",
+      "https://pbs.twimg.com/media/HMvssQ1a8AAE9Ij?format=jpg&name=orig",
+      "https://pbs.twimg.com/media/HMvqoXUbMAAPvIS?format=jpg&name=orig",
+    ],
+    image_alt_texts: {
+      "https://pbs.twimg.com/media/HMvssQ1a8AAE9Ij.jpg?name=orig": "图一 ALT",
+    },
+  }, baseCfg);
+
+  assert.equal((content.match(/!\[\]\(https:\/\/pbs\.twimg\.com\/media\/HMvssQ1a8AAE9Ij/g) || []).length, 1);
+  assert.equal((content.match(/!\[\]\(https:\/\/pbs\.twimg\.com\/media\//g) || []).length, 2);
+  assert.match(content, /```\n图一 ALT\n```/);
+});
+
+
+test("Tweet 主图会剔除引用推文泄漏进来的图片", () => {
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "主推",
+    url: "https://x.com/a/status/3",
+    images: [
+      "https://pbs.twimg.com/media/main.jpg?name=orig",
+      "https://pbs.twimg.com/media/quote?format=jpg&name=orig",
+    ],
+    quote_tweet: {
+      text: "引用",
+      url: "https://x.com/b/status/4",
+      images: ["https://pbs.twimg.com/media/quote.jpg?name=orig"],
+    },
+  }, baseCfg);
+
+  const bodyBeforeQuote = content.split("> [!quote] 引用推文")[0];
+  assert.match(bodyBeforeQuote, /main\.jpg/);
+  assert.doesNotMatch(bodyBeforeQuote, /quote(?:\.jpg)?[?&]/);
+  assert.match(content, /> !\[\]\(https:\/\/pbs\.twimg\.com\/media\/quote\.jpg\?name=orig\)/);
+});
+
 test("Tweet 译文保存前清理 X 链接协议换行", () => {
   const [, content] = buildMarkdown({
     type: "tweet",
