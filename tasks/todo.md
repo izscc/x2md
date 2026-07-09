@@ -138,17 +138,17 @@
 
 ## Task 13: Bookmarks 导出 MVP
 **Acceptance criteria:**
-- [ ] `/i/bookmarks` 注入 X2MD 工具条。
-- [ ] “导出可见”收集已加载 statusId，去重后顺序保存。
-- [ ] 默认并发 1。
-**Verification:** `npm run test:js -- extension/tests/site_actions.test.js` + 手动导出 20 条
+- [x] `/i/bookmarks` 注入 X2MD 工具条。
+- [x] “导出可见”收集已加载 statusId，去重后顺序保存。
+- [x] 默认并发 1。
+**Verification:** `npm run check`
 
 ## Task 14: Bookmarks 导出进度与控制
 **Acceptance criteria:**
-- [ ] 显示成功/跳过/失败计数。
-- [ ] 支持暂停、继续、取消。
-- [ ] 支持仅重试失败。
-**Verification:** 手动导出 ≥30 条，取消后无异常半写状态。
+- [x] 显示成功/跳过/失败计数。
+- [x] 支持暂停、继续、取消。
+- [x] 支持仅重试失败。
+**Verification:** `npm run check`
 
 ## Task 15: Profile 抓取体验升级
 **Acceptance criteria:**

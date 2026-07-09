@@ -3628,6 +3628,142 @@ function ensureFloatingSaveButton() {
 // ─────────────────────────────────────────────
 // MutationObserver：监听动态加载的推文
 // ─────────────────────────────────────────────
+const X_BOOKMARKS_TOOLBAR_ID = "__x2md_bookmarks_toolbar";
+let xBookmarksExportState = null;
+
+function sendBookmarkSaveMessage(data) {
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: "save_tweet", data }, (resp) => resolve(resp || { success: false, error: "扩展无响应" }));
+    });
+}
+
+function updateBookmarksToolbarStatus() {
+    const toolbar = document.getElementById(X_BOOKMARKS_TOOLBAR_ID);
+    if (!toolbar) return;
+    const status = toolbar.querySelector('[data-x2md-role="bookmarks-status"]');
+    const pause = toolbar.querySelector('[data-x2md-role="bookmarks-pause"]');
+    const retry = toolbar.querySelector('[data-x2md-role="bookmarks-retry"]');
+    const state = xBookmarksExportState;
+    if (!state) {
+        if (status) status.textContent = "可导出当前已加载书签";
+        if (pause) pause.disabled = true;
+        if (retry) retry.disabled = true;
+        return;
+    }
+    if (status) status.textContent = `进度 ${state.index}/${state.urls.length} · 成功 ${state.success} · 跳过 ${state.skipped} · 失败 ${state.failed.length}`;
+    if (pause) {
+        pause.disabled = state.done || state.cancelled;
+        pause.textContent = state.paused ? "继续" : "暂停";
+    }
+    if (retry) retry.disabled = state.running || !state.failed.length;
+}
+
+async function runBookmarksExport(urls) {
+    const state = {
+        urls,
+        index: 0,
+        success: 0,
+        skipped: 0,
+        failed: [],
+        paused: false,
+        cancelled: false,
+        running: true,
+        done: false,
+    };
+    xBookmarksExportState = state;
+    updateBookmarksToolbarStatus();
+
+    while (state.index < state.urls.length) {
+        if (state.cancelled) break;
+        if (state.paused) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            continue;
+        }
+
+        const url = state.urls[state.index];
+        const resp = await sendBookmarkSaveMessage({ type: "tweet", url, text: "", images: [], thread_tweets: [] });
+        if (resp?.success) state.success += 1;
+        else if (resp?.result?.skipped || resp?.skipped) state.skipped += 1;
+        else state.failed.push(url);
+        state.index += 1;
+        updateBookmarksToolbarStatus();
+    }
+
+    state.running = false;
+    state.done = true;
+    updateBookmarksToolbarStatus();
+    showToast(state.cancelled ? "书签导出已取消" : `书签导出完成：成功 ${state.success}，失败 ${state.failed.length}`, state.failed.length ? "error" : "success", 5000);
+}
+
+function ensureBookmarksToolbar() {
+    if (!isXBookmarksPage()) {
+        document.getElementById(X_BOOKMARKS_TOOLBAR_ID)?.remove();
+        return;
+    }
+
+    let toolbar = document.getElementById(X_BOOKMARKS_TOOLBAR_ID);
+    if (!toolbar) {
+        toolbar = document.createElement("div");
+        toolbar.id = X_BOOKMARKS_TOOLBAR_ID;
+        toolbar.innerHTML = `
+            <strong style="font-size:13px;">X2MD 书签导出</strong>
+            <span data-x2md-role="bookmarks-status" style="font-size:12px;color:rgb(83,100,113);">可导出当前已加载书签</span>
+            <button type="button" data-x2md-role="bookmarks-export">导出可见</button>
+            <button type="button" data-x2md-role="bookmarks-pause" disabled>暂停</button>
+            <button type="button" data-x2md-role="bookmarks-cancel">取消</button>
+            <button type="button" data-x2md-role="bookmarks-retry" disabled>重试失败</button>
+        `;
+        Object.assign(toolbar.style, {
+            position: "sticky",
+            top: "0",
+            zIndex: "2147483646",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "10px 12px",
+            margin: "8px",
+            borderRadius: "16px",
+            background: "rgba(255,255,255,.92)",
+            boxShadow: "0 8px 28px rgba(0,0,0,.12)",
+            backdropFilter: "blur(18px)",
+        });
+        toolbar.querySelectorAll("button").forEach((button) => {
+            Object.assign(button.style, {
+                border: "1px solid rgba(15,20,25,.16)",
+                borderRadius: "999px",
+                background: "#fff",
+                padding: "5px 10px",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: "700",
+            });
+        });
+        toolbar.querySelector('[data-x2md-role="bookmarks-export"]').addEventListener("click", () => {
+            const urls = collectUniqueStatusUrls(document);
+            if (!urls.length) {
+                showToast("当前页面还没有已加载书签", "error", 4000);
+                return;
+            }
+            runBookmarksExport(urls);
+        });
+        toolbar.querySelector('[data-x2md-role="bookmarks-pause"]').addEventListener("click", () => {
+            if (!xBookmarksExportState) return;
+            xBookmarksExportState.paused = !xBookmarksExportState.paused;
+            updateBookmarksToolbarStatus();
+        });
+        toolbar.querySelector('[data-x2md-role="bookmarks-cancel"]').addEventListener("click", () => {
+            if (xBookmarksExportState) xBookmarksExportState.cancelled = true;
+            updateBookmarksToolbarStatus();
+        });
+        toolbar.querySelector('[data-x2md-role="bookmarks-retry"]').addEventListener("click", () => {
+            const failed = xBookmarksExportState?.failed || [];
+            if (failed.length) runBookmarksExport(failed);
+        });
+        (document.querySelector("main") || document.body).prepend(toolbar);
+    }
+    updateBookmarksToolbarStatus();
+}
+
 function isTwitterLikePage(locationLike = location) {
     const hostname = String(locationLike?.hostname || "").toLowerCase();
     return hostname === "x.com" || hostname.endsWith(".x.com") ||
@@ -3647,6 +3783,7 @@ function bindAll() {
         ensureTwitterInlineCopyButtons();
         scheduleAutoTranslateLoadedContent();
         ensureXProfileCaptureButton();
+        ensureBookmarksToolbar();
     }
     ensureFloatingSaveButton();
 }
