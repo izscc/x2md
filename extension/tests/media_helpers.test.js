@@ -6,6 +6,7 @@ const {
   extractArticleMediaVideos,
   fillArticleVideoPlaceholders,
   mergeTweetImagesWithDomFallback,
+  removeTweetImagesIncludedInQuote,
   normalizeTweetMediaUrlForCompare,
 } = require("../media_helpers.js");
 
@@ -35,6 +36,26 @@ test("mergeTweetImagesWithDomFallback keeps DOM media missing from GraphQL", () 
       "https://pbs.twimg.com/media/b.jpg?format=jpg&name=small",
     ],
   );
+});
+
+
+test("removeTweetImagesIncludedInQuote removes quoted media from main tweet images and alt map", () => {
+  const result = removeTweetImagesIncludedInQuote(
+    [
+      "https://pbs.twimg.com/media/main.jpg?name=orig",
+      "https://pbs.twimg.com/media/quote?format=jpg&name=orig",
+    ],
+    { images: ["https://pbs.twimg.com/media/quote.jpg?name=orig"] },
+    {
+      "https://pbs.twimg.com/media/main.jpg?name=orig": "main alt",
+      "https://pbs.twimg.com/media/quote?format=jpg&name=orig": "quote alt",
+    },
+  );
+
+  assert.deepEqual(result.images, ["https://pbs.twimg.com/media/main.jpg?name=orig"]);
+  assert.deepEqual(result.image_alt_texts, {
+    "https://pbs.twimg.com/media/main.jpg?name=orig": "main alt",
+  });
 });
 
 test("extractArticleMediaVideos returns only referenced inline article videos", () => {

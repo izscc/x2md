@@ -80,6 +80,37 @@
         return merged;
     }
 
+
+    function collectQuoteImageCompareKeys(quote, keys = new Set()) {
+        if (!quote || typeof quote !== "object") return keys;
+        for (const image of Array.isArray(quote.images) ? quote.images : []) {
+            const key = normalizeTweetMediaUrlForCompare(image);
+            if (key) keys.add(key);
+        }
+        return collectQuoteImageCompareKeys(quote.quote_tweet, keys);
+    }
+
+    function removeTweetImagesIncludedInQuote(images, quote, imageAltTexts = {}) {
+        const quoteKeys = collectQuoteImageCompareKeys(quote);
+        if (!quoteKeys.size) return { images: Array.isArray(images) ? images : [], image_alt_texts: imageAltTexts || {} };
+
+        const nextImages = [];
+        const keptKeys = new Set();
+        for (const image of Array.isArray(images) ? images : []) {
+            const key = normalizeTweetMediaUrlForCompare(image);
+            if (!key || quoteKeys.has(key)) continue;
+            keptKeys.add(key);
+            nextImages.push(image);
+        }
+
+        const nextAltTexts = {};
+        for (const [url, alt] of Object.entries(imageAltTexts || {})) {
+            const key = normalizeTweetMediaUrlForCompare(url);
+            if (keptKeys.has(key)) nextAltTexts[url] = alt;
+        }
+        return { images: nextImages, image_alt_texts: nextAltTexts };
+    }
+
     function articleMediaInfoToMarkdown(mediaInfo, images) {
         const imageUrl = normalizeArticleImageUrl(mediaInfo?.original_img_url || mediaInfo?.url || "");
         if (!imageUrl) return "";
@@ -417,6 +448,7 @@
         extractArticleMediaVideos,
         getVariantBitrate,
         mergeTweetImagesWithDomFallback,
+        removeTweetImagesIncludedInQuote,
         normalizeArticleImageUrl,
         normalizeTweetMediaUrlForCompare,
         selectBestMp4Variant,

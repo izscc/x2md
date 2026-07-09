@@ -794,6 +794,9 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
                     ...quotedParsed,
                     url: quotedHandle && quotedId ? `https://x.com/${quotedHandle.replace(/^@/, "")}/status/${quotedId}` : "",
                 };
+                const filteredMedia = removeTweetImagesIncludedInQuote(parsed.images, parsed.quote_tweet, parsed.image_alt_texts);
+                parsed.images = filteredMedia.images;
+                parsed.image_alt_texts = filteredMedia.image_alt_texts;
                 parsed.text = removeQuotedTweetUrlFromText(parsed.text, parsed.quote_tweet.url);
             }
         }
