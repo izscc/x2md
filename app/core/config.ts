@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 export const VERSION = "2.0.4";
@@ -21,6 +22,8 @@ export type X2MDConfig = Record<string, unknown> & {
   tag_rules: Record<string, unknown>;
   front_matter_template: string;
   custom_front_matter_template: string;
+  local_api_token: string;
+  require_local_api_token: boolean;
   profile_capture_range: string;
   profile_capture_custom_days: number;
   profile_capture_save_path: string;
@@ -56,6 +59,8 @@ export const DEFAULT_CONFIG: X2MDConfig = {
   tag_rules: {},
   front_matter_template: "default",
   custom_front_matter_template: "",
+  local_api_token: "",
+  require_local_api_token: false,
   profile_capture_range: "today",
   profile_capture_custom_days: 7,
   profile_capture_save_path: "",
@@ -118,6 +123,8 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   cfg.tag_rules = cfg.tag_rules && typeof cfg.tag_rules === "object" ? cfg.tag_rules as Record<string, unknown> : { ...DEFAULT_CONFIG.tag_rules };
   cfg.front_matter_template = ["default", "minimal", "dataview-full", "custom"].includes(String(cfg.front_matter_template)) ? String(cfg.front_matter_template) : DEFAULT_CONFIG.front_matter_template;
   cfg.custom_front_matter_template = String(cfg.custom_front_matter_template || "");
+  cfg.local_api_token = String(cfg.local_api_token || "").trim() || randomUUID();
+  cfg.require_local_api_token = boolValue(cfg.require_local_api_token, DEFAULT_CONFIG.require_local_api_token);
   cfg.show_site_save_icon = boolValue(cfg.show_site_save_icon, DEFAULT_CONFIG.show_site_save_icon);
   cfg.show_x_profile_capture_button = boolValue(cfg.show_x_profile_capture_button, DEFAULT_CONFIG.show_x_profile_capture_button);
   return cfg;

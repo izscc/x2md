@@ -166,9 +166,9 @@
 
 ## Task 17: 本地 API token 可选收紧
 **Acceptance criteria:**
-- [ ] 首次生成 local_api_token。
-- [ ] 启用后 `/save` 校验 token。
-- [ ] 默认兼容旧扩展。
+- [x] 首次生成 local_api_token。
+- [x] 启用后 `/save` 校验 token。
+- [x] 默认兼容旧扩展。
 **Verification:** `npm run test:js -- app/tests/api.test.ts`
 
 ## Task 18: Front Matter 模板

@@ -379,3 +379,36 @@ test("GET /history 返回最近保存记录", async () => {
   assert.match(body.history[0].title, /history title/);
   assert.match(body.history[0].path, /history title/);
 });
+
+
+test("POST /save 可选校验 local_api_token", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  const cfgRes = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ save_paths: [mdDir], require_local_api_token: true, local_api_token: "secret-token" }),
+  }), { appDir });
+  assert.equal(cfgRes.status, 200);
+
+  const denied = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "tweet", text: "denied" }),
+  }), { appDir });
+  assert.equal(denied.status, 401);
+
+  const ok = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-x2md-token": "secret-token" },
+    body: JSON.stringify({ type: "tweet", text: "allowed" }),
+  }), { appDir });
+  assert.equal(ok.status, 200);
+});
+
+test("新配置自动生成 local_api_token 且默认不强制", async () => {
+  const cfg = await json(await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir: tempApp() }));
+  assert.equal(typeof cfg.local_api_token, "string");
+  assert.ok(cfg.local_api_token.length > 8);
+  assert.equal(cfg.require_local_api_token, false);
+});

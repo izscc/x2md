@@ -46,6 +46,13 @@ function requestBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true";
 }
 
+function hasValidLocalApiToken(request: Request, cfg: Record<string, unknown>): boolean {
+  if (!cfg.require_local_api_token) return true;
+  const expected = String(cfg.local_api_token || "");
+  if (!expected) return false;
+  return request.headers.get("x-x2md-token") === expected;
+}
+
 export function listenErrorMessage(error: any, port: number): string {
   const message = String(error?.message || error);
   if (error?.code === "EADDRINUSE" || /EADDRINUSE|in use|address already in use/i.test(message)) {
@@ -123,6 +130,9 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     }
     if (path === "/save") {
       const config = loadConfig(appDir);
+      if (!hasValidLocalApiToken(request, config)) {
+        return json({ success: false, error: "Invalid local API token" }, 401);
+      }
       const result = savePayload(data, config, appDir);
       log(result.success ? `保存成功：${(result.saved || []).join(",")}` : `保存失败：${(result.errors || []).join(";")}`, appDir);
       if (result.success) void notifySaveSuccess(config, result);
