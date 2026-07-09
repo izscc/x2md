@@ -582,6 +582,46 @@ test("Front Matter dataview-full 模板追加结构化字段", () => {
   assert.match(content, /x2md_version: "3.0.0"/);
 });
 
+
+
+test("Quote 支持两层且第三层折叠为链接", () => {
+  const cfg = normalizeConfig(baseCfg);
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "正文",
+    quote_tweet: {
+      text: "第一层",
+      url: "https://x.com/a/status/1",
+      quote_tweet: {
+        text: "第二层",
+        url: "https://x.com/b/status/2",
+        quote_tweet: { text: "第三层", url: "https://x.com/c/status/3" },
+      },
+    },
+  }, cfg);
+
+  assert.match(content, /第一层/);
+  assert.match(content, /第二层/);
+  assert.match(content, /更深层引用：https:\/\/x.com\/c\/status\/3/);
+  assert.doesNotMatch(content, /第三层/);
+});
+
+test("Retweet 写入 repost Front Matter 并优先原作者摘要", () => {
+  const cfg = normalizeConfig({ ...baseCfg, filename_format: "{author}_{summary}" });
+  const [filename, content] = buildMarkdown({
+    type: "tweet",
+    repost: true,
+    repost_author: "Alice",
+    repost_source_text: "原推正文",
+    text: "RT",
+    handle: "@bob",
+  }, cfg);
+
+  assert.match(filename, /bob_原推正文/);
+  assert.match(content, /repost: true/);
+  assert.match(content, /repost_author: "Alice"/);
+});
+
 test("Front Matter custom 模板只替换白名单变量", () => {
   const cfg = normalizeConfig({
     ...baseCfg,

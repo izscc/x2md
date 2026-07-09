@@ -19,6 +19,7 @@ const {
     classifyGraphQLHttpStatus,
     graphQLErrorMessage,
     getGraphQLRetryDelayMs,
+    getTweetContentState,
 } = require("../twitter_graphql.js");
 
 test("buildGraphQLRequestPlans prioritizes current TweetDetail candidate before legacy hash", () => {
@@ -268,5 +269,19 @@ test("extractLinkCardFromTweetResult reads card metadata", () => {
         domain: "example.com",
         url: "https://example.com/post",
         image: "https://example.com/card.jpg",
+    });
+});
+
+
+test("getTweetContentState maps unavailable and restricted results", () => {
+    assert.deepEqual(getTweetContentState({ __typename: "TweetTombstone", reason: "deleted" }), {
+        state: "unavailable",
+        code: "TWEET_UNAVAILABLE",
+        message: "推文不存在、已删除或不可用",
+    });
+    assert.deepEqual(getTweetContentState({ __typename: "TweetWithVisibilityResults", reason: "restricted" }), {
+        state: "restricted",
+        code: "TWEET_RESTRICTED",
+        message: "内容受限或需要先在页面中显示敏感媒体",
     });
 });

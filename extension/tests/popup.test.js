@@ -15,6 +15,7 @@ function runPopup(responses) {
         document: { getElementById: (id) => elements[id] },
         chrome: {
             runtime: {
+                getManifest: () => ({ version: "2.0.4" }),
                 sendMessage(message, callback) {
                     callback(responses[message.action]);
                 },
@@ -27,7 +28,7 @@ function runPopup(responses) {
 
 test("popup shows service online and configured paths", () => {
     const elements = runPopup({
-        ping: { online: true, version: "2.0.4", port: "9527" },
+        ping: { online: true, version: "2.0.4", extension_version: "2.0.4", min_extension_version: "2.0.4", port: "9527" },
         get_config: { success: true, config: { save_paths: ["/vault/md"] } },
         get_history: { success: true, history: [{ title: "最近保存标题", saved_at: "2026-07-09T00:00:00.000Z" }] },
     });
@@ -45,4 +46,14 @@ test("popup shows service offline and config error", () => {
     assert.equal(elements["status-hint"].textContent, "请打开 X2MD.app 后重试");
     assert.match(elements["path-list"].innerHTML, /请先启动本机 X2MD 服务/);
     assert.match(elements["history-list"].innerHTML, /暂无保存记录/);
+});
+
+
+test("popup shows extension upgrade hint", () => {
+    const elements = runPopup({
+        ping: { online: true, version: "3.0.0", extension_version: "2.0.4", min_extension_version: "3.0.0", port: "9527" },
+        get_config: { success: true, config: { save_paths: ["/vault/md"] } },
+        get_history: { success: true, history: [] },
+    });
+    assert.equal(elements["status-hint"].textContent, "请升级扩展到 v3.0.0");
 });

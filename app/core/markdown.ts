@@ -237,6 +237,8 @@ function buildFrontMatter(data: Record<string, any>, cfg: Record<string, any>, v
     has_community_notes: Array.isArray(data.community_notes) && data.community_notes.length ? "true" : "false",
     content_state: yamlString(contentState),
     x2md_version: yamlString(data.x2md_version || cfg.x2md_version || ""),
+    repost: data.repost ? "true" : "false",
+    repost_author: yamlString(data.repost_author || data.original_author || ""),
   };
 
   if (template === "custom") {
@@ -249,7 +251,7 @@ function buildFrontMatter(data: Record<string, any>, cfg: Record<string, any>, v
   }
 
   const extra = template === "dataview-full"
-    ? `status_id: "${common.status_id}"\ntype: "${common.type}"\ncontent_state: "${common.content_state}"\nx2md_version: "${common.x2md_version}"\n`
+    ? `status_id: "${common.status_id}"\ntype: "${common.type}"\ncontent_state: "${common.content_state}"\nrepost: ${common.repost}\nrepost_author: "${common.repost_author}"\nx2md_version: "${common.x2md_version}"\n`
     : "";
 
   return `---
@@ -265,6 +267,8 @@ tags:${tagsYaml}
 整理: false
 poll: ${common.poll}
 has_community_notes: ${common.has_community_notes}
+repost: ${common.repost}
+repost_author: "${common.repost_author}"
 ${pollEnd}${extra}---
 `;
 }
@@ -292,7 +296,8 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
 
   const dateStr = formatDate();
   const datetimeStr = formatDateTime();
-  const summarySrc = articleTitle || text;
+  const repostText = data.repost_source_text || data.original_text || data.repost_text || "";
+  const summarySrc = data.repost && repostText ? repostText : (articleTitle || text);
   const maxLen = Number(cfg.max_filename_length || 100);
   const summaryShort = sanitizeFilename(summarySrc || "untitled", maxLen);
   const authorClean = sanitizeFilename(handle ? String(handle).replace(/^@/, "") : author, 20);
@@ -355,14 +360,15 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
     for (const v of unused) linesList.push(videoMap[v]);
   };
 
-  const appendQuoteTweet = (linesList: string[], quote: Record<string, any>) => {
+  const appendQuoteTweet = (linesList: string[], quote: Record<string, any>, depth = 1) => {
     if (!quote) return;
     const qText = String(quote.text || "").trim();
     const qImages: string[] = quote.images || [];
     const qImageAltTexts = quote.image_alt_texts || {};
     const qVideos: string[] = quote.videos || [];
     const qUrl = String(quote.url || "").trim();
-    if (!qText && !qImages.length && !qVideos.length && !qUrl) return;
+    const nestedQuote = quote.quote_tweet && typeof quote.quote_tweet === "object" ? quote.quote_tweet : null;
+    if (!qText && !qImages.length && !qVideos.length && !qUrl && !nestedQuote) return;
 
     linesList.push("");
     linesList.push("> [!quote] 引用推文");
@@ -377,6 +383,14 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
       if (videoMap[videoUrl]) {
         linesList.push(">");
         linesList.push(`> ${videoMap[videoUrl]}`);
+      }
+    }
+    if (nestedQuote) {
+      if (depth < 2) {
+        appendQuoteTweet(linesList, nestedQuote, depth + 1);
+      } else if (nestedQuote.url) {
+        linesList.push(">");
+        linesList.push(`> 更深层引用：${nestedQuote.url}`);
       }
     }
     if (qUrl) {

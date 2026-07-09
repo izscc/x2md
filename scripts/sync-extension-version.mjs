@@ -12,9 +12,13 @@ writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 4)}\n`);
 
 const configPath = "app/core/config.ts";
 const configSource = readFileSync(configPath, "utf8");
-const nextConfigSource = configSource.replace(
+let nextConfigSource = configSource.replace(
   /export const VERSION = ["'][^"']+["'];/,
   `export const VERSION = "${displayVersion}";`,
+);
+nextConfigSource = nextConfigSource.replace(
+  /export const MIN_EXTENSION_VERSION = ["'][^"']+["'];/,
+  `export const MIN_EXTENSION_VERSION = "${displayVersion}";`,
 );
 if (nextConfigSource === configSource && !configSource.includes(`export const VERSION = "${displayVersion}";`)) {
   throw new Error("failed to sync app/core/config.ts VERSION");

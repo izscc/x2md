@@ -534,10 +534,17 @@ async function fetchViaGraphQL(tweetId, options = {}) {
                 continue;
             }
 
+            const contentState = getTweetContentState(mainTweet);
+            if (contentState.state !== "available") {
+                noteGraphQLError(options, contentState.code, contentState.message);
+                return { text: "", images: [], videos: [], content_state: contentState.state, _x2md_warning_code: contentState.code, _x2md_warning: contentState.message };
+            }
+
             const mainParsed = parseLegacyTweet(mainTweet, mainTweet.core?.user_results?.result?.legacy);
             if (!mainParsed) {
                 continue;
             }
+            mainParsed.content_state = contentState.state;
 
             const allTweets = extractTimelineTweets(json);
             const authorRestId = mainTweet.core?.user_results?.result?.rest_id;
@@ -667,6 +674,20 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
     const legacy = tweet?.legacy || result?.legacy || result?.tweet?.legacy;
     if (!legacy) return null;
 
+    const retweetedResult = legacy.retweeted_status_result?.result || tweet?.retweeted_status_result?.result;
+    if (retweetedResult) {
+        const retweetedUserLegacy = retweetedResult.core?.user_results?.result?.legacy || retweetedResult.tweet?.core?.user_results?.result?.legacy;
+        const repostParsed = parseLegacyTweet(retweetedResult, retweetedUserLegacy, { ...options, quoteDepth: options.quoteDepth || 0 });
+        if (repostParsed) {
+            return {
+                ...repostParsed,
+                repost: true,
+                repost_author: repostParsed.author || retweetedUserLegacy?.name || "",
+                repost_source_text: repostParsed.text || "",
+            };
+        }
+    }
+
     let text = "";
     // X 对于非常长的推文（非专有 article）会把全文存放在 note_tweet 中
     const noteTweetResult = tweet?.note_tweet?.note_tweet_results?.result || result.note_tweet?.note_tweet_results?.result || result.tweet?.note_tweet?.note_tweet_results?.result;
@@ -763,7 +784,8 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
         if (quotedResult) {
             const quoteUserLegacy = quotedResult.core?.user_results?.result?.legacy ||
                 quotedResult.tweet?.core?.user_results?.result?.legacy;
-            const quotedParsed = parseLegacyTweet(quotedResult, quoteUserLegacy, { skipQuote: true });
+            const quoteDepth = Number(options.quoteDepth || 0) + 1;
+            const quotedParsed = parseLegacyTweet(quotedResult, quoteUserLegacy, { skipQuote: quoteDepth >= 2, quoteDepth });
             if (quotedParsed && (quotedParsed.text || quotedParsed.images.length || quotedParsed.videos.length)) {
                 const quotedLegacy = quotedResult.legacy || quotedResult.tweet?.legacy || {};
                 const quotedHandle = quotedParsed.handle || (quoteUserLegacy?.screen_name ? "@" + quoteUserLegacy.screen_name : "");
@@ -1402,6 +1424,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         (async () => {
             try {
                 const payload = message.data || {};
+                let batchConfig = {};
+                try {
+                    const cfgResp = await fetch(`${SERVER_BASE}/config`);
+                    batchConfig = await cfgResp.json();
+                } catch {}
                 const mode = payload.mode === "articles" ? "articles" : "tweets";
                 let rawItems = Array.isArray(payload.items) ? payload.items : [];
                 let profile = payload.profile || {};
@@ -1421,11 +1448,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (mode === "articles") {
                     for (const item of rawItems) {
                         const article = await fetchProfileArticleForBatch(item);
+                        if (article && batchConfig.enable_video_download === false) article.videos = [];
                         if (article) items.push(article);
                     }
                 } else {
                     for (const item of rawItems) {
-                        items.push(await enrichProfileTweetForBatch(item));
+                        const tweet = await enrichProfileTweetForBatch(item);
+                        if (batchConfig.enable_video_download === false) {
+                            tweet.videos = [];
+                            tweet.videoDurations = [];
+                        }
+                        items.push(tweet);
                     }
                 }
 
@@ -1815,6 +1848,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({
                     online: json.status === "ok",
                     version: json.version || "",
+                    min_extension_version: json.min_extension_version || "",
+                    extension_version: chrome.runtime.getManifest?.().version || "",
                     port: new URL(SERVER_BASE).port || "9527",
                 });
             } catch {

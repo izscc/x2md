@@ -67,6 +67,19 @@
         return messages[code] || messages.GRAPHQL_HTTP_ERROR;
     }
 
+
+    function getTweetContentState(result) {
+        const typename = String(result?.__typename || result?.tweet?.__typename || "").toLowerCase();
+        const reason = String(result?.reason || result?.tombstone?.text?.text || result?.tweet?.reason || "").toLowerCase();
+        if (/tombstone|unavailable|notfound|not_found/.test(typename) || /deleted|not found|不存在|已删除|unavailable/.test(reason)) {
+            return { state: "unavailable", code: "TWEET_UNAVAILABLE", message: "推文不存在、已删除或不可用" };
+        }
+        if (/visibility|withheld|limited|restricted/.test(typename) || /restricted|withheld|limited|sensitive|受限|敏感/.test(reason)) {
+            return { state: "restricted", code: "TWEET_RESTRICTED", message: "内容受限或需要先在页面中显示敏感媒体" };
+        }
+        return { state: "available", code: "", message: "" };
+    }
+
     function getGraphQLRetryDelayMs(resp, attempt, now = Date.now()) {
         const resetHeader = resp?.headers?.get?.("x-rate-limit-reset");
         const resetSeconds = Number(resetHeader);
@@ -515,6 +528,7 @@
         classifyGraphQLHttpStatus,
         graphQLErrorMessage,
         getGraphQLRetryDelayMs,
+        getTweetContentState,
         matchesTweetId,
     };
 

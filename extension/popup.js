@@ -1,3 +1,18 @@
+
+function compareSemver(left, right) {
+    const a = String(left || "").split(".").map((item) => parseInt(item, 10) || 0);
+    const b = String(right || "").split(".").map((item) => parseInt(item, 10) || 0);
+    for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+        if ((a[i] || 0) > (b[i] || 0)) return 1;
+        if ((a[i] || 0) < (b[i] || 0)) return -1;
+    }
+    return 0;
+}
+
+function needsExtensionUpgrade(current, minimum) {
+    return Boolean(current && minimum && compareSemver(current, minimum) < 0);
+}
+
 // popup.js
 chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
     const dot = document.getElementById("dot");
@@ -8,8 +23,9 @@ chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
     txt.textContent = online ? "服务在线" : "本机服务未启动";
     if (hint) {
         const port = resp && resp.port ? resp.port : "9527";
+        const upgrade = online && needsExtensionUpgrade(resp.extension_version, resp.min_extension_version);
         hint.textContent = online
-            ? `v${resp.version || "未知版本"} · 127.0.0.1:${port}`
+            ? (upgrade ? `请升级扩展到 v${resp.min_extension_version}` : `v${resp.version || "未知版本"} · 127.0.0.1:${port}`)
             : "请打开 X2MD.app 后重试";
     }
 });
@@ -41,3 +57,5 @@ chrome.runtime.sendMessage({ action: "get_history" }, (resp) => {
     const time = recent.saved_at ? new Date(recent.saved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
     list.innerHTML = `<div class="path-item">${title}${time ? ` · ${time}` : ""}</div>`;
 });
+
+if (typeof module !== "undefined" && module.exports) module.exports = { compareSemver, needsExtensionUpgrade };

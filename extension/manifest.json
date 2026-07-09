@@ -54,6 +54,7 @@
                 "feishu.js",
                 "wechat.js",
                 "site_actions.js",
+                "i18n.js",
                 "twitter_graphql.js",
                 "translation_helpers.js",
                 "content.js"

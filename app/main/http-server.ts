@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 
-import { loadConfig, saveConfig, VERSION, getAppDir, configPath, logPath } from "../core/config.ts";
+import { loadConfig, saveConfig, VERSION, MIN_EXTENSION_VERSION, getAppDir, configPath, logPath } from "../core/config.ts";
 import { handleProfileCaptureSave, getProfileStateBucket, loadProfileCaptureState, normalizeProfileHandle } from "../core/profile-capture.ts";
 import { readSaveHistory, savePayload } from "../core/save.ts";
 import { sanitizeUnicodePayload } from "../core/unicode.ts";
@@ -73,7 +73,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
 
   if (request.method === "OPTIONS") return new Response("", { status: 200, headers: corsHeaders });
 
-  if (request.method === "GET" && path === "/ping") return json({ status: "ok", version: VERSION });
+  if (request.method === "GET" && path === "/ping") return json({ status: "ok", version: VERSION, min_extension_version: MIN_EXTENSION_VERSION });
   if (!isTrustedApiOrigin(request)) return json({ success: false, error: "Forbidden" }, 403);
   if (request.method === "GET" && path === "/config") return json(loadConfig(appDir));
   if (request.method === "GET" && path === "/status") {

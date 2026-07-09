@@ -2892,6 +2892,17 @@ const X_PROFILE_CAPTURE_RESERVED_PATHS = new Set([
 ]);
 let xProfileCaptureMenuHideTimer = null;
 let xProfileCaptureRunning = false;
+let xProfileCaptureProgress = "";
+
+function updateXProfileCaptureButtonState() {
+    const btn = document.getElementById(X_PROFILE_CAPTURE_BUTTON_ID);
+    if (!btn) return;
+    btn.disabled = xProfileCaptureRunning;
+    btn.textContent = xProfileCaptureRunning ? "⏳" : "🐾";
+    btn.title = xProfileCaptureRunning ? (xProfileCaptureProgress || "X2MD 正在批量抓取") : "X2MD 批量抓取博主内容";
+    btn.style.cursor = xProfileCaptureRunning ? "wait" : "pointer";
+    btn.style.opacity = xProfileCaptureRunning ? ".72" : "1";
+}
 
 function isXProfileCaptureEnabled(config = {}) {
     return config.show_x_profile_capture_button !== false;
@@ -3205,6 +3216,8 @@ function sendProfileCapturePayload(payload) {
 
 function handleProfileCaptureResponse(resp, mode) {
     xProfileCaptureRunning = false;
+    xProfileCaptureProgress = "";
+    updateXProfileCaptureButtonState();
     if (resp?.success) {
         const result = resp.result || {};
         const savedCount = result.saved?.length || 0;
@@ -3236,6 +3249,8 @@ async function startXProfileCapture(options = {}) {
     }
 
     xProfileCaptureRunning = true;
+    xProfileCaptureProgress = "准备抓取…";
+    updateXProfileCaptureButtonState();
     const profile = {
         handle: context.handle,
         displayName: getProfileDisplayName() || context.handle,
@@ -3246,6 +3261,8 @@ async function startXProfileCapture(options = {}) {
     const rangeLabel = mode === "articles" ? "全部文章" : getXProfileCaptureRangeLabel(settings);
 
     try {
+        xProfileCaptureProgress = mode === "articles" ? "正在抓取文章…" : `正在抓取推文（${rangeLabel}）…`;
+        updateXProfileCaptureButtonState();
         showToast(mode === "articles" ? "正在通过接口抓取博主文章…" : `正在通过接口抓取博主推文（${rangeLabel}）…`, "loading", null);
         const resp = await sendProfileCapturePayload({
             mode,
@@ -3259,6 +3276,8 @@ async function startXProfileCapture(options = {}) {
         handleProfileCaptureResponse(resp, mode);
     } catch (error) {
         xProfileCaptureRunning = false;
+        xProfileCaptureProgress = "";
+        updateXProfileCaptureButtonState();
         showToast(`批量抓取失败：${String(error?.message || error).slice(0, 60)}`, "error", 6500);
     }
 }
@@ -3474,6 +3493,7 @@ function ensureXProfileCaptureButton() {
         btn.textContent = "🐾";
         btn.title = "X2MD 批量抓取博主内容";
         btn.setAttribute("aria-label", "X2MD 批量抓取博主内容");
+        btn.setAttribute("aria-live", "polite");
         Object.assign(btn.style, {
             width: "44px",
             height: "44px",
@@ -3494,7 +3514,7 @@ function ensureXProfileCaptureButton() {
             clearTimeout(xProfileCaptureMenuHideTimer);
             btn.style.background = "rgba(29,155,240,.1)";
             btn.style.transform = "translateY(-1px)";
-            showXProfileCaptureMenu(btn);
+            if (!xProfileCaptureRunning) showXProfileCaptureMenu(btn);
         });
         btn.addEventListener("mouseleave", () => {
             btn.style.background = "transparent";
@@ -3504,14 +3524,16 @@ function ensureXProfileCaptureButton() {
         btn.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
-            showXProfileCaptureMenu(btn);
+            if (!xProfileCaptureRunning) showXProfileCaptureMenu(btn);
         });
     }
 
     if (tablist) {
+        updateXProfileCaptureButtonState();
         if (btn.parentElement !== tablist) tablist.appendChild(btn);
         Object.assign(btn.style, { position: "relative", top: "", right: "", boxShadow: "none" });
     } else if (btn.parentElement !== document.body) {
+        updateXProfileCaptureButtonState();
         document.body.appendChild(btn);
         Object.assign(btn.style, {
             position: "fixed",
@@ -3621,8 +3643,17 @@ function ensureFloatingSaveButton() {
     btn.dataset.siteKey = siteKey;
     btn.textContent = siteConfig.label;
     btn.title = siteConfig.title;
+    btn.setAttribute("aria-label", siteConfig.title);
     btn.style.background = siteConfig.background;
     btn.style.boxShadow = `0 10px 24px ${siteConfig.shadow}`;
+}
+
+function ensureX2MDA11yStyle() {
+    if (document.getElementById("__x2md_a11y_style")) return;
+    const style = document.createElement("style");
+    style.id = "__x2md_a11y_style";
+    style.textContent = `button[id^="__x2md"], #__x2md_bookmarks_toolbar button { outline: none; } button[id^="__x2md"]:focus-visible, #__x2md_bookmarks_toolbar button:focus-visible { outline: 3px solid #1d9bf0; outline-offset: 2px; }`;
+    document.documentElement.appendChild(style);
 }
 
 // ─────────────────────────────────────────────
@@ -3708,10 +3739,10 @@ function ensureBookmarksToolbar() {
         toolbar.innerHTML = `
             <strong style="font-size:13px;">X2MD 书签导出</strong>
             <span data-x2md-role="bookmarks-status" style="font-size:12px;color:rgb(83,100,113);">可导出当前已加载书签</span>
-            <button type="button" data-x2md-role="bookmarks-export">导出可见</button>
-            <button type="button" data-x2md-role="bookmarks-pause" disabled>暂停</button>
-            <button type="button" data-x2md-role="bookmarks-cancel">取消</button>
-            <button type="button" data-x2md-role="bookmarks-retry" disabled>重试失败</button>
+            <button type="button" aria-label="X2MD 导出当前已加载书签" data-x2md-role="bookmarks-export">导出可见</button>
+            <button type="button" aria-label="暂停或继续 X2MD 书签导出" data-x2md-role="bookmarks-pause" disabled>暂停</button>
+            <button type="button" aria-label="取消 X2MD 书签导出" data-x2md-role="bookmarks-cancel">取消</button>
+            <button type="button" aria-label="重试失败的 X2MD 书签导出" data-x2md-role="bookmarks-retry" disabled>重试失败</button>
         `;
         Object.assign(toolbar.style, {
             position: "sticky",
@@ -3775,6 +3806,7 @@ function isTwitterDetailOrArticlePage() {
 }
 
 function bindAll() {
+    ensureX2MDA11yStyle();
     // 关键性能修复：书签按钮只存在于 X/Twitter。
     // 之前在 linux.do / 微信公众号页面的每次 DOM mutation 都会全页扫描一组
     // Twitter 选择器；这两个站点本身会高频动态更新 DOM，导致扩展开启后页面卡死。

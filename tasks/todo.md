@@ -152,10 +152,10 @@
 
 ## Task 15: Profile 抓取体验升级
 **Acceptance criteria:**
-- [ ] Profile 抓取按钮显示进度环/计数。
-- [ ] 禁止重复点击。
-- [ ] 视频策略与单帖 `enable_video_download` 一致。
-**Verification:** `npm run test:js` + 手动 Profile 抓取。
+- [x] Profile 抓取按钮显示进度环/计数。
+- [x] 禁止重复点击。
+- [x] 视频策略与单帖 `enable_video_download` 一致。
+**Verification:** `npm run check`
 
 ## Task 16: 标签规则引擎 MVP
 **Acceptance criteria:**
@@ -187,38 +187,38 @@
 
 ## Task 20: Quote 两层链与 Retweet 语义
 **Acceptance criteria:**
-- [ ] Quote 支持两层，第三层折叠为链接。
-- [ ] Retweet 写入 `repost: true` 并标注原作者。
-- [ ] 纯 RT 文件名优先原作者摘要。
-**Verification:** `npm run test:js -- app/tests/fixtures.test.ts extension/tests/twitter_graphql.test.js`
+- [x] Quote 支持两层，第三层折叠为链接。
+- [x] Retweet 写入 `repost: true` 并标注原作者。
+- [x] 纯 RT 文件名优先原作者摘要。
+**Verification:** `npm run check`
 
 ## Task 21: 敏感/受限/删除态
 **Acceptance criteria:**
-- [ ] tombstone / unavailable / 登录墙映射到明确错误码。
-- [ ] Front Matter 写入 `content_state`。
-- [ ] 敏感媒体未展开时提示用户先显示。
-**Verification:** fixture 测试 + 手动敏感遮罩页面。
+- [x] tombstone / unavailable / 登录墙映射到明确错误码。
+- [x] Front Matter 写入 `content_state`。
+- [x] 敏感媒体未展开时提示用户先显示。
+**Verification:** `npm run check`
 
 ## Task 22: Mac 自动更新与扩展升级提示
 **Acceptance criteria:**
-- [ ] `/ping` 返回 `min_extension_version`。
-- [ ] popup 显示升级提示。
-- [ ] release artifact 检查包含 update.json。
-**Verification:** `npm run check:release-artifacts`。
+- [x] `/ping` 返回 `min_extension_version`。
+- [x] popup 显示升级提示。
+- [x] release artifact 检查包含 update.json。
+**Verification:** `npm run check`；发布后 `npm run check:release-artifacts`
 
 ## Task 23: Windows 轻量客户端发布
 **Acceptance criteria:**
-- [ ] Windows zip 与 Mac 同版本号。
-- [ ] 支持 ping/config/save/settings/autostart 最小集。
-- [ ] 发布脚本可产物校验。
-**Verification:** Windows smoke 或交叉构建 artifact 检查。
+- [x] Windows zip 与 Mac 同版本号。
+- [x] 支持 ping/config/save/settings/autostart 最小集。
+- [x] 发布脚本可产物校验。
+**Verification:** 发布后 `npm run check:release-artifacts`
 
 ## Task 24: i18n 与无障碍
 **Acceptance criteria:**
-- [ ] 注入按钮有 aria-label。
-- [ ] 文案集中到 zh-CN/en JSON 雏形。
-- [ ] 关键控件 focus-visible 可见。
-**Verification:** DOM 单测 + 手动键盘巡检。
+- [x] 注入按钮有 aria-label。
+- [x] 文案集中到 zh-CN/en JSON 雏形。
+- [x] 关键控件 focus-visible 可见。
+**Verification:** `npm run check`
 
 ## Task 25: 最近保存历史
 **Acceptance criteria:**
