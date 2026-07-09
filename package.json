@@ -1,6 +1,6 @@
 {
   "name": "x2md",
-  "version": "2.0.4",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "dev": "electrobun dev",

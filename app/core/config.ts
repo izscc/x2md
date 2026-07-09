@@ -3,8 +3,8 @@ import { homedir, platform } from "node:os";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
-export const VERSION = "2.0.4";
-export const MIN_EXTENSION_VERSION = "2.0.4";
+export const VERSION = "3.0.0";
+export const MIN_EXTENSION_VERSION = "3.0.0";
 
 export type X2MDConfig = Record<string, unknown> & {
   port: number;

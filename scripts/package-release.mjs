@@ -12,7 +12,7 @@ rmSync(releaseDir, { recursive: true, force: true });
 mkdirSync(releaseDir, { recursive: true });
 
 execFileSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appPath, join(releaseDir, "X2MD_Mac.zip")], { stdio: "inherit" });
-execFileSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", "extension", join(releaseDir, "X2MD_Extension.zip")], { stdio: "inherit" });
+execFileSync("zip", ["-qr", join("..", releaseDir, "X2MD_Extension.zip"), ".", "-x", "tests/*", "*.DS_Store"], { cwd: "extension", stdio: "inherit" });
 
 const winRoot = join(releaseDir, "windows-lite");
 mkdirSync(winRoot, { recursive: true });
