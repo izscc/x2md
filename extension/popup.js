@@ -27,3 +27,17 @@ chrome.runtime.sendMessage({ action: "get_config" }, (resp) => {
     }
     list.innerHTML = paths.map(p => `<div class="path-item">${p}</div>`).join("");
 });
+
+chrome.runtime.sendMessage({ action: "get_history" }, (resp) => {
+    const list = document.getElementById("history-list");
+    if (!list) return;
+    const history = resp && resp.success && Array.isArray(resp.history) ? resp.history : [];
+    if (!history.length) {
+        list.innerHTML = '<div class="path-item">暂无保存记录</div>';
+        return;
+    }
+    const recent = history[0];
+    const title = String(recent.title || "未命名").slice(0, 42);
+    const time = recent.saved_at ? new Date(recent.saved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    list.innerHTML = `<div class="path-item">${title}${time ? ` · ${time}` : ""}</div>`;
+});

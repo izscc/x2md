@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 
 import { loadConfig, saveConfig, VERSION, getAppDir, configPath, logPath } from "../core/config.ts";
 import { handleProfileCaptureSave, getProfileStateBucket, loadProfileCaptureState, normalizeProfileHandle } from "../core/profile-capture.ts";
-import { savePayload } from "../core/save.ts";
+import { readSaveHistory, savePayload } from "../core/save.ts";
 import { sanitizeUnicodePayload } from "../core/unicode.ts";
 import { isAutostartEnabled, setAutostartEnabled } from "./autostart.ts";
 import { chooseFolder, openConfiguredTarget, showSettingsWindow } from "./desktop.ts";
@@ -84,6 +84,9 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
   }
   if (request.method === "GET" && path === "/log") {
     return json({ success: true, log: readLogTail(appDir) });
+  }
+  if (request.method === "GET" && path === "/history") {
+    return json({ success: true, history: readSaveHistory(appDir) });
   }
   if (request.method === "GET" && path === "/autostart") return json({ success: true, enabled: isAutostartEnabled() });
   if (request.method === "GET" && path === "/profile-capture/state") {

@@ -354,3 +354,28 @@ test("CORS OPTIONS 兼容扩展", async () => {
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("Access-Control-Allow-Origin"), "*");
 });
+
+
+test("GET /history 返回最近保存记录", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ save_paths: [mdDir] }),
+  }), { appDir });
+
+  await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "tweet", text: "history title", url: "https://x.com/a/status/9" }),
+  }), { appDir });
+
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/history"), { appDir });
+  const body = await json(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.history.length, 1);
+  assert.match(body.history[0].title, /history title/);
+  assert.match(body.history[0].path, /history title/);
+});

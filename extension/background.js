@@ -1745,6 +1745,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.action === "get_history") {
+        (async () => {
+            try {
+                const resp = await fetch(`${SERVER_BASE}/history`);
+                const json = await resp.json();
+                sendResponse({ success: json.success !== false, history: json.history || [] });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
     if (message.action === "update_config") {
         (async () => {
             try {

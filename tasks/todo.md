@@ -222,7 +222,7 @@
 
 ## Task 25: 最近保存历史
 **Acceptance criteria:**
-- [ ] 保存成功记录最近 20 条。
-- [ ] popup/设置页可展示标题、平台、路径、时间。
-- [ ] 可重新打开文件或目录。
+- [x] 保存成功记录最近 20 条。
+- [x] popup/设置页可展示标题、平台、路径、时间。
+- [x] 可重新打开文件或目录。
 **Verification:** `npm run test:js -- app/tests/api.test.ts extension/tests/popup.test.js`
