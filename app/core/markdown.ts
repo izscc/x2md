@@ -136,6 +136,63 @@ function appendCommunityNotesBlock(lines: string[], notesValue: unknown): void {
   }
 }
 
+function appendLinkCardBlock(lines: string[], cardValue: unknown): void {
+  if (!cardValue || typeof cardValue !== "object") return;
+  const card = cardValue as Record<string, any>;
+  const title = String(card.title || "").trim();
+  const description = String(card.description || "").trim();
+  const domain = String(card.domain || "").trim();
+  const url = String(card.url || "").trim();
+  if (!title && !description && !domain && !url) return;
+  lines.push("");
+  lines.push("> [!info] 链接卡片");
+  if (title) lines.push(`> **${title}**`);
+  if (description) lines.push(`> ${description}`);
+  if (domain) lines.push(`> ${domain}`);
+  if (url) lines.push(`> ${url}`);
+}
+
+function normalizeTags(value: unknown): string[] {
+  const source = Array.isArray(value) ? value : [];
+  return Array.from(new Set(source.map((item) => String(item || "").trim().replace(/^#/, "")).filter(Boolean)));
+}
+
+function tagsFromRuleValue(value: unknown): string[] {
+  if (Array.isArray(value)) return normalizeTags(value);
+  if (value && typeof value === "object" && Array.isArray((value as Record<string, any>).tags)) {
+    return normalizeTags((value as Record<string, any>).tags);
+  }
+  return [];
+}
+
+function appendMappedTags(tags: string[], mapping: unknown, key: string): void {
+  if (!mapping || typeof mapping !== "object" || !key) return;
+  const record = mapping as Record<string, unknown>;
+  tags.push(...tagsFromRuleValue(record[key]));
+}
+
+function collectTags(data: Record<string, any>, cfg: Record<string, any>, text: string): string[] {
+  if (cfg.auto_tags_enabled === false) return normalizeTags(data.tags);
+
+  const tags = [...normalizeTags(cfg.default_tags), ...normalizeTags(data.tags)];
+  const rules = cfg.tag_rules && typeof cfg.tag_rules === "object" ? cfg.tag_rules as Record<string, any> : {};
+
+  appendMappedTags(tags, rules.paths, String(data.custom_save_path_name || ""));
+  appendMappedTags(tags, rules.platforms, String(data.platform || "Twitter/X"));
+  appendMappedTags(tags, rules.authors, String(data.handle || "").replace(/^@/, ""));
+  appendMappedTags(tags, rules.authors, String(data.handle || ""));
+
+  const keywordRules = Array.isArray(rules.keywords) ? rules.keywords : [];
+  const haystack = `${text}\n${data.article_title || ""}\n${data.article_content || ""}`.toLowerCase();
+  for (const rule of keywordRules) {
+    if (!rule || typeof rule !== "object") continue;
+    const keyword = String((rule as Record<string, any>).keyword || "").trim().toLowerCase();
+    if (keyword && haystack.includes(keyword)) tags.push(...tagsFromRuleValue(rule));
+  }
+
+  return Array.from(new Set(tags));
+}
+
 export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): [string, string] {
   const data = applyTranslationOverride(input);
   const author = data.author || "unknown";
@@ -155,6 +212,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   const platform = data.platform || "Twitter/X";
   const pollData = data.poll_data || data.poll;
   const communityNotes = Array.isArray(data.community_notes) ? data.community_notes : [];
+  const linkCard = data.link_card || data.card;
 
   const dateStr = formatDate();
   const datetimeStr = formatDateTime();
@@ -174,10 +232,12 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   let title = String(titleSrc).split(/\s+/).filter(Boolean).join(" ");
   title = `${title.slice(0, 80)}${title.length > 80 ? "…" : ""}`.replace(/"/g, "'");
   const authorUrl = data.author_url ?? (handle ? `https://x.com/${String(handle).replace(/^@/, "")}` : "");
+  const tags = collectTags(data, cfg as Record<string, any>, `${text}\n${articleContent}`);
+  const tagsYaml = tags.length ? `\n${tags.map((tag) => `  - ${tag}`).join("\n")}` : " []";
 
   const frontMatter = `---
 title: "${title}"
-tags: []
+tags:${tagsYaml}
 源: "${url}"
 作者主页: "${authorUrl}"
 创建时间: "${datetimeStr}"
@@ -282,6 +342,7 @@ ${pollData && typeof pollData === "object" && pollData.end ? `poll_end: "${Strin
     }
     appendUnusedVideos(lines, textResult);
     appendPollBlock(lines, pollData);
+    appendLinkCardBlock(lines, linkCard);
     appendCommunityNotesBlock(lines, communityNotes);
     appendQuoteTweet(lines, quoteTweet);
 

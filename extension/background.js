@@ -755,6 +755,7 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
         x_article_api: graphqlArticle,
         poll_data: extractPollFromTweetResult(tweet || result),
         community_notes: extractCommunityNotesFromTweetResult(tweet || result),
+        link_card: extractLinkCardFromTweetResult(tweet || result),
     };
 
     if (!options.skipQuote) {

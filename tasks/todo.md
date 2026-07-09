@@ -131,9 +131,9 @@
 
 ## Task 12: 链接卡片元数据
 **Acceptance criteria:**
-- [ ] 提取标题、描述、域名、目标 URL、卡片图。
-- [ ] Markdown 输出 `[!info] 链接卡片`。
-- [ ] 卡片图不与推文附图混淆。
+- [x] 提取标题、描述、域名、目标 URL、卡片图。
+- [x] Markdown 输出 `[!info] 链接卡片`。
+- [x] 卡片图不与推文附图混淆。
 **Verification:** `npm run test:js -- app/tests/fixtures.test.ts`
 
 ## Task 13: Bookmarks 导出 MVP
@@ -159,9 +159,9 @@
 
 ## Task 16: 标签规则引擎 MVP
 **Acceptance criteria:**
-- [ ] 支持默认 tags、路径映射、关键词、作者、平台映射。
-- [ ] 保持旧 Front Matter 字段不删除。
-- [ ] 默认关闭破坏性行为。
+- [x] 支持默认 tags、路径映射、关键词、作者、平台映射。
+- [x] 保持旧 Front Matter 字段不删除。
+- [x] 默认关闭破坏性行为。
 **Verification:** `npm run test:js -- app/tests/core.test.ts`
 
 ## Task 17: 本地 API token 可选收紧

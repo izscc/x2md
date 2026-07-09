@@ -190,6 +190,34 @@
         return notes.map(({ text, source }) => ({ text, source }));
     }
 
+    function domainFromUrl(value) {
+        try {
+            return new URL(String(value || "")).hostname.replace(/^www\./, "");
+        } catch {
+            return "";
+        }
+    }
+
+    function extractLinkCardFromTweetResult(result) {
+        const tweet = result?.tweet || result;
+        const card = tweet?.card || tweet?.legacy?.card || result?.card || result?.legacy?.card;
+        const map = readCardBindingMap(card);
+        const title = firstCardValue(map, ["title", "card_title", "summary_title", "vanity_url"]);
+        const description = firstCardValue(map, ["description", "card_description", "summary_description"]);
+        const url = firstCardValue(map, ["card_url", "url", "player_url", "site_url", "expanded_url"]);
+        const image = firstCardValue(map, ["thumbnail_image_original", "thumbnail_image", "summary_photo_image", "photo_image_full_size_original"]);
+        const domain = firstCardValue(map, ["domain", "site", "vanity_url"]) || domainFromUrl(url);
+        const normalizedUrl = url && /^https?:\/\//i.test(url) ? url : "";
+        if (!title && !description && !normalizedUrl && !image) return null;
+        return {
+            title: title || domain || normalizedUrl,
+            description: description || undefined,
+            domain: domain || undefined,
+            url: normalizedUrl || undefined,
+            image: image && /^https?:\/\//i.test(image) ? image : undefined,
+        };
+    }
+
     function extractGraphQLOperationIdsFromUrls(urls) {
         const discovered = {
             TweetDetail: [],
@@ -480,6 +508,7 @@
         extractMainTweetResult,
         extractPollFromTweetResult,
         extractCommunityNotesFromTweetResult,
+        extractLinkCardFromTweetResult,
         mergeOperationIds,
         normalizeGraphQLOperationCache,
         hasGraphQLOperationCache,

@@ -16,6 +16,9 @@ export type X2MDConfig = Record<string, unknown> & {
   show_site_save_icon: boolean;
   show_x_profile_capture_button: boolean;
   enable_save_notification: boolean;
+  auto_tags_enabled: boolean;
+  default_tags: string[];
+  tag_rules: Record<string, unknown>;
   profile_capture_range: string;
   profile_capture_custom_days: number;
   profile_capture_save_path: string;
@@ -46,6 +49,9 @@ export const DEFAULT_CONFIG: X2MDConfig = {
   show_site_save_icon: true,
   show_x_profile_capture_button: true,
   enable_save_notification: false,
+  auto_tags_enabled: true,
+  default_tags: [],
+  tag_rules: {},
   profile_capture_range: "today",
   profile_capture_custom_days: 7,
   profile_capture_save_path: "",
@@ -103,9 +109,17 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   cfg.setup_completed = cfg.save_paths.length > 0 && (oldConfigHasSavePath || boolValue(cfg.setup_completed, DEFAULT_CONFIG.setup_completed));
   cfg.enable_video_download = boolValue(cfg.enable_video_download, DEFAULT_CONFIG.enable_video_download);
   cfg.enable_save_notification = boolValue(cfg.enable_save_notification, DEFAULT_CONFIG.enable_save_notification);
+  cfg.auto_tags_enabled = boolValue(cfg.auto_tags_enabled, DEFAULT_CONFIG.auto_tags_enabled);
+  cfg.default_tags = Array.isArray(cfg.default_tags) ? normalizeTagList(cfg.default_tags) : [...DEFAULT_CONFIG.default_tags];
+  cfg.tag_rules = cfg.tag_rules && typeof cfg.tag_rules === "object" ? cfg.tag_rules as Record<string, unknown> : { ...DEFAULT_CONFIG.tag_rules };
   cfg.show_site_save_icon = boolValue(cfg.show_site_save_icon, DEFAULT_CONFIG.show_site_save_icon);
   cfg.show_x_profile_capture_button = boolValue(cfg.show_x_profile_capture_button, DEFAULT_CONFIG.show_x_profile_capture_button);
   return cfg;
+}
+
+function normalizeTagList(value: unknown): string[] {
+  const source = Array.isArray(value) ? value : [];
+  return Array.from(new Set(source.map((item) => String(item || "").trim().replace(/^#/, "")).filter(Boolean)));
 }
 
 export function ensureConfiguredDirs(cfg: X2MDConfig): void {

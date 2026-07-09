@@ -485,3 +485,67 @@ test("Community Notes 结构化写入 Front Matter 和正文", () => {
   assert.match(content, /> 这条推文缺少上下文。/);
   assert.match(content, /> 来源：https:\/\/example.com\/source/);
 });
+
+
+test("链接卡片写入 Markdown 信息块", () => {
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "推荐一个链接",
+    url: "https://x.com/a/status/4",
+    handle: "@alice",
+    link_card: {
+      title: "链接标题",
+      description: "链接摘要",
+      domain: "example.com",
+      url: "https://example.com/post",
+    },
+  }, baseCfg);
+
+  assert.match(content, /> \[!info\] 链接卡片/);
+  assert.match(content, /> \*\*链接标题\*\*/);
+  assert.match(content, /> 链接摘要/);
+  assert.match(content, /> example.com/);
+  assert.match(content, /> https:\/\/example.com\/post/);
+});
+
+
+test("标签规则引擎写入 Front Matter tags", () => {
+  const cfg = normalizeConfig({
+    ...baseCfg,
+    default_tags: ["剪报", "X"],
+    tag_rules: {
+      paths: { "生图类": ["生图"] },
+      keywords: [{ keyword: "Stable Diffusion", tags: ["AI绘画"] }],
+      authors: { alice: ["创作者/alice"] },
+      platforms: { "Twitter/X": ["社媒"] },
+    },
+  });
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "Stable Diffusion workflow",
+    url: "https://x.com/alice/status/5",
+    handle: "@alice",
+    custom_save_path_name: "生图类",
+  }, cfg);
+
+  assert.ok(content.includes(`tags:
+  - 剪报
+  - X
+  - 生图
+  - 社媒
+  - 创作者/alice
+  - AI绘画`));
+});
+
+test("关闭自动 tags 时仅保留请求自带 tags", () => {
+  const cfg = normalizeConfig({ ...baseCfg, auto_tags_enabled: false, default_tags: ["剪报"] });
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "正文",
+    tags: ["手动"],
+  }, cfg);
+
+  assert.ok(content.includes(`tags:
+  - 手动`));
+  assert.doesNotMatch(content.split("源:")[0], /剪报/);
+});

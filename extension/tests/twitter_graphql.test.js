@@ -13,6 +13,7 @@ const {
     extractMainTweetResult,
     extractPollFromTweetResult,
     extractCommunityNotesFromTweetResult,
+    extractLinkCardFromTweetResult,
     normalizeGraphQLOperationCache,
     hasGraphQLOperationCache,
     classifyGraphQLHttpStatus,
@@ -244,4 +245,28 @@ test("extractCommunityNotesFromTweetResult reads birdwatch notes", () => {
         { text: "这是社群笔记", source: "https://example.com/high" },
         { text: "低相关", source: "https://example.com/low" },
     ]);
+});
+
+
+test("extractLinkCardFromTweetResult reads card metadata", () => {
+    const card = extractLinkCardFromTweetResult({
+        card: {
+            legacy: {
+                binding_values: [
+                    { key: "title", value: { string_value: "链接标题" } },
+                    { key: "description", value: { string_value: "链接摘要" } },
+                    { key: "card_url", value: { string_value: "https://example.com/post" } },
+                    { key: "thumbnail_image_original", value: { string_value: "https://example.com/card.jpg" } },
+                ],
+            },
+        },
+    });
+
+    assert.deepEqual(card, {
+        title: "链接标题",
+        description: "链接摘要",
+        domain: "example.com",
+        url: "https://example.com/post",
+        image: "https://example.com/card.jpg",
+    });
 });
