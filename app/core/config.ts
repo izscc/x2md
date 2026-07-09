@@ -19,6 +19,8 @@ export type X2MDConfig = Record<string, unknown> & {
   auto_tags_enabled: boolean;
   default_tags: string[];
   tag_rules: Record<string, unknown>;
+  front_matter_template: string;
+  custom_front_matter_template: string;
   profile_capture_range: string;
   profile_capture_custom_days: number;
   profile_capture_save_path: string;
@@ -52,6 +54,8 @@ export const DEFAULT_CONFIG: X2MDConfig = {
   auto_tags_enabled: true,
   default_tags: [],
   tag_rules: {},
+  front_matter_template: "default",
+  custom_front_matter_template: "",
   profile_capture_range: "today",
   profile_capture_custom_days: 7,
   profile_capture_save_path: "",
@@ -112,6 +116,8 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   cfg.auto_tags_enabled = boolValue(cfg.auto_tags_enabled, DEFAULT_CONFIG.auto_tags_enabled);
   cfg.default_tags = Array.isArray(cfg.default_tags) ? normalizeTagList(cfg.default_tags) : [...DEFAULT_CONFIG.default_tags];
   cfg.tag_rules = cfg.tag_rules && typeof cfg.tag_rules === "object" ? cfg.tag_rules as Record<string, unknown> : { ...DEFAULT_CONFIG.tag_rules };
+  cfg.front_matter_template = ["default", "minimal", "dataview-full", "custom"].includes(String(cfg.front_matter_template)) ? String(cfg.front_matter_template) : DEFAULT_CONFIG.front_matter_template;
+  cfg.custom_front_matter_template = String(cfg.custom_front_matter_template || "");
   cfg.show_site_save_icon = boolValue(cfg.show_site_save_icon, DEFAULT_CONFIG.show_site_save_icon);
   cfg.show_x_profile_capture_button = boolValue(cfg.show_x_profile_capture_button, DEFAULT_CONFIG.show_x_profile_capture_button);
   return cfg;

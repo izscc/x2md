@@ -193,6 +193,78 @@ function collectTags(data: Record<string, any>, cfg: Record<string, any>, text: 
   return Array.from(new Set(tags));
 }
 
+function yamlString(value: unknown): string {
+  return String(value ?? "").replace(/"/g, "'");
+}
+
+function statusIdFromUrl(url: string): string {
+  return String(url || "").match(/\/status\/(\d+)/)?.[1] || "";
+}
+
+function renderCustomFrontMatter(template: string, vars: Record<string, string>): string {
+  const allowed = new Set(Object.keys(vars));
+  const rendered = String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
+    return allowed.has(key) ? vars[key] : "";
+  }).trim();
+  return rendered ? `---\n${rendered}\n---\n` : "";
+}
+
+function buildFrontMatter(data: Record<string, any>, cfg: Record<string, any>, values: Record<string, any>): string {
+  const tags = values.tags as string[];
+  const tagsYaml = tags.length ? `\n${tags.map((tag) => `  - ${tag}`).join("\n")}` : " []";
+  const pollEnd = data.poll_data && typeof data.poll_data === "object" && data.poll_data.end
+    ? `poll_end: "${yamlString(data.poll_data.end)}"\n`
+    : "";
+  const statusId = statusIdFromUrl(values.url);
+  const contentState = String(data.content_state || "available");
+  const template = String(cfg.front_matter_template || "default");
+
+  const common = {
+    title: yamlString(values.title),
+    url: yamlString(values.url),
+    author_url: yamlString(values.authorUrl),
+    created: yamlString(values.datetimeStr),
+    published: yamlString(values.published),
+    platform: yamlString(values.platform),
+    type: yamlString(values.contentType),
+    status_id: yamlString(statusId),
+    tags: tags.join(", "),
+    poll: data.poll_data || data.poll ? "true" : "false",
+    has_community_notes: Array.isArray(data.community_notes) && data.community_notes.length ? "true" : "false",
+    content_state: yamlString(contentState),
+    x2md_version: yamlString(data.x2md_version || cfg.x2md_version || ""),
+  };
+
+  if (template === "custom") {
+    const custom = renderCustomFrontMatter(String(cfg.custom_front_matter_template || ""), common);
+    if (custom) return custom;
+  }
+
+  if (template === "minimal") {
+    return `---\ntitle: "${common.title}"\ntags:${tagsYaml}\n源: "${common.url}"\n平台: "${common.platform}"\n---\n`;
+  }
+
+  const extra = template === "dataview-full"
+    ? `status_id: "${common.status_id}"\ntype: "${common.type}"\ncontent_state: "${common.content_state}"\nx2md_version: "${common.x2md_version}"\n`
+    : "";
+
+  return `---
+title: "${common.title}"
+tags:${tagsYaml}
+源: "${common.url}"
+作者主页: "${common.author_url}"
+创建时间: "${common.created}"
+发布时间: "${common.published}"
+平台: "${common.platform}"
+类别: "[[剪报]]"
+阅读状态: false
+整理: false
+poll: ${common.poll}
+has_community_notes: ${common.has_community_notes}
+${pollEnd}${extra}---
+`;
+}
+
 export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): [string, string] {
   const data = applyTranslationOverride(input);
   const author = data.author || "unknown";
@@ -233,23 +305,16 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   title = `${title.slice(0, 80)}${title.length > 80 ? "…" : ""}`.replace(/"/g, "'");
   const authorUrl = data.author_url ?? (handle ? `https://x.com/${String(handle).replace(/^@/, "")}` : "");
   const tags = collectTags(data, cfg as Record<string, any>, `${text}\n${articleContent}`);
-  const tagsYaml = tags.length ? `\n${tags.map((tag) => `  - ${tag}`).join("\n")}` : " []";
-
-  const frontMatter = `---
-title: "${title}"
-tags:${tagsYaml}
-源: "${url}"
-作者主页: "${authorUrl}"
-创建时间: "${datetimeStr}"
-发布时间: "${published}"
-平台: "${platform}"
-类别: "[[剪报]]"
-阅读状态: false
-整理: false
-poll: ${pollData ? "true" : "false"}
-has_community_notes: ${communityNotes.length ? "true" : "false"}
-${pollData && typeof pollData === "object" && pollData.end ? `poll_end: "${String(pollData.end).replace(/"/g, "'")}"\n` : ""}---
-`;
+  const frontMatter = buildFrontMatter(data, cfg as Record<string, any>, {
+    title,
+    tags,
+    url,
+    authorUrl,
+    datetimeStr,
+    published,
+    platform,
+    contentType,
+  });
 
   const lines: string[] = [];
   const videoMap: Record<string, string> = {};

@@ -549,3 +549,53 @@ test("关闭自动 tags 时仅保留请求自带 tags", () => {
   - 手动`));
   assert.doesNotMatch(content.split("源:")[0], /剪报/);
 });
+
+
+test("Front Matter minimal 模板只输出核心字段", () => {
+  const cfg = normalizeConfig({ ...baseCfg, front_matter_template: "minimal", default_tags: ["剪报"] });
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "正文",
+    url: "https://x.com/alice/status/123",
+  }, cfg);
+
+  assert.match(content, /title: "正文"/);
+  assert.ok(content.includes(`tags:
+  - 剪报`));
+  assert.match(content, /源: "https:\/\/x.com\/alice\/status\/123"/);
+  assert.doesNotMatch(content.split("---")[1], /作者主页/);
+});
+
+test("Front Matter dataview-full 模板追加结构化字段", () => {
+  const cfg = normalizeConfig({ ...baseCfg, front_matter_template: "dataview-full" });
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "正文",
+    url: "https://x.com/alice/status/123",
+    content_state: "restricted",
+    x2md_version: "3.0.0",
+  }, cfg);
+
+  assert.match(content, /status_id: "123"/);
+  assert.match(content, /type: "tweet"/);
+  assert.match(content, /content_state: "restricted"/);
+  assert.match(content, /x2md_version: "3.0.0"/);
+});
+
+test("Front Matter custom 模板只替换白名单变量", () => {
+  const cfg = normalizeConfig({
+    ...baseCfg,
+    front_matter_template: "custom",
+    custom_front_matter_template: "title: \"{{title}}\"\nstatus_id: \"{{status_id}}\"\nsecret: \"{{not_allowed}}\"",
+  });
+  const [, content] = buildMarkdown({
+    type: "tweet",
+    text: "正文",
+    url: "https://x.com/alice/status/123",
+  }, cfg);
+
+  assert.match(content, /title: "正文"/);
+  assert.match(content, /status_id: "123"/);
+  assert.match(content, /secret: ""/);
+  assert.doesNotMatch(content.split("---")[1], /作者主页/);
+});

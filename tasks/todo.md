@@ -173,9 +173,9 @@
 
 ## Task 18: Front Matter 模板
 **Acceptance criteria:**
-- [ ] 内置 default/minimal/dataview-full。
-- [ ] 自定义模板只允许白名单变量。
-- [ ] 默认模板兼容 2.x 字段超集。
+- [x] 内置 default/minimal/dataview-full。
+- [x] 自定义模板只允许白名单变量。
+- [x] 默认模板兼容 2.x 字段超集。
 **Verification:** `npm run test:js -- app/tests/core.test.ts`
 
 ## Task 19: 图片本地化
