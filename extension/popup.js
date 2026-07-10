@@ -22,6 +22,14 @@ function renderItem(primary, secondary = "", className = "") {
     return `<div class="item ${className}"><div class="item-path">${escapeHtml(primary)}</div>${secondary ? `<div class="item-meta">${escapeHtml(secondary)}</div>` : ""}</div>`;
 }
 
+function renderHistoryItem(item) {
+    const id = escapeHtml(item.id);
+    const title = String(item.title || "未命名").slice(0, 80);
+    const time = item.saved_at ? new Date(item.saved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    const actions = id ? `<div class="item-actions"><button data-history-id="${id}" data-history-action="show_file">显示</button><button data-history-id="${id}" data-history-action="open_obsidian">Obsidian</button><button data-history-id="${id}" data-history-action="open_source">原文</button><button data-history-id="${id}" data-history-action="copy_path">复制路径</button></div>` : "";
+    return `<div class="item"><div class="item-path">${escapeHtml(title)}</div><div class="item-meta">${escapeHtml(time || item.platform || "")}</div>${actions}</div>`;
+}
+
 chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
     const dot = document.getElementById("dot");
     const txt = document.getElementById("status-text");
@@ -59,10 +67,14 @@ chrome.runtime.sendMessage({ action: "get_history" }, (resp) => {
         list.innerHTML = renderItem("暂无保存记录", "保存网页后会显示在这里");
         return;
     }
-    const recent = history[0];
-    const title = String(recent.title || "未命名").slice(0, 80);
-    const time = recent.saved_at ? new Date(recent.saved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-    list.innerHTML = renderItem(title, time || String(recent.platform || ""));
+    list.innerHTML = history.slice(0, 3).map(renderHistoryItem).join("");
+    if (typeof list.addEventListener === "function") list.addEventListener("click", (event) => {
+        const button = event.target?.closest?.("[data-history-id][data-history-action]");
+        if (!button) return;
+        chrome.runtime.sendMessage({ action: "history_action", id: button.dataset.historyId, command: button.dataset.historyAction }, async (response) => {
+            if (button.dataset.historyAction === "copy_path" && response?.path && globalThis.navigator?.clipboard) await navigator.clipboard.writeText(response.path);
+        });
+    });
 });
 
-if (typeof module !== "undefined" && module.exports) module.exports = { compareSemver, needsExtensionUpgrade, escapeHtml, renderItem };
+if (typeof module !== "undefined" && module.exports) module.exports = { compareSemver, needsExtensionUpgrade, escapeHtml, renderItem, renderHistoryItem };

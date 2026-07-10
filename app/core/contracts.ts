@@ -65,6 +65,7 @@ export type SaveResultV1 = {
   capture_key?: string;
   files: Array<{
     path: string;
+    history_id?: string;
     relative_path?: string;
     action_urls?: { obsidian?: string };
   }>;

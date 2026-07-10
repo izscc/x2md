@@ -139,17 +139,14 @@
         async function runResultAction(command) {
             const file = resultFile();
             if (command === "retry") return retry();
-            if (!file?.path) return false;
+            if (!file?.history_id) return false;
             if (command === "copy_path") {
-                await copyText(file.path);
+                const response = await sendAction({ action: "capture_result_action", command, id: file.history_id });
+                if (response?.path) await copyText(response.path);
                 return true;
             }
-            if (command === "show_file") {
-                await sendAction({ action: "capture_result_action", command, path: file.path });
-                return true;
-            }
-            if (command === "open_obsidian" && file.action_urls?.obsidian) {
-                await sendAction({ action: "capture_result_action", command, url: file.action_urls.obsidian });
+            if (["show_file", "open_obsidian", "open_source"].includes(command)) {
+                await sendAction({ action: "capture_result_action", command, id: file.history_id });
                 return true;
             }
             return false;
@@ -162,10 +159,10 @@
             else clearRetry();
             const actions = [];
             const file = resultFile();
-            if (file?.path && view.state !== "failed") {
+            if (file?.history_id && view.state !== "failed") {
                 actions.push({ label: "复制路径", run: () => runResultAction("copy_path") });
                 actions.push({ label: "显示文件", run: () => runResultAction("show_file") });
-                if (file.action_urls?.obsidian) actions.push({ label: "在 Obsidian 打开", run: () => runResultAction("open_obsidian") });
+                actions.push({ label: "在 Obsidian 打开", run: () => runResultAction("open_obsidian") });
             }
             if (view.retryable && retryState) actions.push({ label: "重试", run: () => runResultAction("retry") });
             showToast(`${view.title}${view.detail ? `\n${view.detail.slice(0, 100)}` : ""}`, view.state, actions.length ? 8000 : 5000, actions);

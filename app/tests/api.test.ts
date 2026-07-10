@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -591,8 +591,52 @@ test("GET /history 返回最近保存记录", async () => {
   assert.equal(res.status, 200);
   assert.equal(body.success, true);
   assert.equal(body.history.length, 1);
-  assert.match(body.history[0].title, /history title/);
+  assert.equal(body.history[0].title, "未命名内容");
   assert.match(body.history[0].path, /history title/);
+  assert.ok(body.history[0].id);
+  assert.equal(body.history[0].text, undefined);
+  assert.doesNotMatch(JSON.stringify(body.history[0]), /history title(?!\.md)/);
+});
+
+test("POST /history/action 只能按服务端历史 ID 执行安全动作", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ save_paths: [mdDir] }),
+  }), { appDir, testBypassAuth: true });
+  await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "tweet", text: "safe action", url: "https://x.com/a/status/31" }),
+  }), { appDir, testBypassAuth: true });
+  const history = await json(await handleApiRequest(new Request("http://127.0.0.1:9527/history"), { appDir, testBypassAuth: true }));
+  const item = history.history[0];
+
+  const copy = await json(await handleApiRequest(new Request("http://127.0.0.1:9527/history/action", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id, action: "copy_path" }),
+  }), { appDir, testBypassAuth: true, openDryRun: true }));
+  assert.equal(copy.path, item.path);
+  assert.equal(copy.action, "copy_path");
+
+  for (const body of [
+    { id: "missing", action: "show_file" },
+    { id: item.id, action: "show_file", path: "/tmp/attacker-selected" },
+  ]) {
+    const response = await handleApiRequest(new Request("http://127.0.0.1:9527/history/action", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }), { appDir, testBypassAuth: true, openDryRun: true });
+    assert.equal(response.status, 400);
+  }
+});
+
+test("POST /history/action 对已删除或移动文件返回明确错误", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ save_paths: [mdDir] }) }), { appDir, testBypassAuth: true });
+  await handleApiRequest(new Request("http://127.0.0.1:9527/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "tweet", text: "deleted", url: "https://x.com/a/status/32" }) }), { appDir, testBypassAuth: true });
+  const item = (await json(await handleApiRequest(new Request("http://127.0.0.1:9527/history"), { appDir, testBypassAuth: true }))).history[0];
+  rmSync(item.path);
+  const response = await handleApiRequest(new Request("http://127.0.0.1:9527/history/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id, action: "show_file" }) }), { appDir, testBypassAuth: true, openDryRun: true });
+  assert.equal(response.status, 400);
+  assert.match((await json(response)).error, /不存在|移动|删除/);
 });
 
 

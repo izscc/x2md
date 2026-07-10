@@ -17,6 +17,7 @@ function fixture(overrides = {}) {
         postProfileCapture: async (payload) => { calls.push(["batch", payload]); return { success: true }; },
         pair: async () => ({ token: "token" }),
         getHistory: async () => ({ success: true, history: [] }),
+        historyAction: async (data) => { calls.push(["history-action", data]); return { success: true, ...data }; },
         updateConfig: async (config) => ({ success: true, config }),
         getAutostart: async () => ({ success: true, enabled: true }),
         setAutostart: async (enabled) => ({ success: true, enabled }),
@@ -41,6 +42,12 @@ test("force save shares save route and applies translation override", async () =
     const { dispatch, calls } = fixture();
     await dispatch({ action: "force_save_tweet", data: { text: "hello" } });
     assert.deepEqual(calls[0], ["save", { text: "hello", translated: true }]);
+});
+
+test("history actions forward only server history id and action", async () => {
+    const { dispatch, calls } = fixture();
+    await dispatch({ action: "capture_result_action", id: "h-1", command: "show_file", path: "/tmp/attacker" });
+    assert.deepEqual(calls, [["history-action", { id: "h-1", action: "show_file" }]]);
 });
 
 test("translation and copy messages are dispatched", async () => {

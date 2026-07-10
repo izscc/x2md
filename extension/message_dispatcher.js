@@ -106,6 +106,8 @@
                 const result = await deps.getHistory();
                 return { success: result.success !== false, history: result.history || [] };
             },
+            history_action: async (message) => deps.historyAction({ id: message.id, action: message.command }),
+            capture_result_action: async (message) => deps.historyAction({ id: message.id, action: message.command }),
             update_config: async (message) => deps.updateConfig(message.config),
             get_autostart: async () => deps.getAutostart(),
             set_autostart: async (message) => {

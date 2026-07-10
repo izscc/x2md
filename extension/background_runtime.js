@@ -521,6 +521,11 @@
             postProfileCapture: postProfileCapturePayload,
             pair: (code) => localClient.pair(code),
             getHistory: () => localClient.request(`/history`),
+            historyAction: (data) => localClient.request(`/history/action`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            }),
             updateConfig: (config) => localClient.request(`/config`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

@@ -56,18 +56,19 @@ test("success actions emit only action metadata and never the capture payload", 
     const ui = createCaptureUi({
         document: null,
         window: null,
-        sendAction: (message) => sent.push(message),
+        sendAction: (message) => { sent.push(message); return { path: "/vault/a.md" }; },
         copyText: (text) => copied.push(text),
     });
-    const result = { success: true, outcome: "saved", files: [{ path: "/vault/a.md", action_urls: { obsidian: "obsidian://open?vault=v&file=a" } }] };
+    const result = { success: true, outcome: "saved", files: [{ path: "/vault/a.md", history_id: "history-1" }] };
     ui.showSaveResult(result, { captureDocument: { content: "secret body" } });
     await ui.runResultAction("copy_path");
     await ui.runResultAction("show_file");
     await ui.runResultAction("open_obsidian");
     assert.deepEqual(copied, ["/vault/a.md"]);
     assert.deepEqual(sent, [
-        { action: "capture_result_action", command: "show_file", path: "/vault/a.md" },
-        { action: "capture_result_action", command: "open_obsidian", url: "obsidian://open?vault=v&file=a" },
+        { action: "capture_result_action", command: "copy_path", id: "history-1" },
+        { action: "capture_result_action", command: "show_file", id: "history-1" },
+        { action: "capture_result_action", command: "open_obsidian", id: "history-1" },
     ]);
     assert.equal(JSON.stringify({ sent, copied }).includes("secret body"), false);
 });

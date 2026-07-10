@@ -152,6 +152,42 @@ export function openConfiguredTarget(target: unknown, appDir?: string, dryRun = 
   return key;
 }
 
+export type HistoryFileAction = "show_file" | "open_obsidian" | "open_source";
+
+function spawnOpen(args: string[]): void {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+  spawn(command, args, { detached: true, stdio: "ignore" }).unref();
+}
+
+/** Opens only data previously resolved from server-owned history. Callers must never pass request paths here. */
+export function openHistoryEntry(
+  entry: { path: string; source_url?: string },
+  action: HistoryFileAction,
+  dryRun = false,
+): { target: string } {
+  if (action === "open_source") {
+    const source = new URL(String(entry.source_url || ""));
+    if (!['http:', 'https:'].includes(source.protocol)) throw new Error("历史记录没有可打开的原文链接");
+    if (!dryRun) spawnOpen([source.toString()]);
+    return { target: source.toString() };
+  }
+
+  const file = String(entry.path || "");
+  if (!file || !existsSync(file) || !statSync(file).isFile()) throw new Error("历史文件不存在，可能已删除或移动");
+  if (action === "open_obsidian") {
+    const target = `obsidian://open?path=${encodeURIComponent(file)}`;
+    if (!dryRun) spawnOpen([target]);
+    return { target };
+  }
+  if (action !== "show_file") throw new Error("不支持的历史动作");
+  if (!dryRun) {
+    if (process.platform === "darwin") spawnOpen(["-R", file]);
+    else if (process.platform === "win32") spawnOpen([`/select,${file}`]);
+    else spawnOpen([dirname(file)]);
+  }
+  return { target: file };
+}
+
 function existingFolderForDialog(path: string): string | null {
   if (!path) return null;
   try {

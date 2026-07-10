@@ -24,7 +24,7 @@ async function commitHistory(store: StateStore, journal: Journal): Promise<void>
   if (!journal.history || !journal.outputs.some((item) => item.published)) return;
   await store.update<Array<Record<string, any>>>("history", () => [], (history) => {
     if (history.some((item) => item.transaction_id === journal.id)) return history;
-    return [{ ...journal.history, path: journal.outputs.find((item) => item.published)?.target_path || "", transaction_id: journal.id }, ...history].slice(0, 20);
+    return [{ ...journal.history, id: journal.id, path: journal.outputs.find((item) => item.published)?.target_path || "", transaction_id: journal.id }, ...history].slice(0, 50);
   });
 }
 

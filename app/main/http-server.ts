@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { existsSync, statSync } from "node:fs";
 
 import { loadConfig, saveConfig, publicConfig, VERSION, MIN_EXTENSION_VERSION, LOCAL_API_PORT, getAppDir, configPath, logPath } from "../core/config.ts";
 import { SECRET_CONFIG_KEYS } from "../core/config-schema.ts";
@@ -6,7 +7,7 @@ import { handleProfileCaptureSave, getProfileStateBucket, loadProfileCaptureStat
 import { readSaveHistory, savePayload } from "../core/save.ts";
 import { sanitizeUnicodePayload } from "../core/unicode.ts";
 import { isAutostartEnabled, setAutostartEnabled } from "./autostart.ts";
-import { chooseFolder, openConfiguredTarget, showSettingsWindow } from "./desktop.ts";
+import { chooseFolder, openConfiguredTarget, openHistoryEntry, showSettingsWindow } from "./desktop.ts";
 import { log, readLogTail } from "./logger.ts";
 import { notifySaveSuccess } from "./notify.ts";
 import { consumePairingCode, isValidCredential } from "../core/pairing.ts";
@@ -199,6 +200,21 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       const selectedPath = await chooseFolder({ currentPath: data.currentPath, appDir, dryRun: opts.dialogDryRun ?? opts.openDryRun });
       return reply({ success: true, path: selectedPath, selected: Boolean(selectedPath) });
     }
+    if (path === "/history/action") {
+      const keys = Object.keys(data).sort();
+      if (keys.length !== 2 || keys[0] !== "action" || keys[1] !== "id") throw new Error("历史动作只接受 id 和 action");
+      const id = String(data.id || "");
+      const action = String(data.action || "");
+      if (!['copy_path', 'show_file', 'open_obsidian', 'open_source'].includes(action)) throw new Error("不支持的历史动作");
+      const entry = readSaveHistory(appDir).find((item) => item.id === id);
+      if (!entry) throw new Error("历史记录不存在");
+      if (action === "copy_path") {
+        if (!existsSync(entry.path) || !statSync(entry.path).isFile()) throw new Error("历史文件不存在，可能已删除或移动");
+        return reply({ success: true, id, action, path: entry.path });
+      }
+      const opened = openHistoryEntry(entry, action as "show_file" | "open_obsidian" | "open_source", opts.openDryRun);
+      return reply({ success: true, id, action, ...opened });
+    }
     if (path === "/settings") {
       await showSettingsWindow(appDir, opts.port);
       return reply({ success: true });
@@ -208,7 +224,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     const message = error instanceof Error ? error.message : String(error);
     const saveErrorCode = String((error as any)?.code || (/保存路径|路径/.test(message) ? "PATH_DENIED" : "INVALID_CAPTURE")).replace(/[^A-Z0-9_]/g, "").slice(0, 64);
     log(path === "/save" ? `保存请求失败：code=${saveErrorCode}` : `错误 ${path}: ${message}`, appDir);
-    return reply({ success: false, error: message }, path === "/save" || path === "/open" ? 400 : 500);
+    return reply({ success: false, error: message }, path === "/save" || path === "/open" || path === "/history/action" ? 400 : 500);
   }
 
   return reply({ error: "Not Found" }, 404);
