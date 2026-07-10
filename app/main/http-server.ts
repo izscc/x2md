@@ -12,6 +12,7 @@ import { consumePairingCode, isValidCredential } from "../core/pairing.ts";
 import { corsHeaders, isAllowedApiOrigin, preflightResponse } from "./request-policy.ts";
 import { CAPTURE_LIMITS } from "../core/contracts.ts";
 import { CaptureBoundaryError, normalizeCaptureRequest } from "../core/legacy-capture.ts";
+import type { CaptureDocumentV1 } from "../core/contracts.ts";
 
 function json(request: Request, payload: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(sanitizeUnicodePayload(payload)), {
@@ -104,11 +105,13 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     return token ? reply({ success: true, token }) : reply({ success: false, error: "Invalid or expired pairing code" }, 401);
   }
   let captureData: Record<string, any> | undefined;
+  let canonicalCapture: CaptureDocumentV1 | undefined;
   let legacyCapture = true;
   if (request.method === "POST" && path === "/save") {
     try {
       const normalized = normalizeCaptureRequest(await readCaptureJson(request));
       captureData = sanitizeUnicodePayload(normalized.savePayload) as Record<string, any>;
+      canonicalCapture = normalized.capture;
       legacyCapture = normalized.legacy;
     } catch (error) {
       if (error instanceof CaptureBoundaryError) return reply(boundaryPayload(error), error.status);
@@ -180,7 +183,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     }
     if (path === "/save") {
       const config = loadConfig(appDir);
-      const result = await savePayload(data, config, appDir);
+      const result = await savePayload(data, config, appDir, canonicalCapture);
       log(result.success ? `保存成功：${(result.saved || []).join(",")}` : `保存失败：${(result.errors || []).join(";")}`, appDir);
       if (result.success) void notifySaveSuccess(config, result);
       return reply(result, result.success ? 200 : 500);

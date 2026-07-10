@@ -3,10 +3,12 @@ import { rm } from "node:fs/promises";
 
 import { StateStore } from "./state-store.ts";
 import { commitOutput } from "./output-store.ts";
+import type { CaptureDocumentV1 } from "./contracts.ts";
+import { recordSaveRevision } from "./save-index.ts";
 
 export type JournalStage = "prepared" | "media_committed" | "markdown_committed" | "state_committed";
 type OutputRecord = { save_path: string; target_path?: string; temp_path?: string; strategy?: "link" | "copy"; published?: boolean };
-type Journal = { id: string; stage: JournalStage; outputs: OutputRecord[]; history?: Record<string, unknown>; created_at: string; updated_at: string };
+type Journal = { id: string; stage: JournalStage; outputs: OutputRecord[]; history?: Record<string, unknown>; save_index?: { key: string; capture: CaptureDocumentV1 }; created_at: string; updated_at: string };
 type JobsState = Record<string, unknown> & { save_transactions?: Record<string, Journal> };
 
 async function updateJournal(store: StateStore, journal: Journal | null, removeId?: string): Promise<void> {
@@ -26,17 +28,24 @@ async function commitHistory(store: StateStore, journal: Journal): Promise<void>
   });
 }
 
+async function commitState(store: StateStore, journal: Journal): Promise<void> {
+  await commitHistory(store, journal);
+  const files = journal.outputs.filter((item) => item.published && item.target_path).map((item) => item.target_path!);
+  if (journal.save_index && files.length) await recordSaveRevision(store.appDir, journal.save_index.capture, journal.save_index.key, files, journal.id);
+}
+
 export async function runSaveTransaction(options: {
   appDir: string;
   savePaths: string[];
   filename: string;
   content: string;
   history?: Record<string, unknown>;
+  saveIndex?: { key: string; capture: CaptureDocumentV1 };
   interruptAfterStage?: JournalStage;
 }): Promise<{ saved: string[]; errors: string[]; transactionId: string }> {
   const store = new StateStore(options.appDir);
   const now = new Date().toISOString();
-  const journal: Journal = { id: randomUUID(), stage: "prepared", outputs: options.savePaths.map((save_path) => ({ save_path })), history: options.history, created_at: now, updated_at: now };
+  const journal: Journal = { id: randomUUID(), stage: "prepared", outputs: options.savePaths.map((save_path) => ({ save_path })), history: options.history, save_index: options.saveIndex, created_at: now, updated_at: now };
   const persist = async (stage?: JournalStage) => {
     if (stage) journal.stage = stage;
     journal.updated_at = new Date().toISOString();
@@ -65,7 +74,7 @@ export async function runSaveTransaction(options: {
     }
   }
   await persist("markdown_committed");
-  await commitHistory(store, journal);
+  await commitState(store, journal);
   await persist("state_committed");
   await updateJournal(store, null, journal.id);
   return { saved, errors, transactionId: journal.id };
@@ -76,7 +85,7 @@ export async function reconcileSaveTransactions(appDir: string): Promise<void> {
   const jobs = await store.read<JobsState>("jobs", () => ({}));
   for (const journal of Object.values(jobs.save_transactions || {})) {
     if (journal.stage === "markdown_committed") {
-      await commitHistory(store, journal);
+      await commitState(store, journal);
     } else if (journal.stage !== "state_committed") {
       for (const output of journal.outputs) {
         if (output.temp_path) await rm(output.temp_path, { force: true }).catch(() => undefined);

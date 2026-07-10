@@ -34,6 +34,7 @@ export type X2MDConfig = Record<string, unknown> & {
   profile_capture_custom_days: number;
   profile_capture_save_path: string;
   setup_completed: boolean;
+  duplicate_policy: "skip" | "update" | "always_new";
 };
 
 const HOME = homedir();
@@ -74,6 +75,7 @@ export const DEFAULT_CONFIG: X2MDConfig = {
   profile_capture_custom_days: 7,
   profile_capture_save_path: "",
   setup_completed: false,
+  duplicate_policy: "skip",
 };
 
 function boolValue(value: unknown, fallback: boolean): boolean {
@@ -139,6 +141,7 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   cfg.image_embed_style = String(cfg.image_embed_style) === "obsidian" ? "obsidian" : "markdown";
   cfg.show_site_save_icon = boolValue(cfg.show_site_save_icon, DEFAULT_CONFIG.show_site_save_icon);
   cfg.show_x_profile_capture_button = boolValue(cfg.show_x_profile_capture_button, DEFAULT_CONFIG.show_x_profile_capture_button);
+  cfg.duplicate_policy = ["skip", "update", "always_new"].includes(String(cfg.duplicate_policy)) ? cfg.duplicate_policy : "skip";
   return cfg;
 }
 
