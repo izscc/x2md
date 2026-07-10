@@ -190,6 +190,23 @@
         };
     }
 
+    function captureLinuxDoDocument(context = {}) {
+        const doc = context.document || globalScope.document;
+        const locationLike = context.location || globalScope.location;
+        const post = context.post || context.trigger?.closest?.("article[data-post-id]");
+        const topicTitle = context.topicTitle ||
+            doc?.querySelector?.("h1 a")?.innerText?.trim() ||
+            doc?.querySelector?.("h1")?.innerText?.trim() ||
+            String(doc?.title || "").replace(/\s*-\s*LINUX DO.*$/, "").trim();
+        const data = extractLinuxDoPostData(post, { pageUrl: locationLike?.href || "", topicTitle });
+        return globalScope.captureLegacyWebDocument?.(data, {
+            capturedAt: context.capturedAt,
+            capturePath: "linuxdo-dom-post",
+        }) || null;
+    }
+
+    const linuxDoCaptureAdapter = { capture: captureLinuxDoDocument };
+
     const exported = {
         LINUX_DO_LIKE_SELECTOR,
         buildLinuxDoPostTitle,
@@ -197,6 +214,7 @@
         extractLinuxDoMarkdown,
         extractLinuxDoPostData,
         isLinuxDoTopicPage,
+        linuxDoCaptureAdapter,
     };
 
     if (typeof module !== "undefined" && module.exports) {

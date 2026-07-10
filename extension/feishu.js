@@ -293,6 +293,68 @@
         };
     }
 
+    async function scrollAndCollectFeishuBlocks(doc = globalScope.document, options = {}) {
+        const container = doc?.querySelector?.(".bear-web-x-container");
+        if (!container) return null;
+        const wait = options.wait || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+        const seen = new Map();
+        const originalScrollTop = container.scrollTop;
+        const collect = () => {
+            for (const block of doc.querySelectorAll?.("#docx .block[data-block-type]") || []) {
+                const id = block.getAttribute?.("data-block-id");
+                if (id && !seen.has(id)) seen.set(id, block.cloneNode(true));
+            }
+        };
+        const step = Math.max(container.clientHeight * 0.7, 300);
+        const maxPos = container.scrollHeight;
+        collect();
+        for (let pos = 0; pos <= maxPos + step; pos += step) {
+            container.scrollTop = pos;
+            await wait(80);
+            collect();
+        }
+        container.scrollTop = maxPos;
+        await wait(200);
+        collect();
+        for (let pos = maxPos; pos >= 0; pos -= step) {
+            container.scrollTop = pos;
+            await wait(60);
+            collect();
+        }
+        container.scrollTop = originalScrollTop;
+        return [...seen.entries()]
+            .sort(([left], [right]) => {
+                const a = parseInt(left, 10);
+                const b = parseInt(right, 10);
+                return Number.isFinite(a) && Number.isFinite(b) ? a - b : left.localeCompare(right);
+            })
+            .map(([, block]) => block);
+    }
+
+    async function captureFeishuDocument(context = {}) {
+        const doc = context.document || globalScope.document;
+        const pageUrl = context.location?.href || doc?.location?.href || globalScope.location?.href || "";
+        const blocks = await scrollAndCollectFeishuBlocks(doc, context);
+        let data = null;
+        if (blocks?.length) {
+            const articleContent = extractFeishuMarkdownFromBlocks(blocks, { pageUrl });
+            if (articleContent.length >= 50) {
+                data = {
+                    type: "article", url: cleanFeishuUrl(pageUrl), author: extractFeishuAuthor(doc), handle: "", author_url: "",
+                    published: extractFeishuUpdated(doc), article_title: extractFeishuTitle(doc), article_content: articleContent,
+                    images: [], videos: [], platform: "Feishu",
+                };
+            }
+        }
+        data ||= extractFeishuDocumentData(doc, { pageUrl });
+        return globalScope.captureLegacyWebDocument?.(data, {
+            capturedAt: context.capturedAt,
+            capturePath: blocks?.length ? "feishu-scroll-blocks" : "feishu-dom-blocks",
+        }) || null;
+    }
+
+    const feishuCaptureAdapter = { capture: captureFeishuDocument };
+
     const exported = {
         cleanFeishuUrl,
         extractFeishuAuthor,
@@ -303,6 +365,8 @@
         extractFeishuTitle,
         extractFeishuUpdated,
         isFeishuWikiOrDocxPage,
+        scrollAndCollectFeishuBlocks,
+        feishuCaptureAdapter,
     };
 
     if (typeof module !== "undefined" && module.exports) {

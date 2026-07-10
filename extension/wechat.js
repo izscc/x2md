@@ -295,6 +295,18 @@
         };
     }
 
+    function captureWechatDocument(context = {}) {
+        const doc = context.document || globalScope.document;
+        const pageUrl = context.location?.href || doc?.location?.href || globalScope.location?.href || "";
+        const data = extractWechatDocumentData(doc, { pageUrl });
+        return globalScope.captureLegacyWebDocument?.(data, {
+            capturedAt: context.capturedAt,
+            capturePath: "wechat-dom-article",
+        }) || null;
+    }
+
+    const wechatCaptureAdapter = { capture: captureWechatDocument };
+
     const exported = {
         cleanWechatUrl,
         convertWechatNodeToMarkdown,
@@ -302,6 +314,7 @@
         extractWechatMarkdown,
         isWechatArticlePage,
         resolveWechatImageUrl,
+        wechatCaptureAdapter,
     };
 
     if (typeof module !== "undefined" && module.exports) {

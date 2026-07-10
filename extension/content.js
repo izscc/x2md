@@ -26,36 +26,6 @@ function requestRuntimeConfig() {
     });
 }
 
-function captureLinuxDoPostElement(post) {
-    if (!post) {
-        showToast("未找到对应帖子内容", "error", 3500);
-        return;
-    }
-
-    const topicTitle =
-        document.querySelector("h1 a")?.innerText?.trim() ||
-        document.querySelector("h1")?.innerText?.trim() ||
-        document.title.replace(/\s*-\s*LINUX DO.*$/, "").trim();
-
-    const data = extractLinuxDoPostData(post, {
-        pageUrl: location.href,
-        topicTitle,
-    });
-
-    if (!data || !data.article_content.trim()) {
-        showToast("帖子内容提取失败", "error", 4000);
-        return;
-    }
-
-    console.log("[x2md] LINUX DO 帖子：", { url: data.url, author: data.author, title: data.article_title });
-    showToast("正在保存 LINUX DO 帖子…", "loading", null);
-    sendToBackground(data);
-}
-
-function captureLinuxDoPost(btn) {
-    captureLinuxDoPostElement(btn.closest?.("article[data-post-id]"));
-}
-
 function findCurrentLinuxDoPost() {
     const match = location.pathname.match(/^\/t\/[^/]+\/\d+\/(\d+)\/?$/);
     if (match) {
@@ -65,142 +35,36 @@ function findCurrentLinuxDoPost() {
     return document.querySelector("article[data-post-id]");
 }
 
-/**
- * 飞书虚拟渲染应对：滚动收集所有 block 元素。
- * 飞书用 IntersectionObserver 按需渲染，视口外的 block 会被替换为 placeholder。
- * 我们通过滚动 .bear-web-x-container 逐步让每个区域进入视口，
- * 对每个出现的 block 按 data-block-id 去重收集，最终返回完整的 block 数组。
- */
-async function scrollAndCollectFeishuBlocks() {
-    const container = document.querySelector(".bear-web-x-container");
-    if (!container) {
-        console.log("[x2md] 未找到 .bear-web-x-container，跳过滚动收集");
-        return null;
-    }
-
-    const seen = new Map(); // blockId -> DOM element (clone)
-    const originalScrollTop = container.scrollTop;
-
-    function collect() {
-        const blocks = document.querySelectorAll("#docx .block[data-block-type]");
-        for (const block of blocks) {
-            const id = block.getAttribute("data-block-id");
-            if (!id || seen.has(id)) continue;
-            // 克隆节点以保留 DOM 状态（虚拟渲染会回收原节点）
-            seen.set(id, block.cloneNode(true));
-        }
-    }
-
-    const step = Math.max(container.clientHeight * 0.7, 300);
-    const maxPos = container.scrollHeight;
-
-    // 向下滚动收集
-    collect();
-    for (let pos = 0; pos <= maxPos + step; pos += step) {
-        container.scrollTop = pos;
-        await new Promise((r) => setTimeout(r, 80));
-        collect();
-    }
-    container.scrollTop = maxPos;
-    await new Promise((r) => setTimeout(r, 200));
-    collect();
-
-    // 回滚收集（确保首屏区域的 block 也被收集）
-    for (let pos = maxPos; pos >= 0; pos -= step) {
-        container.scrollTop = pos;
-        await new Promise((r) => setTimeout(r, 60));
-        collect();
-    }
-
-    // 恢复原始滚动位置
-    container.scrollTop = originalScrollTop;
-
-    console.log(`[x2md] 飞书滚动收集完成：${seen.size} unique blocks`);
-
-    // 按 blockId 排序返回（blockId 在飞书中通常是递增的）
-    const sorted = Array.from(seen.entries())
-        .sort((a, b) => {
-            const na = parseInt(a[0], 10);
-            const nb = parseInt(b[0], 10);
-            if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
-            return a[0].localeCompare(b[0]);
-        })
-        .map((entry) => entry[1]);
-
-    return sorted;
-}
-
-function captureFeishuDocument() {
-    showToast("正在滚动页面加载全部内容…", "loading", null);
-
-    scrollAndCollectFeishuBlocks().then((collectedBlocks) => {
-        const pageUrl = location.href;
-        const options = { pageUrl };
-
-        let articleContent;
-        if (collectedBlocks && collectedBlocks.length > 0) {
-            articleContent = extractFeishuMarkdownFromBlocks(collectedBlocks, options);
-        }
-
-        // 如果滚动收集失败或结果不佳，回退到直接提取
-        if (!articleContent || articleContent.length < 50) {
-            const data = extractFeishuDocumentData(document, options);
-            if (!data || !data.article_content.trim()) {
-                showToast("飞书文档提取失败", "error", 4000);
-                return;
-            }
-            console.log("[x2md] Feishu 文档（直接提取）：", { url: data.url, title: data.article_title });
-            showToast("正在保存飞书文档…", "loading", null);
-            sendToBackground(data);
+async function captureWebSite(siteKey, options = {}) {
+    const labels = {
+        linux_do: { loading: "正在保存 LINUX DO 帖子…", failed: "帖子内容提取失败" },
+        feishu: { loading: "正在滚动页面加载全部内容…", failed: "飞书文档提取失败" },
+        wechat: { loading: "正在保存微信公众号文章…", failed: "微信公众号文章提取失败" },
+    };
+    const label = labels[siteKey];
+    if (!label) return;
+    showToast(label.loading, "loading", null);
+    try {
+        const captureDocument = await webCaptureAdapter.capture(siteKey, {
+            document,
+            location,
+            post: options.post,
+            trigger: options.trigger,
+        });
+        if (!captureDocument) {
+            showToast(label.failed, "error", 4000);
             return;
         }
-
-        const title = extractFeishuTitle(document);
-        const author = extractFeishuAuthor(document);
-        const data = {
-            type: "article",
-            url: cleanFeishuUrl(pageUrl),
-            author,
-            handle: "",
-            author_url: "",
-            published: extractFeishuUpdated(document),
-            article_title: title,
-            article_content: articleContent,
-            images: [],
-            videos: [],
-            platform: "Feishu",
-        };
-
-        console.log("[x2md] Feishu 文档（滚动收集 " + collectedBlocks.length + " blocks）：", { url: data.url, title });
-        showToast("正在保存飞书文档…", "loading", null);
-        sendToBackground(data);
-    });
-}
-
-function captureWechatArticle() {
-    const data = extractWechatDocumentData(document, { pageUrl: location.href });
-    if (!data || !data.article_content.trim()) {
-        showToast("微信公众号文章提取失败", "error", 4000);
-        return;
+        sendToBackground(webCaptureAdapter.normalize(captureDocument));
+    } catch (error) {
+        console.error(`[x2md] ${siteKey} capture failed`, error);
+        showToast(label.failed, "error", 4000);
     }
-
-    console.log("[x2md] WeChat 文章：", { url: data.url, author: data.author, title: data.article_title });
-    showToast("正在保存微信公众号文章…", "loading", null);
-    sendToBackground(data);
 }
 
 function handleFloatingSave(siteKey) {
-    if (siteKey === "linux_do") {
-        captureLinuxDoPostElement(findCurrentLinuxDoPost());
-        return;
-    }
-    if (siteKey === "feishu") {
-        captureFeishuDocument();
-        return;
-    }
-    if (siteKey === "wechat") {
-        captureWechatArticle();
-    }
+    const post = siteKey === "linux_do" ? findCurrentLinuxDoPost() : undefined;
+    void captureWebSite(siteKey, { post });
 }
 
 // ─────────────────────────────────────────────
@@ -598,7 +462,7 @@ document.addEventListener("click", (event) => {
     if (!isLinuxDoTopicPage()) return;
     const btn = event.target?.closest?.(LINUX_DO_LIKE_SELECTOR);
     if (!btn) return;
-    setTimeout(() => captureLinuxDoPost(btn), 250);
+    setTimeout(() => void captureWebSite("linux_do", { post: btn.closest?.("article[data-post-id]"), trigger: btn }), 250);
 }, true);
 
 const observer = new MutationObserver(scheduleBindAll);
