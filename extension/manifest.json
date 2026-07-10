@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "X2MD - 网页内容转Markdown",
-    "version": "3.1.0",
+    "version": "4.0.0",
     "description": "连接 X2MD 桌面 App，一键保存 X、LINUX DO、飞书和微信公众号内容为 Markdown",
     "permissions": [
         "storage",
@@ -85,5 +85,5 @@
         "128": "icons/icon128.png"
     },
     "options_page": "options.html",
-    "version_name": "3.1.0"
+    "version_name": "4.0.0"
 }
