@@ -2558,7 +2558,10 @@ const BOOKMARK_SELECTORS = [
     '[aria-label="Bookmark"]',
     '[aria-label="书签"]',
     '[aria-label="Add Bookmark"]',
+    '[aria-label="添加书签"]',
     '[aria-label="Remove Bookmark"]',
+    '[aria-label="移除书签"]',
+    '[aria-label="取消书签"]',
 ].join(", ");
 
 const X_CUSTOM_SAVE_MENU_ID = "__x2md_x_custom_save_menu";
@@ -2716,12 +2719,7 @@ function showCustomSaveMenu(btn) {
 }
 
 function isBookmarkButtonAlreadySaved(btn) {
-    const testId = btn?.getAttribute?.("data-testid") || "";
-    const aria = btn?.getAttribute?.("aria-label") || "";
-    return testId === "removeBookmark" ||
-        /remove bookmark/i.test(aria) ||
-        aria.includes("移除书签") ||
-        aria.includes("取消书签");
+    return getBookmarkButtonAction(btn) === "remove";
 }
 
 function attachBookmarkListener(btn) {
@@ -2729,13 +2727,13 @@ function attachBookmarkListener(btn) {
     btn.__x2md_bound = true;
     btn.addEventListener("mouseenter", () => showCustomSaveMenu(btn), true);
     btn.addEventListener("mouseleave", scheduleHideCustomSaveMenu, true);
-    btn.addEventListener("click", () => {
-        if (btn.__x2md_skip_next_default_bookmark_save) {
+    bindBookmarkSaveListener(btn, () => captureAndSend(btn), {
+        shouldSkip: () => {
+            if (!btn.__x2md_skip_next_default_bookmark_save) return false;
             btn.__x2md_skip_next_default_bookmark_save = false;
-            return;
-        }
-        setTimeout(() => captureAndSend(btn), 400);
-    }, true);
+            return true;
+        },
+    });
 }
 
 // ─────────────────────────────────────────────
