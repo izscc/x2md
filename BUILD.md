@@ -65,6 +65,11 @@ npm run acceptance:mac:auto
 pairing、`/ping`、真实 `/save`、first-run、端口冲突、自启、扩展加载、窗口与菜单检查。
 窗口/菜单所需的 Accessibility 能力缺失会令 release job 失败，不再以 skipped 通过。
 
+Tag release 使用受保护的 GitHub Environment `mac-release` 注入 Developer ID 与 Apple
+notary credentials。`scripts/sign-and-notarize-mac.sh` 按顺序执行 hardened-runtime codesign、
+`codesign --verify --deep --strict`、`notarytool submit --wait`、staple/validate 和 Gatekeeper
+assessment。stable 缺少任一凭据会立即失败；无凭据只允许 beta/本地 unsigned 构建。
+
 该命令会先做 TypeScript 类型检查，然后跑：
 
 - TypeScript 新核心、API 与 golden fixture 测试：`app/tests/*.test.ts`

@@ -43,6 +43,12 @@ try {
   for (const file of ["manifest.json", "background.js", "job_client.js"]) {
     if (!existsSync(join(dir, "X2MD.app", "Contents", "Resources", "extension", file))) throw new Error(`X2MD_Mac.zip missing extension ${file}`);
   }
+  if (process.env.X2MD_REQUIRE_SIGNED === "1") {
+    const extractedApp = join(dir, "X2MD.app");
+    execFileSync("codesign", ["--verify", "--deep", "--strict", "--verbose=2", extractedApp], { stdio: "inherit" });
+    execFileSync("xcrun", ["stapler", "validate", extractedApp], { stdio: "inherit" });
+    execFileSync("spctl", ["--assess", "--type", "execute", "--verbose=2", extractedApp], { stdio: "inherit" });
+  }
   if (macOnlyZip) {
     console.log(`mac release artifact ok: zip=${zipMb.toFixed(1)}MB app=${appMb.toFixed(1)}MB version=${pkg.version}`);
     process.exit(0);

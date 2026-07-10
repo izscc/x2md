@@ -32,6 +32,7 @@ jobs:
   build-mac:
     needs: release-gate
     runs-on: macos-latest
+    environment: mac-release
     name: 打包 Mac Electrobun 版
     steps:
       - name: 检出代码
@@ -46,6 +47,19 @@ jobs:
       - name: Electrobun 打包
         run: bun run build:mac
 
+      - name: Developer ID 签名、公证与 Staple
+        env:
+          MAC_CERTIFICATE_P12_BASE64: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          MAC_SIGN_IDENTITY: ${{ secrets.MAC_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export X2MD_RELEASE_CHANNEL=stable; else export X2MD_RELEASE_CHANNEL=beta; fi
+          bash scripts/sign-and-notarize-mac.sh build/stable-macos-arm64/X2MD.app
+
       - name: 压缩 Mac .app
         run: |
           APP_PATH="build/stable-macos-arm64/X2MD.app"
@@ -54,6 +68,8 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" X2MD_Mac.zip
 
       - name: 解压并校验最终 Mac 压缩包
+        env:
+          X2MD_REQUIRE_SIGNED: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
         run: |
           rm -rf release-smoke
           mkdir release-smoke
