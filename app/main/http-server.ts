@@ -88,7 +88,7 @@ export function listenErrorMessage(error: any, port: number): string {
   return `端口 ${port} 启动失败：${message}`;
 }
 
-export async function handleApiRequest(request: Request, opts: { appDir?: string; autostartDryRun?: boolean; openDryRun?: boolean; dialogDryRun?: boolean; port?: number; testBypassAuth?: boolean } = {}): Promise<Response> {
+export async function handleApiRequest(request: Request, opts: { appDir?: string; autostartDryRun?: boolean; openDryRun?: boolean; dialogDryRun?: boolean; port?: number; testBypassAuth?: boolean; shutdown?: () => void | Promise<void> } = {}): Promise<Response> {
   const appDir = opts.appDir || getAppDir();
   const url = new URL(request.url);
   const path = url.pathname;
@@ -277,6 +277,11 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       await showSettingsWindow(appDir, opts.port);
       return reply({ success: true });
     }
+    if (path === "/shutdown") {
+      if (!opts.shutdown) return reply({ success: false, error: "Shutdown is unavailable in this runtime" }, 409);
+      setTimeout(() => void opts.shutdown?.(), 20);
+      return reply({ success: true });
+    }
     if (path === "/open") return reply({ success: true, target: openConfiguredTarget(data.target, appDir, opts.openDryRun) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -330,7 +335,7 @@ async function writeNodeResponse(res: any, response: Response): Promise<void> {
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
-export async function startHttpServer(opts: { appDir?: string; testPort?: number; hostname?: string } = {}): Promise<{ port: number; stop: () => Promise<void> | void }> {
+export async function startHttpServer(opts: { appDir?: string; testPort?: number; hostname?: string; shutdown?: () => void | Promise<void> } = {}): Promise<{ port: number; stop: () => Promise<void> | void }> {
   const appDir = opts.appDir || getAppDir();
   const cfg = loadConfig(appDir);
   const openDryRun = process.env.X2MD_OPEN_DRY_RUN === "1";
@@ -346,7 +351,7 @@ export async function startHttpServer(opts: { appDir?: string; testPort?: number
       const server = (globalThis as any).Bun.serve({
         hostname,
         port,
-        fetch: (request: Request) => handleApiRequest(request, { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth }),
+        fetch: (request: Request) => handleApiRequest(request, { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth, shutdown: opts.shutdown }),
       });
       actualPort = server.port;
       log(`x2md 服务已启动：http://${hostname}:${server.port}`, appDir);
@@ -360,7 +365,7 @@ export async function startHttpServer(opts: { appDir?: string; testPort?: number
   let actualPort = port;
   const server: Server = createServer(async (req, res) => {
     try {
-      await writeNodeResponse(res, await handleApiRequest(await requestFromIncoming(req), { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth }));
+      await writeNodeResponse(res, await handleApiRequest(await requestFromIncoming(req), { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth, shutdown: opts.shutdown }));
     } catch (error) {
       if (!(error instanceof CaptureBoundaryError)) throw error;
       const headers = new Headers();

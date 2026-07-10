@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { resolveSavePathsForRequest, normalizeConfig, cliArg, saveConfig, logPath } from "../core/config.ts";
-import { buildLaunchAgentPlist, LABEL, LEGACY_LABEL, plistPath, programArgumentsForExecutable, setAutostartEnabled } from "../main/autostart.ts";
+import { autostartSupport, buildLaunchAgentPlist, LABEL, LEGACY_LABEL, plistPath, programArgumentsForExecutable, setAutostartEnabled } from "../main/autostart.ts";
 import { bundledExtensionDirForExecutable, inlineSettingsHtml, settingsUrl, settingsViewsRootForExecutable, settingsWindowOptions } from "../main/desktop.ts";
 import { handleTrayAction, trayMenuItems } from "../main/tray.ts";
 import { buildMarkdown, CUSTOM_FRONT_MATTER_VARIABLES, renderCustomFrontMatter } from "../core/markdown.ts";
@@ -18,6 +18,11 @@ import { planVideoMedia } from "../core/media-plan.ts";
 import { SafeDownloadError } from "../core/safe-download.ts";
 
 const baseCfg = normalizeConfig({ filename_format: "{summary}_{date}_{author}", max_filename_length: 60, video_save_path: "/tmp/x2md-videos" });
+
+test("Windows beta 明确不宣称原生 autostart", () => {
+  assert.deepEqual(autostartSupport("darwin"), { supported: true });
+  assert.match(autostartSupport("win32").reason || "", /Windows beta/);
+});
 
 test("设置页开放去重与图片策略，并只保留全局视频权威配置", () => {
   const root = join(import.meta.dirname, "..", "ui", "settings");

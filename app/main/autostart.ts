@@ -6,6 +6,10 @@ import { spawnSync } from "node:child_process";
 export const LABEL = "com.x2md.app";
 export const LEGACY_LABEL = "com.x2md.server";
 
+export function autostartSupport(target: NodeJS.Platform = platform()): { supported: boolean; reason?: string } {
+  return target === "darwin" ? { supported: true } : { supported: false, reason: target === "win32" ? "Windows beta does not install startup integration" : "Desktop startup integration is macOS-only" };
+}
+
 function launchAgentsDir(home = homedir()): string {
   return join(home, "Library", "LaunchAgents");
 }
@@ -83,14 +87,14 @@ function removeLaunchAgent(label: string, home: string, dryRun: boolean): void {
 }
 
 export function isAutostartEnabled(opts: { home?: string; platform?: NodeJS.Platform } = {}): boolean {
-  if ((opts.platform || platform()) !== "darwin") return false;
+  if (!autostartSupport(opts.platform || platform()).supported) return false;
   return existsSync(plistPath(LABEL, opts.home));
 }
 
 export function setAutostartEnabled(enabled: boolean, opts: { home?: string; dryRun?: boolean; platform?: NodeJS.Platform; args?: string[]; cwd?: string } = {}): boolean {
   const dryRun = Boolean(opts.dryRun || process.env.X2MD_AUTOSTART_DRY_RUN === "1");
   if (dryRun) return enabled;
-  if ((opts.platform || platform()) !== "darwin") return false;
+  if (!autostartSupport(opts.platform || platform()).supported) return false;
   const home = opts.home || homedir();
   const path = plistPath(LABEL, home);
 

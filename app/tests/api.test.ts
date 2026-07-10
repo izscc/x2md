@@ -24,6 +24,17 @@ test("GET /ping 返回版本", async () => {
   assert.equal(body.version, VERSION);
 });
 
+test("认证 shutdown 仅在提供 runtime callback 时可用", async () => {
+  const appDir = mkdtempSync(join(tmpdir(), "x2md-shutdown-"));
+  let called = false;
+  const response = await handleApiRequest(new Request("http://127.0.0.1:9527/shutdown", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  }), { appDir, testBypassAuth: true, shutdown: () => { called = true; } });
+  assert.equal(response.status, 200);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(called, true);
+});
+
 test("敏感路由要求配对，pairing code 单次签发扩展 token", async () => {
   const appDir = tempApp();
   const denied = await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir });
