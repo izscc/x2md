@@ -91,6 +91,12 @@ p {
   -webkit-backdrop-filter: blur(22px) saturate(180%);
 }
 
+.job-summary { color: var(--muted); margin-bottom: 12px; }
+.job-list { display: grid; gap: 10px; }
+.job-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.job-row > div:first-child { display: grid; gap: 3px; }
+.job-row small { color: var(--muted); }
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .surface,
   .card {

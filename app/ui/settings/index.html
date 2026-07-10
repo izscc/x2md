@@ -40,6 +40,10 @@
           <strong>整理规则</strong>
           <span>标签和 Front Matter</span>
         </button>
+        <button id="tab-jobs" class="nav-item" data-panel-button="jobs" role="tab" aria-selected="false" aria-controls="panel-jobs" type="button">
+          <strong>任务中心</strong>
+          <span>批量抓取与恢复</span>
+        </button>
         <button id="tab-system" class="nav-item" data-panel-button="system" role="tab" aria-selected="false" aria-controls="panel-system" type="button">
           <strong>启动与工具</strong>
           <span>开机启动、日志</span>
@@ -391,6 +395,19 @@
                   <pre id="customFrontMatterPreview" class="fm-preview" aria-live="polite">输入模板后在这里预览。</pre>
                 </div>
               </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="panel-jobs" class="panel" data-panel-section="jobs" role="tabpanel" aria-labelledby="tab-jobs" hidden>
+          <div class="panel-grid">
+            <article class="card span-12 priority-card">
+              <div class="card-head">
+                <div><h3>持久任务</h3><p>页面关闭或扩展休眠后，任务仍由本机服务保存并继续。</p></div>
+                <button id="refreshJobs" class="soft" type="button">刷新</button>
+              </div>
+              <div id="jobSummary" class="job-summary" aria-live="polite"></div>
+              <div id="jobList" class="job-list" aria-live="polite"><p class="field-hint">正在读取任务…</p></div>
             </article>
           </div>
         </section>

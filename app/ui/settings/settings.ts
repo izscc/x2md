@@ -10,7 +10,7 @@ const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 const field = (id: string) => $(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const pairingCode = String((globalThis as typeof globalThis & { X2MD_PAIRING_CODE?: string }).X2MD_PAIRING_CODE || "");
 
-type PanelKey = "save" | "media" | "capture" | "organize" | "system";
+type PanelKey = "save" | "media" | "capture" | "organize" | "jobs" | "system";
 
 type PanelMeta = {
   label: string;
@@ -67,6 +67,11 @@ const PANEL_META: Record<PanelKey, PanelMeta> = {
     label: "整理规则",
     title: "标签和 Front Matter",
     description: "统一内容标签和文档元数据。规则只影响之后保存的内容。",
+  },
+  jobs: {
+    label: "任务中心",
+    title: "批量任务与恢复",
+    description: "查看书签、博主推文和文章任务；可以暂停、继续、取消或只重试失败项。",
   },
   system: {
     label: "启动与工具",
@@ -597,6 +602,65 @@ async function openTarget(target: string): Promise<void> {
   setStatus(response.ok ? "已打开" : "打开失败");
 }
 
+type JobView = {
+  id: string; type: string; status: string; pause_reason?: string; created_at: string;
+  counts: Record<string, number>; items?: Array<{ id: string; status: string; error?: { code: string; message: string } }>;
+};
+
+const jobLabels: Record<string, string> = { bookmarks: "书签", "profile-posts": "博主推文", "profile-articles": "博主文章" };
+
+async function jobControl(id: string, action: string): Promise<void> {
+  const response = await apiFetch(`${api}/jobs/${encodeURIComponent(id)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error?.message || "任务操作失败");
+  await loadJobs();
+}
+
+async function copyJobFailures(job: JobView): Promise<void> {
+  const detail = await apiFetch(`${api}/jobs/${encodeURIComponent(job.id)}`).then((response) => response.json());
+  const lines = (detail.job?.items || []).filter((item: any) => item.error).map((item: any) => `${item.id}\t${item.error.code}\t${item.error.message}`);
+  await navigator.clipboard.writeText(lines.join("\n") || "没有失败项");
+  setStatus("失败摘要已复制");
+}
+
+function jobButton(label: string, action: () => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button"; button.className = "soft"; button.textContent = label; button.addEventListener("click", action);
+  return button;
+}
+
+function renderJobs(jobs: JobView[]): void {
+  const list = document.getElementById("jobList");
+  const summary = document.getElementById("jobSummary");
+  if (!list || !summary) return;
+  list.textContent = "";
+  const states = ["queued", "running", "paused", "completed", "failed"];
+  summary.textContent = states.map((status) => `${status} ${jobs.filter((job) => job.status === status).length}`).join(" · ");
+  if (!jobs.length) { const empty = document.createElement("p"); empty.className = "field-hint"; empty.textContent = "还没有批量任务。"; list.append(empty); return; }
+  for (const job of jobs) {
+    const row = document.createElement("article"); row.className = "job-row";
+    const copy = document.createElement("div");
+    const title = document.createElement("strong"); title.textContent = `${jobLabels[job.type] || job.type} · ${job.status}`;
+    const counts = document.createElement("small");
+    counts.textContent = `总计 ${job.counts.total || 0}，保存 ${(job.counts.saved || 0) + (job.counts.updated || 0)}，跳过 ${job.counts.skipped || 0}，失败 ${job.counts.failed || 0}${job.pause_reason ? ` · ${job.pause_reason}` : ""}`;
+    copy.append(title, counts);
+    const actions = document.createElement("div"); actions.className = "inline-actions";
+    if (["queued", "running"].includes(job.status)) actions.append(jobButton("暂停", () => void jobControl(job.id, "pause").catch((error) => setStatus(error.message))));
+    if (job.status === "paused") actions.append(jobButton("继续", () => void jobControl(job.id, "resume").catch((error) => setStatus(error.message))));
+    if (["queued", "running", "paused", "failed"].includes(job.status)) actions.append(jobButton("取消", () => void jobControl(job.id, "cancel").catch((error) => setStatus(error.message))));
+    if (job.status === "failed" && job.counts.failed) actions.append(jobButton("重试失败", () => void jobControl(job.id, "retry").catch((error) => setStatus(error.message))));
+    if (job.counts.failed) actions.append(jobButton("复制失败摘要", () => void copyJobFailures(job).catch((error) => setStatus(error.message))));
+    if (job.status === "completed") actions.append(jobButton("打开结果目录", () => void openTarget("save")));
+    row.append(copy, actions); list.append(row);
+  }
+}
+
+async function loadJobs(): Promise<void> {
+  const response = await apiFetch(`${api}/jobs`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || "无法读取任务");
+  renderJobs(data.jobs || []);
+}
+
 async function updateAutostart(): Promise<void> {
   const response = await apiFetch(`${api}/autostart`, {
     method: "POST",
@@ -708,6 +772,7 @@ $("showLog").addEventListener("click", () => void showLog());
 document.getElementById("retryConnection")?.addEventListener("click", () => void retryConnection());
 document.getElementById("exportDiagnostics")?.addEventListener("click", () => void exportDiagnostics().catch((error) => setStatus(error.message)));
 document.getElementById("openDiagnostics")?.addEventListener("click", () => void openTarget("diagnostics"));
+document.getElementById("refreshJobs")?.addEventListener("click", () => void loadJobs().catch((error) => setStatus(error.message)));
 $("openExtension").addEventListener("click", () => {
   toggleExtensionHelp();
   void openTarget("extension");
@@ -724,5 +789,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-sample-action]").forEach((bu
   button.addEventListener("click", () => void openSetupSample(button.dataset.sampleAction || "").catch((error) => setStatus(error.message)));
 });
 setInterval(() => { if (currentSetup && !currentSetup.setup_completed) void refreshSetup(); }, 2000);
+setInterval(() => { if (!document.getElementById("panel-jobs")?.hidden) void loadJobs().catch(() => {}); }, 2000);
 showPanel(safeGetPanel());
+void loadJobs().catch(() => {});
 loadConfig().catch((error) => setStatus(`连接失败：${error.message}`));

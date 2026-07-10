@@ -781,6 +781,7 @@ function ensureBookmarksToolbar() {
             <button type="button" aria-label="暂停或继续 X2MD 书签导出" data-x2md-role="bookmarks-pause" disabled>暂停</button>
             <button type="button" aria-label="取消 X2MD 书签导出" data-x2md-role="bookmarks-cancel">取消</button>
             <button type="button" aria-label="重试失败的 X2MD 书签导出" data-x2md-role="bookmarks-retry" disabled>重试失败</button>
+            <button type="button" aria-label="打开 X2MD 桌面任务中心" data-x2md-role="bookmarks-center">任务中心</button>
         `;
         Object.assign(toolbar.style, {
             position: "sticky",
@@ -838,6 +839,7 @@ function ensureBookmarksToolbar() {
             await sendBookmarksJobMessage({ action: "control_capture_job", id: xBookmarksExportState.id, command: "retry" });
             pollBookmarksJob(xBookmarksExportState.id);
         });
+        toolbar.querySelector('[data-x2md-role="bookmarks-center"]').addEventListener("click", () => sendBookmarksJobMessage({ action: "open_options" }));
         (document.querySelector("main") || document.body).prepend(toolbar);
         recoverBookmarksJob();
     }
