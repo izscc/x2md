@@ -17,8 +17,16 @@ artifacts/
 *.pkg
 
 # 日志和运行时文件
+config.json
 x2md.log
 x2md.pid
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 
 # macOS
 .DS_Store
