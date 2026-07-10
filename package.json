@@ -30,6 +30,9 @@
     "sync:extension-version": "node scripts/sync-extension-version.mjs",
     "check:version": "node scripts/sync-extension-version.mjs --check",
     "check:clean-release": "node scripts/check-clean-release.mjs",
+    "check:fixture-privacy": "node scripts/check-fixture-privacy.mjs",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=70 --test-coverage-branches=65 --test-coverage-functions=70 --test app/tests/*.test.ts extension/tests/*.test.js scripts/*.test.mjs tests/*.js && node --experimental-test-coverage --test-coverage-include='app/core/**' --test-coverage-lines=90 --test-coverage-branches=70 --test-coverage-functions=85 --test app/tests/*.test.ts && node --experimental-test-coverage --test-coverage-include='extension/job_client.js' --test-coverage-lines=85 --test extension/tests/bookmarks_job.test.js extension/tests/job-recovery.test.js",
+    "generate:evidence-matrix": "node scripts/generate-evidence-matrix.mjs",
     "package:release": "node scripts/package-release.mjs"
   },
   "dependencies": {

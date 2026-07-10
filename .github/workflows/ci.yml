@@ -25,6 +25,10 @@ jobs:
       - run: npm ci
       - run: npm run check:forbidden-files
       - run: npm run check:version
+      - run: npm run check:fixture-privacy
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:coverage
+      - run: npm run generate:evidence-matrix
+      - run: git diff --exit-code docs/acceptance/v4-evidence-matrix.md
       - run: npm audit --audit-level=high
