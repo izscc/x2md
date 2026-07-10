@@ -89,23 +89,23 @@ All core phases
 
 ## Phase 2 — Capture Modules and Core UX
 
-- [ ] T18 建立扩展 Local Client
-- [ ] T19 修复 bookmark/removeBookmark 语义
-- [ ] T20 提取 Capture UI：toast/modal/action
-- [ ] T21 拆分 X 单条 Capture Adapter
-- [ ] T22 拆分 X enrichment/GraphQL 编排
-- [ ] T23 拆分 X 翻译与复制流程
-- [ ] T24 拆分 X Bookmarks/Profile 采集入口
-- [ ] T25 迁移 LINUX DO/飞书/微信 Adapter
-- [ ] T26 收敛 content/background 入口和消息编排测试
+- [x] T18 建立扩展 Local Client
+- [x] T19 修复 bookmark/removeBookmark 语义
+- [x] T20 提取 Capture UI：toast/modal/action
+- [x] T21 拆分 X 单条 Capture Adapter
+- [x] T22 拆分 X enrichment/GraphQL 编排
+- [x] T23 拆分 X 翻译与复制流程
+- [x] T24 拆分 X Bookmarks/Profile 采集入口
+- [x] T25 迁移 LINUX DO/飞书/微信 Adapter
+- [x] T26 收敛 content/background 入口和消息编排测试
 
 ### Checkpoint 2
 
-- [ ] `content.js` 和 `background.js` 只保留启动/分发职责
-- [ ] 所有本地 HTTP 请求均通过 Local Client
-- [ ] `removeBookmark` 不触发保存
-- [ ] 主流程不存在 `window.confirm`
-- [ ] 现有多站点 golden Markdown 保持兼容
+- [x] `content.js` 和 `background.js` 只保留启动/分发职责
+- [x] 所有本地 HTTP 请求均通过 Local Client
+- [x] `removeBookmark` 不触发保存
+- [x] 主流程不存在 `window.confirm`
+- [x] 现有多站点 golden Markdown 保持兼容
 
 ## Phase 3 — Knowledge Inbox UX
 
