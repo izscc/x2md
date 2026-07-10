@@ -9,17 +9,12 @@ import { chooseFolder, openConfiguredTarget, showSettingsWindow } from "./deskto
 import { log, readLogTail } from "./logger.ts";
 import { notifySaveSuccess } from "./notify.ts";
 import { consumePairingCode, isValidCredential } from "../core/pairing.ts";
+import { corsHeaders, isAllowedApiOrigin, preflightResponse } from "./request-policy.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-function json(payload: Record<string, unknown>, status = 200): Response {
+function json(request: Request, payload: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(sanitizeUnicodePayload(payload)), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders },
+    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders(request) },
   });
 }
 
@@ -28,18 +23,6 @@ async function readJson(request: Request): Promise<Record<string, any>> {
     return sanitizeUnicodePayload(await request.json()) as Record<string, any>;
   } catch {
     throw new Error("Invalid JSON");
-  }
-}
-
-function isTrustedApiOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null" || origin.startsWith("views://")) return true;
-  if (origin.startsWith("chrome-extension://")) return true;
-  try {
-    const host = new URL(origin).hostname;
-    return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
-  } catch {
-    return false;
   }
 }
 
@@ -69,25 +52,26 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
   const appDir = opts.appDir || getAppDir();
   const url = new URL(request.url);
   const path = url.pathname;
+  const reply = (payload: Record<string, unknown>, status = 200) => json(request, payload, status);
 
-  if (request.method === "OPTIONS") return new Response("", { status: 200, headers: corsHeaders });
+  if (request.method === "OPTIONS") return preflightResponse(request);
 
-  if (request.method === "GET" && path === "/ping") return json({ status: "ok", version: VERSION, min_extension_version: MIN_EXTENSION_VERSION });
-  if (!isTrustedApiOrigin(request)) return json({ success: false, error: "Forbidden" }, 403);
+  if (request.method === "GET" && path === "/ping") return reply({ status: "ok", version: VERSION, min_extension_version: MIN_EXTENSION_VERSION });
+  if (!isAllowedApiOrigin(request)) return reply({ success: false, error: "Forbidden" }, 403);
   if (request.method === "POST" && path === "/pair") {
     const data: Record<string, any> = await readJson(request).catch(() => ({}));
     const cfg = loadConfig(appDir);
     const token = consumePairingCode(String(data.code || ""), String(cfg.install_secret || ""));
-    return token ? json({ success: true, token }) : json({ success: false, error: "Invalid or expired pairing code" }, 401);
+    return token ? reply({ success: true, token }) : reply({ success: false, error: "Invalid or expired pairing code" }, 401);
   }
   const authConfig = loadConfig(appDir);
   if (!opts.testBypassAuth && !isValidCredential(requestCredential(request), String(authConfig.install_secret || ""))) {
-    return json({ success: false, error: "Authentication required" }, 401);
+    return reply({ success: false, error: "Authentication required" }, 401);
   }
-  if (request.method === "GET" && path === "/config") return json(publicConfig(authConfig));
+  if (request.method === "GET" && path === "/config") return reply(publicConfig(authConfig));
   if (request.method === "GET" && path === "/status") {
     const cfg = loadConfig(appDir);
-    return json({
+    return reply({
       success: true,
       status: "ok",
       version: VERSION,
@@ -99,26 +83,26 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     });
   }
   if (request.method === "GET" && path === "/log") {
-    return json({ success: true, log: readLogTail(appDir) });
+    return reply({ success: true, log: readLogTail(appDir) });
   }
   if (request.method === "GET" && path === "/history") {
-    return json({ success: true, history: readSaveHistory(appDir) });
+    return reply({ success: true, history: readSaveHistory(appDir) });
   }
-  if (request.method === "GET" && path === "/autostart") return json({ success: true, enabled: isAutostartEnabled() });
+  if (request.method === "GET" && path === "/autostart") return reply({ success: true, enabled: isAutostartEnabled() });
   if (request.method === "GET" && path === "/profile-capture/state") {
     const handle = normalizeProfileHandle(url.searchParams.get("handle") || "");
     const state = loadProfileCaptureState(appDir);
     const bucket = handle ? getProfileStateBucket(state, handle) : {};
-    return json({ success: true, handle, state: bucket });
+    return reply({ success: true, handle, state: bucket });
   }
 
-  if (request.method !== "POST") return json({ error: "Not Found" }, 404);
+  if (request.method !== "POST") return reply({ error: "Not Found" }, 404);
 
   let data: Record<string, any>;
   try {
     data = await readJson(request);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    return reply({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 
   log(`请求 ${path}: type=${data.type || "?"} platform=${data.platform || "?"} url=${String(data.url || "").slice(0, 80)}`, appDir);
@@ -129,48 +113,48 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       const nextConfig = { ...oldConfig, ...data };
       delete nextConfig.port;
       if (Array.isArray(data.save_paths) && !data.save_paths.some((item) => String(item || "").trim())) {
-        return json({ success: false, error: "请至少配置一个保存路径" }, 400);
+        return reply({ success: false, error: "请至少配置一个保存路径" }, 400);
       }
       if (data.setup_completed === undefined && Array.isArray(data.save_paths) && data.save_paths.some((item) => String(item || "").trim())) {
         nextConfig.setup_completed = true;
       }
       const config = saveConfig(nextConfig, appDir);
       log(`配置已更新：keys=${Object.keys(data).join(",")}`, appDir);
-      return json({ success: true, config: publicConfig(config), restart_required: false });
+      return reply({ success: true, config: publicConfig(config), restart_required: false });
     }
     if (path === "/save") {
       const config = loadConfig(appDir);
       const result = await savePayload(data, config, appDir);
       log(result.success ? `保存成功：${(result.saved || []).join(",")}` : `保存失败：${(result.errors || []).join(";")}`, appDir);
       if (result.success) void notifySaveSuccess(config, result);
-      return json(result, result.success ? 200 : 500);
+      return reply(result, result.success ? 200 : 500);
     }
     if (path === "/profile-capture") {
       const result = handleProfileCaptureSave(data, loadConfig(appDir), appDir);
       log(`批量抓取保存：saved=${(result.saved || []).length} skipped=${result.skipped || 0} dir=${result.target_dir || ""}`, appDir);
-      return json(result);
+      return reply(result);
     }
     if (path === "/autostart") {
       const enabled = setAutostartEnabled(requestBoolean(data.enabled), { dryRun: opts.autostartDryRun });
       log(`开机自动运行：${enabled ? "enabled" : "disabled"}`, appDir);
-      return json({ success: true, enabled });
+      return reply({ success: true, enabled });
     }
     if (path === "/choose-folder") {
       const selectedPath = await chooseFolder({ currentPath: data.currentPath, appDir, dryRun: opts.dialogDryRun ?? opts.openDryRun });
-      return json({ success: true, path: selectedPath, selected: Boolean(selectedPath) });
+      return reply({ success: true, path: selectedPath, selected: Boolean(selectedPath) });
     }
     if (path === "/settings") {
       await showSettingsWindow(appDir, opts.port);
-      return json({ success: true });
+      return reply({ success: true });
     }
-    if (path === "/open") return json({ success: true, target: openConfiguredTarget(data.target, appDir, opts.openDryRun) });
+    if (path === "/open") return reply({ success: true, target: openConfiguredTarget(data.target, appDir, opts.openDryRun) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(path === "/save" ? `保存失败：${message}` : `错误 ${path}: ${message}`, appDir);
-    return json({ success: false, error: message }, path === "/save" || path === "/open" ? 400 : 500);
+    return reply({ success: false, error: message }, path === "/save" || path === "/open" ? 400 : 500);
   }
 
-  return json({ error: "Not Found" }, 404);
+  return reply({ error: "Not Found" }, 404);
 }
 
 async function requestFromIncoming(req: any): Promise<Request> {

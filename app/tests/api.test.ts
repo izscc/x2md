@@ -95,7 +95,7 @@ test("普通网页 Origin 只能访问 /ping，不能读写敏感 API", async ()
   assert.equal(evilSave.status, 403);
 
   const extensionConfig = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
-    headers: { Origin: "chrome-extension://abcdefghijklmnop" },
+    headers: { Origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop" },
   }), { appDir, testBypassAuth: true });
   assert.equal(extensionConfig.status, 200);
 });
@@ -515,9 +515,13 @@ test("Bun 常见端口占用错误也返回明确提示", () => {
 });
 
 test("CORS OPTIONS 兼容扩展", async () => {
-  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", { method: "OPTIONS" }), { appDir: tempApp(), testBypassAuth: true });
-  assert.equal(res.status, 200);
-  assert.equal(res.headers.get("Access-Control-Allow-Origin"), "*");
+  const origin = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "OPTIONS",
+    headers: { Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type, authorization" },
+  }), { appDir: tempApp(), testBypassAuth: true });
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), origin);
 });
 
 
