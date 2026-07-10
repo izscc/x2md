@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { normalizeConfig } from "../core/config.ts";
 import { buildMarkdown } from "../core/markdown.ts";
-import { handleProfileCaptureSave } from "../core/profile-capture.ts";
+import { handleProfileCaptureSave, handleProfileJobItemSave } from "../core/profile-capture.ts";
 
 function fixture(name: string): any {
   return JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
@@ -59,4 +59,11 @@ test("golden fixtures: 博主 tweets/articles 批量抓取写入预期文件", a
   const articles = await handleProfileCaptureSave(fixture("profile_articles.json"), profileCfg, appDir);
   assert.equal(articles.saved.length, 1);
   assert.match(readFileSync(articles.saved[0], "utf8"), /Long Note/);
+
+  const checkpointRoot = mkdtempSync(join(tmpdir(), "x2md-fixture-job-save-"));
+  const checkpoint = await handleProfileJobItemSave({
+    mode: "tweets", profile: { handle: "bob", displayName: "Bob" },
+    item: { url: "https://x.com/bob/status/301", published: "2026-05-29T08:00:00Z", text: "checkpoint golden" },
+  }, normalizeConfig({ save_paths: [checkpointRoot], enable_video_download: false }), mkdtempSync(join(tmpdir(), "x2md-fixture-job-state-")));
+  assert.match(readFileSync(checkpoint.saved[0], "utf8"), /checkpoint golden/);
 });

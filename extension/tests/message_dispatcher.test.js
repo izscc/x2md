@@ -15,6 +15,10 @@ function fixture(overrides = {}) {
         translateText: async (text) => `zh:${text}`,
         fetchProfileItems: async () => ({ profile: { handle: "alice" }, items: [{ id: "1" }], source: "graphql" }),
         postProfileCapture: async (payload) => { calls.push(["batch", payload]); return { success: true }; },
+        jobs: {
+            create: async (type, items, metadata) => { calls.push(["job", { type, items, metadata }]); return { success: true, job: { id: "job-1", type } }; },
+            list: async () => ({ success: true, jobs: [] }), detail: async () => ({ success: true }), control: async () => ({ success: true }),
+        },
         pair: async () => ({ token: "token" }),
         getHistory: async () => ({ success: true, history: [] }),
         historyAction: async (data) => { calls.push(["history-action", data]); return { success: true, ...data }; },
@@ -73,15 +77,16 @@ test("configuration messages share the dispatcher", async () => {
     assert.deepEqual(await dispatch({ action: "set_autostart", enabled: false }), { success: true, enabled: false, error: undefined });
 });
 
-test("batch message fetches, enriches and posts profile capture", async () => {
+test("batch message fetches and creates a durable profile job", async () => {
     const { dispatch, calls } = fixture();
     const response = await dispatch({ action: "batch_profile_capture", data: { handle: "alice", mode: "tweets" } });
     assert.equal(response.success, true);
     assert.equal(response.found_count, 1);
-    assert.equal(response.enriched_count, 1);
+    assert.equal(response.enriched_count, 0);
     assert.equal(response.source, "graphql");
-    assert.deepEqual(calls[0][0], "batch");
-    assert.equal(calls[0][1].items[0].enrichedAs, "profile-tweet");
+    assert.deepEqual(calls[0][0], "job");
+    assert.equal(calls[0][1].type, "profile-posts");
+    assert.deepEqual(calls[0][1].items[0].payload.item, { id: "1" });
 });
 
 test("unknown and failed messages return stable errors", async () => {

@@ -40,7 +40,7 @@
             const claim = claimed.claim;
             if (!claim) return false;
             try {
-                const response = await processCapture(claim.payload);
+                const response = await processCapture(claim.payload, job);
                 if (isRateLimited(response) || isRateLimited(claim.payload)) {
                     await control(job.id, "pause", { reason: "RATE_LIMITED" });
                     return false;
@@ -71,7 +71,8 @@
         }
         async function run() {
             const result = await list();
-            const jobs = (result.jobs || []).filter((job) => job.type === "bookmarks" && ["queued", "running"].includes(job.status));
+            const supported = new Set(["bookmarks", "profile-posts", "profile-articles"]);
+            const jobs = (result.jobs || []).filter((job) => supported.has(job.type) && ["queued", "running"].includes(job.status));
             let processed = false;
             for (const job of jobs) {
                 while (await processJob(job)) processed = true;

@@ -551,7 +551,7 @@
 
         jobClient = X2MDJobClient.createJobClient({
             request: (...args) => localClient.request(...args),
-            processCapture: (data) => dispatchMessage({ action: "save_tweet", data }),
+            processCapture: (data, job) => dispatchMessage({ action: job.type === "bookmarks" ? "save_tweet" : "process_profile_job_item", data }),
             alarms: chrome.alarms,
         });
         jobClient.installAlarm();

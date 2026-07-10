@@ -337,3 +337,15 @@ export async function handleProfileCaptureSave(data: Record<string, any>, cfg: X
   saveProfileCaptureState(state, appDir);
   return { success: true, outcome: mediaFailed ? "partial" : "saved", saved: savedFiles, skipped, target_dir: targetDir, warnings, media: { completed: mediaCompleted, failed: mediaFailed, pending: 0 } };
 }
+
+/** Save one durable profile job checkpoint through the same aggregation and legacy-index import path. */
+export async function handleProfileJobItemSave(payload: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): Promise<Record<string, any>> {
+  const mode = payload.mode === "articles" ? "articles" : "tweets";
+  if (!payload.item || typeof payload.item !== "object" || Array.isArray(payload.item)) throw new TypeError("profile job item is required");
+  return handleProfileCaptureSave({
+    ...(payload.options && typeof payload.options === "object" ? payload.options : {}),
+    mode,
+    profile: payload.profile && typeof payload.profile === "object" ? payload.profile : {},
+    items: [payload.item],
+  }, cfg, appDir);
+}

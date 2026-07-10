@@ -57,29 +57,39 @@
             profile = fetched.profile || profile;
             source = fetched.source || "graphql";
         }
-        const items = [];
-        for (const item of rawItems) {
-            const enriched = await deps.enrich(mode === "articles" ? "profile-article" : "profile-tweet", item);
-            if (!enriched) continue;
-            if (config.enable_video_download === false) {
-                enriched.videos = [];
-                if (mode !== "articles") enriched.videoDurations = [];
-            }
-            items.push(enriched);
-        }
-        const result = await deps.postProfileCapture({ ...payload, profile, mode, items });
+        if (!rawItems.length) return { success: true, found_count: 0, enriched_count: 0, result: { saved: [], skipped: 0 } };
+        const jobItems = rawItems.map((item, index) => ({
+            id: String(item.tweet_id || item.url || item.article_url || index).match(/\d+/g)?.pop() || `item-${index + 1}`,
+            payload: { mode, profile, options: { range: payload.range, range_label: payload.range_label, force_full: payload.force_full }, item },
+        }));
+        const result = await deps.jobs.create(mode === "articles" ? "profile-articles" : "profile-posts", jobItems, { profile, mode });
         return {
             success: result.success !== false,
             result,
+            job: result.job,
             found_count: rawItems.length,
-            enriched_count: items.length,
+            enriched_count: 0,
             source,
         };
+    }
+
+    async function processProfileJobItem(message, deps) {
+        const payload = message.data || {};
+        const mode = payload.mode === "articles" ? "articles" : "tweets";
+        const config = await deps.getConfig().catch(() => ({}));
+        const enriched = await deps.enrich(mode === "articles" ? "profile-article" : "profile-tweet", payload.item || {});
+        if (!enriched) throw new Error("Profile item enrichment returned no content");
+        if (config.enable_video_download === false) {
+            enriched.videos = [];
+            if (mode !== "articles") enriched.videoDurations = [];
+        }
+        return deps.postProfileCapture({ ...(payload.options || {}), profile: payload.profile || {}, mode, items: [enriched] });
     }
 
     function createMessageDispatcher(deps) {
         const handlers = {
             batch_profile_capture: (message) => batchCapture(message, deps),
+            process_profile_job_item: (message) => processProfileJobItem(message, deps),
             open_options: async () => { await deps.openOptions(); return { success: true }; },
             save_tweet: (message) => captureAndSave(message, deps),
             force_save_tweet: (message) => deps.save(deps.applyTranslationOverride(message.data || {})),

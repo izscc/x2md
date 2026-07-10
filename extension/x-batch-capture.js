@@ -354,6 +354,10 @@ function handleProfileCaptureResponse(resp, mode) {
     xProfileCaptureProgress = "";
     updateXProfileCaptureButtonState();
     if (resp?.success) {
+        if (resp.job) {
+            showToast(`${mode === "articles" ? "文章" : "推文"}任务已创建：${resp.found_count || 0} 项，可关闭页面后继续`, "success", 6500);
+            return;
+        }
         const result = resp.result || {};
         const savedCount = result.saved?.length || 0;
         const skipped = result.skipped || 0;
