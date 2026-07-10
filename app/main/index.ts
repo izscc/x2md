@@ -3,8 +3,10 @@ import { startHttpServer } from "./http-server.ts";
 import { log } from "./logger.ts";
 import { createTray } from "./tray.ts";
 import { openExtensionDir, openFirstSaveDir, openLog, openVideoDir, showSettingsWindow } from "./desktop.ts";
+import { reconcileSaveTransactions } from "../core/save-transaction.ts";
 
 const appDir = getAppDir();
+await reconcileSaveTransactions(appDir);
 let server;
 try {
   server = await startHttpServer({ appDir });

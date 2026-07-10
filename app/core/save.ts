@@ -1,32 +1,16 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 
 import { resolveSavePathsForRequest, type X2MDConfig } from "./config.ts";
 import { sanitizeFilename } from "./filenames.ts";
 import { buildMarkdown } from "./markdown.ts";
 import { sanitizeUnicodeText } from "./unicode.ts";
-import { readJsonStateSync, StateStore } from "./state-store.ts";
-
-function timestamp(): string {
-  return new Date().toTimeString().slice(0, 8).replace(/:/g, "");
-}
+import { readJsonStateSync } from "./state-store.ts";
+import { runSaveTransaction } from "./save-transaction.ts";
 
 export function readSaveHistory(appDir = ""): Array<Record<string, any>> {
   const raw = readJsonStateSync<unknown>(appDir || ".", "history", () => []);
   return Array.isArray(raw) ? raw.slice(0, 20) : [];
-}
-
-async function appendSaveHistory(data: Record<string, any>, saved: string[], appDir = ""): Promise<void> {
-  if (!appDir || !saved.length) return;
-  const title = String(data.article_title || data.text || data.title || saved[0]).split(/\s+/).join(" ").slice(0, 120);
-  const item = {
-    title,
-    platform: String(data.platform || "Twitter/X"),
-    url: String(data.url || ""),
-    path: saved[0],
-    saved_at: new Date().toISOString(),
-  };
-  await new StateStore(appDir).update<Array<Record<string, any>>>("history", () => [], (history) => [item, ...(Array.isArray(history) ? history : [])].slice(0, 20));
 }
 
 function statusIdFromUrl(url: unknown): string {
@@ -94,21 +78,12 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
     ? `${content}\n\n---\n\n图片本地化失败：\n${imageErrors.map((item) => `- ${item}`).join("\n")}\n`
     : content;
   const safeContent = sanitizeUnicodeText(contentWithImageErrors);
-  const saved: string[] = [];
-  const errors: string[] = [];
-
-  for (const savePath of savePaths) {
-    try {
-      mkdirSync(savePath, { recursive: true });
-      let filepath = join(savePath, `${safeFilename}.md`);
-      if (existsSync(filepath)) filepath = join(savePath, `${safeFilename}_${timestamp()}.md`);
-      writeFileSync(filepath, safeContent, "utf8");
-      saved.push(filepath);
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  if (saved.length) await appendSaveHistory(preparedData, saved, appDir);
+  const history = appDir ? {
+    title: String(preparedData.article_title || preparedData.text || preparedData.title || safeFilename).split(/\s+/).join(" ").slice(0, 120),
+    platform: String(preparedData.platform || "Twitter/X"),
+    url: String(preparedData.url || ""),
+    saved_at: new Date().toISOString(),
+  } : undefined;
+  const { saved, errors } = await runSaveTransaction({ appDir: appDir || ".", savePaths, filename: safeFilename, content: safeContent, history });
   return saved.length ? { success: true, saved, errors } : { success: false, errors };
 }

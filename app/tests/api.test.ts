@@ -180,6 +180,22 @@ test("POST /save 写入 Markdown 并拒绝未知自定义路径", async () => {
   assert.match(logText, /保存失败：自定义保存路径无效/);
 });
 
+test("20 个不同 capture key 的同标题并发保存不覆盖", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ save_paths: [mdDir] }),
+  }), { appDir, testBypassAuth: true });
+  const responses = await Promise.all(Array.from({ length: 20 }, (_, index) => handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "article", article_title: "并发标题", article_content: `完整正文 ${index}`, url: `https://example.com/items/${index}` }),
+  }), { appDir, testBypassAuth: true })));
+  const bodies = await Promise.all(responses.map((response) => response.json()));
+  const paths = bodies.flatMap((body) => body.saved || []);
+  assert.equal(new Set(paths).size, 20);
+  assert.ok(paths.every((path) => readFileSync(path, "utf8").length > 0));
+});
+
 test("POST /save 默认保持远程图片链接", async () => {
   const appDir = tempApp();
   const mdDir = join(appDir, "md");
