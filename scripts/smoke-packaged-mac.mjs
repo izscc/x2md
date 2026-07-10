@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { createHmac } from "node:crypto";
 
 const app = process.env.X2MD_SMOKE_APP || "build/stable-macos-arm64/X2MD.app";
 if (!existsSync(`${app}/Contents/MacOS/launcher`)) throw new Error("先运行 npm run build:mac");
@@ -24,8 +25,9 @@ const loginAutostartMode = process.env.X2MD_SMOKE_LOGIN_AUTOSTART === "1";
 const extensionHealthMode = process.env.X2MD_SMOKE_EXTENSION_HEALTH === "1";
 const windowVisibleMode = process.env.X2MD_SMOKE_WINDOW_VISIBLE === "1";
 const menuVisibleMode = process.env.X2MD_SMOKE_MENU_VISIBLE === "1";
-const port = 19000 + Math.floor(Math.random() * 1000);
+const port = 9527;
 const mdDir = join(home, "md");
+const sessionFile = join(appDir, "smoke-session");
 writeFileSync(join(appDir, "config.json"), JSON.stringify((firstRunMode || windowVisibleMode)
   ? { port }
   : {
@@ -47,7 +49,7 @@ if (blocker) {
 }
 
 const child = spawn(launcher, [], {
-  env: { ...process.env, HOME: home, X2MD_APP_DIR: appDir, X2MD_OPEN_DRY_RUN: "1", ...(loginAutostartMode ? { X2MD_AUTOSTART_SKIP_LAUNCHCTL: "1" } : {}) },
+  env: { ...process.env, HOME: home, X2MD_APP_DIR: appDir, X2MD_OPEN_DRY_RUN: "1", X2MD_SMOKE_SESSION_FILE: sessionFile, ...(loginAutostartMode ? { X2MD_AUTOSTART_SKIP_LAUNCHCTL: "1" } : {}) },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let output = "";
@@ -59,6 +61,9 @@ let savedOk = false;
 const startedAt = Date.now();
 let pingMs = 0;
 let loginBootstrapped = false;
+let session = "";
+const authHeaders = (extra = {}) => ({ ...extra, ...(session ? { Authorization: `Bearer ${session}` } : {}) });
+const smokeFetch = (input, init = {}) => fetch(input, { ...init, headers: authHeaders(init.headers || {}) });
 
 function childPids(pid) {
   try {
@@ -124,7 +129,7 @@ try {
 
   for (let i = 0; i < 60; i += 1) {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/ping`);
+      const res = await smokeFetch(`http://127.0.0.1:${port}/ping`);
       const body = await res.json();
       ok = res.ok && body.status === "ok";
       if (ok) {
@@ -140,6 +145,15 @@ try {
     throw new Error(`packaged ping smoke failed\n--- stdout ---\n${output}\n--- log ---\n${log}`);
   }
 
+  for (let i = 0; i < 40 && !session; i += 1) {
+    if (existsSync(sessionFile)) session = readFileSync(sessionFile, "utf8").trim();
+    if (!session) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!session) {
+    const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
+    throw new Error(`packaged smoke did not receive a real settings session credential\n--- stdout ---\n${output}\n--- log ---\n${log}`);
+  }
+
   try {
     const listeners = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
     if (!listeners.includes(`127.0.0.1:${port}`) || listeners.includes(`*:${port}`) || listeners.includes(`0.0.0.0:${port}`)) {
@@ -150,7 +164,7 @@ try {
   }
 
   if (firstRunMode || windowVisibleMode) {
-    const before = await fetch(`http://127.0.0.1:${port}/config`).then((res) => res.json());
+    const before = await smokeFetch(`http://127.0.0.1:${port}/config`, { headers: authHeaders() }).then((res) => res.json());
     if (before.setup_completed !== false) throw new Error(`first-run config should be incomplete: ${JSON.stringify(before)}`);
     const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
     if (!log.includes("设置页已打开")) {
@@ -160,14 +174,47 @@ try {
       throw new Error(`first-run settings window did not use inline settings UI\n--- stdout ---\n${output}\n--- log ---\n${log}`);
     }
     const videoDir = join(home, "videos");
-    const configResp = await fetch(`http://127.0.0.1:${port}/config`, {
+    const configResp = await smokeFetch(`http://127.0.0.1:${port}/config`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ save_paths: [mdDir], video_save_path: videoDir }),
     });
     const after = await configResp.json().catch(() => ({}));
-    if (!configResp.ok || after.config?.setup_completed !== true || !existsSync(mdDir) || !existsSync(videoDir)) {
+    if (!configResp.ok || after.config?.setup_completed !== false || !existsSync(mdDir) || !existsSync(videoDir)) {
       throw new Error(`first-run config save failed\n--- response ---\n${JSON.stringify(after)}`);
+    }
+    const setup = async (step, body = {}, token = session) => {
+      const response = await fetch(`http://127.0.0.1:${port}/setup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ step, ...body }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`first-run ${step} failed: ${JSON.stringify(payload)}`);
+      return payload;
+    };
+    await setup("runtime");
+    await setup("directory");
+    const persisted = JSON.parse(readFileSync(join(appDir, "config.json"), "utf8"));
+    const extensionToken = createHmac("sha256", persisted.install_secret).update("x2md-extension-v1").digest("base64url");
+    const manifest = JSON.parse(readFileSync(join(app, "Contents", "Resources", "extension", "manifest.json"), "utf8"));
+    await setup("extension", {
+      extension_version: manifest.version,
+      permissions: [...(manifest.permissions || []), ...(manifest.host_permissions || [])],
+    }, extensionToken);
+    const completed = await setup("sample");
+    if (!completed.setup_completed || !completed.sample_history_id || !completed.result?.saved?.[0]) {
+      throw new Error(`first-run sample did not complete Setup Doctor: ${JSON.stringify(completed)}`);
+    }
+    if (!readFileSync(completed.result.saved[0], "utf8").includes("Setup Doctor 保存的本地样例")) {
+      throw new Error("first-run sample did not use the real Save Engine");
+    }
+    for (const action of ["show_file", "open_obsidian"]) {
+      const actionResponse = await smokeFetch(`http://127.0.0.1:${port}/history/action`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: completed.sample_history_id, action }),
+      });
+      if (!actionResponse.ok) throw new Error(`first-run ${action} dry-run failed: ${await actionResponse.text()}`);
     }
   }
 
@@ -176,7 +223,7 @@ try {
     if (!JSON.stringify(manifest.host_permissions || []).includes("http://127.0.0.1:9527/*")) {
       throw new Error("extension manifest missing http://127.0.0.1:9527/* host permission");
     }
-    const res = await fetch(`http://127.0.0.1:${port}/ping`, { headers: { Origin: "chrome-extension://x2md-smoke" } });
+    const res = await smokeFetch(`http://127.0.0.1:${port}/ping`, { headers: { Origin: "chrome-extension://x2md-smoke" } });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || body.status !== "ok" || !body.version) {
       throw new Error(`extension health ping failed\n--- response ---\n${JSON.stringify(body)}`);
@@ -234,7 +281,7 @@ end tell`], { encoding: "utf8" }).trim();
     const launchAgents = join(home, "Library", "LaunchAgents");
     const plist = join(launchAgents, "com.x2md.app.plist");
     const legacyPlist = join(launchAgents, "com.x2md.server.plist");
-    const on = await fetch(`http://127.0.0.1:${port}/autostart`, {
+    const on = await smokeFetch(`http://127.0.0.1:${port}/autostart`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: true }),
@@ -244,7 +291,7 @@ end tell`], { encoding: "utf8" }).trim();
     }
     mkdirSync(launchAgents, { recursive: true });
     writeFileSync(legacyPlist, "legacy", "utf8");
-    const off = await fetch(`http://127.0.0.1:${port}/autostart`, {
+    const off = await smokeFetch(`http://127.0.0.1:${port}/autostart`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: false }),
@@ -257,7 +304,7 @@ end tell`], { encoding: "utf8" }).trim();
   if (loginAutostartMode) {
     const launchAgents = join(home, "Library", "LaunchAgents");
     const plist = join(launchAgents, "com.x2md.app.plist");
-    const on = await fetch(`http://127.0.0.1:${port}/autostart`, {
+    const on = await smokeFetch(`http://127.0.0.1:${port}/autostart`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: true }),
@@ -270,7 +317,7 @@ end tell`], { encoding: "utf8" }).trim();
     killTree(child.pid);
     for (let i = 0; i < 30; i += 1) {
       try {
-        await fetch(`http://127.0.0.1:${port}/ping`);
+        await smokeFetch(`http://127.0.0.1:${port}/ping`);
       } catch {
         break;
       }
@@ -283,7 +330,7 @@ end tell`], { encoding: "utf8" }).trim();
     let loginOk = false;
     for (let i = 0; i < 60; i += 1) {
       try {
-        const res = await fetch(`http://127.0.0.1:${port}/ping`);
+        const res = await smokeFetch(`http://127.0.0.1:${port}/ping`);
         const body = await res.json();
         loginOk = res.ok && body.status === "ok";
         if (loginOk) break;
@@ -296,7 +343,7 @@ end tell`], { encoding: "utf8" }).trim();
     }
   }
 
-  const save = await fetch(`http://127.0.0.1:${port}/save`, {
+  const save = await smokeFetch(`http://127.0.0.1:${port}/save`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "tweet", text: "packaged smoke save", url: "https://x.com/x2md/status/1", handle: "@x2md" }),
@@ -308,20 +355,20 @@ end tell`], { encoding: "utf8" }).trim();
     throw new Error(`packaged save smoke failed\n--- response ---\n${JSON.stringify(saveBody)}\n--- stdout ---\n${output}\n--- log ---\n${log}`);
   }
 
-  const status = await fetch(`http://127.0.0.1:${port}/status`, { headers: { Origin: `http://127.0.0.1:${port}` } });
+  const status = await smokeFetch(`http://127.0.0.1:${port}/status`, { headers: { Origin: `http://127.0.0.1:${port}` } });
   const statusBody = await status.json().catch(() => ({}));
   if (!status.ok || statusBody.port !== port || statusBody.status !== "ok") {
     throw new Error(`packaged status smoke failed\n--- response ---\n${JSON.stringify(statusBody)}\n--- stdout ---\n${output}`);
   }
 
-  const logResp = await fetch(`http://127.0.0.1:${port}/log`, { headers: { Origin: `http://127.0.0.1:${port}` } });
+  const logResp = await smokeFetch(`http://127.0.0.1:${port}/log`, { headers: { Origin: `http://127.0.0.1:${port}` } });
   const logBody = await logResp.json().catch(() => ({}));
-  if (!logResp.ok || !String(logBody.log || "").includes("保存成功")) {
+  if (!logResp.ok || !String(logBody.log || "").includes("保存完成：outcome=")) {
     throw new Error(`packaged log smoke failed\n--- response ---\n${JSON.stringify(logBody)}\n--- stdout ---\n${output}`);
   }
 
   for (const target of ["save", "video", "log", "extension"]) {
-    const openResp = await fetch(`http://127.0.0.1:${port}/open`, {
+    const openResp = await smokeFetch(`http://127.0.0.1:${port}/open`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target }),
@@ -331,7 +378,7 @@ end tell`], { encoding: "utf8" }).trim();
       throw new Error(`packaged open ${target} smoke failed\n--- response ---\n${JSON.stringify(openBody)}\n--- stdout ---\n${output}`);
     }
   }
-  const badOpen = await fetch(`http://127.0.0.1:${port}/open`, {
+  const badOpen = await smokeFetch(`http://127.0.0.1:${port}/open`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target: "/tmp/evil" }),

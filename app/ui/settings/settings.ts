@@ -28,6 +28,16 @@ type FilenamePreset = {
   value: string;
 };
 
+type SetupState = {
+  setup_completed: boolean;
+  steps: Record<string, boolean>;
+  sample_history_id?: string;
+  version?: string;
+  port?: number;
+};
+
+let currentSetup: SetupState | null = null;
+
 const DEFAULT_FILENAME_FORMAT = "{summary}";
 const DEFAULT_FILENAME_LENGTH = 100;
 const FILENAME_PRESETS: FilenamePreset[] = [
@@ -463,6 +473,71 @@ async function loadConfig(): Promise<void> {
   const autostart = await apiFetch(`${api}/autostart`).then((res) => res.json()).catch(() => ({}));
   $("autostart").checked = Boolean(autostart.enabled);
   setStatus(ping.version ? "已连接，保存功能可用" : "已连接");
+  await refreshSetup();
+}
+
+function renderSetup(state: SetupState): void {
+  currentSetup = state;
+  const doctor = document.getElementById("setupDoctor");
+  if (doctor) doctor.hidden = state.setup_completed;
+  document.querySelectorAll<HTMLElement>("[data-setup-step]").forEach((item) => {
+    const step = item.dataset.setupStep || "";
+    const done = state.steps?.[step] === true;
+    item.classList.toggle("is-done", done);
+    const button = item.querySelector<HTMLButtonElement>("[data-setup-action]");
+    if (button) {
+      button.disabled = done;
+      if (done) button.textContent = "已完成";
+    }
+  });
+  const runtime = document.getElementById("setup-runtime-detail");
+  if (runtime && state.steps?.runtime) runtime.textContent = `版本 ${state.version}，端口 ${state.port} 正常。`;
+  const resultActions = document.getElementById("setupResultActions");
+  if (resultActions) resultActions.hidden = !state.sample_history_id;
+}
+
+async function refreshSetup(): Promise<void> {
+  const response = await apiFetch(`${api}/setup`);
+  const state = await response.json().catch(() => ({}));
+  if (response.ok) renderSetup(state);
+}
+
+async function runSetupStep(step: string): Promise<void> {
+  if (step === "extension") {
+    toggleExtensionHelp();
+    await openTarget("extension");
+    setStatus("请在扩展设置中输入配对码；配对完成后此步骤会自动更新");
+    return;
+  }
+  if (step === "directory") {
+    const path = $("savePath").value.trim();
+    if (!path) {
+      setStatus("请先选择主要保存位置");
+      return;
+    }
+    const configResponse = await apiFetch(`${api}/config`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ save_paths: [path] }),
+    });
+    if (!configResponse.ok) throw new Error("保存目录配置失败");
+  }
+  const response = await apiFetch(`${api}/setup`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step }),
+  });
+  const state = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(state.error || "检查失败");
+  renderSetup(state);
+  setStatus(step === "sample" ? "首次激活完成，样例已保存" : "检查通过，请继续下一步");
+}
+
+async function openSetupSample(action: string): Promise<void> {
+  const id = currentSetup?.sample_history_id;
+  if (!id) throw new Error("样例记录不存在");
+  const response = await apiFetch(`${api}/history/action`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "打开样例失败");
+  setStatus(action === "show_file" ? "已在 Finder 显示样例" : "已在 Obsidian 打开样例");
 }
 
 async function saveConfig(): Promise<void> {
@@ -502,7 +577,6 @@ async function saveConfig(): Promise<void> {
     tag_rules: tagRules,
     front_matter_template: (field("frontMatterTemplate") as HTMLSelectElement).value,
     custom_front_matter_template: (field("customFrontMatterTemplate") as HTMLTextAreaElement).value,
-    setup_completed: true,
   };
   const response = await apiFetch(`${api}/config`, {
     method: "POST",
@@ -605,5 +679,14 @@ $("openExtension").addEventListener("click", () => {
 
 const pairingCodeElement = document.getElementById("pairingCode");
 if (pairingCodeElement && pairingCode) pairingCodeElement.textContent = pairingCode;
+const setupPairingCode = document.getElementById("setupPairingCode");
+if (setupPairingCode && pairingCode) setupPairingCode.textContent = pairingCode;
+document.querySelectorAll<HTMLButtonElement>("[data-setup-action]").forEach((button) => {
+  button.addEventListener("click", () => void runSetupStep(button.dataset.setupAction || "").catch((error) => setStatus(error.message)));
+});
+document.querySelectorAll<HTMLButtonElement>("[data-sample-action]").forEach((button) => {
+  button.addEventListener("click", () => void openSetupSample(button.dataset.sampleAction || "").catch((error) => setStatus(error.message)));
+});
+setInterval(() => { if (currentSetup && !currentSetup.setup_completed) void refreshSetup(); }, 2000);
 showPanel(safeGetPanel());
 loadConfig().catch((error) => setStatus(`连接失败：${error.message}`));

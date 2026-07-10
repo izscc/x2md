@@ -6,6 +6,7 @@ export const CONFIG_KEYS = [
   "install_secret", "require_local_api_token", "download_images", "image_attachment_path",
   "image_embed_style", "profile_capture_range", "profile_capture_custom_days",
   "profile_capture_save_path", "setup_completed", "duplicate_policy",
+  "setup_steps", "setup_sample_history_id",
 ] as const;
 
 export const SECRET_CONFIG_KEYS = new Set<string>(["install_secret", "local_api_token"]);

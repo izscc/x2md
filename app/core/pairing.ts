@@ -44,3 +44,12 @@ export function isValidCredential(token: string, installSecret: string): boolean
   }
   return Boolean(token) && equalToken(token, extensionToken(installSecret));
 }
+
+export function credentialKind(token: string, installSecret: string): "app" | "extension" | null {
+  const expires = appSessions.get(token);
+  if (expires) {
+    if (expires >= Date.now()) return "app";
+    appSessions.delete(token);
+  }
+  return Boolean(token) && equalToken(token, extensionToken(installSecret)) ? "extension" : null;
+}

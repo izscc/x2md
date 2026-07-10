@@ -38,6 +38,8 @@ export type X2MDConfig = Record<string, unknown> & {
   profile_capture_save_path: string;
   setup_completed: boolean;
   duplicate_policy: "skip" | "update" | "always_new";
+  setup_steps: Record<string, boolean>;
+  setup_sample_history_id: string;
 };
 
 const HOME = homedir();
@@ -80,6 +82,8 @@ export const DEFAULT_CONFIG: X2MDConfig = {
   profile_capture_save_path: "",
   setup_completed: false,
   duplicate_policy: "skip",
+  setup_steps: {},
+  setup_sample_history_id: "",
 };
 
 function boolValue(value: unknown, fallback: boolean): boolean {
@@ -148,6 +152,10 @@ export function normalizeConfigWithWarnings(raw: Record<string, unknown> = {}, i
   cfg.show_site_save_icon = boolValue(cfg.show_site_save_icon, DEFAULT_CONFIG.show_site_save_icon);
   cfg.show_x_profile_capture_button = boolValue(cfg.show_x_profile_capture_button, DEFAULT_CONFIG.show_x_profile_capture_button);
   cfg.duplicate_policy = ["skip", "update", "always_new"].includes(String(cfg.duplicate_policy)) ? cfg.duplicate_policy : "skip";
+  cfg.setup_steps = cfg.setup_steps && typeof cfg.setup_steps === "object" && !Array.isArray(cfg.setup_steps)
+    ? Object.fromEntries(Object.entries(cfg.setup_steps).filter(([, value]) => value === true))
+    : {};
+  cfg.setup_sample_history_id = String(cfg.setup_sample_history_id || "");
   const fallbackChecks: Array<[string, boolean]> = [
     ["save_paths", clean.save_paths !== undefined && !Array.isArray(clean.save_paths)],
     ["custom_save_paths", clean.custom_save_paths !== undefined && !Array.isArray(clean.custom_save_paths)],

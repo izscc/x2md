@@ -73,3 +73,29 @@ test("pairing and desktop settings use LocalClient methods", async () => {
     assert.deepEqual(calls[0], ["pair", "123456"]);
     assert.ok(calls.some((call) => call[0] === "/settings" && call[1] === "POST"));
 });
+
+test("connected extension reports version and permissions to Setup Doctor", async () => {
+    const calls = [];
+    const controller = createOptionsController({
+        client: {
+            token: async () => "token",
+            request: async (path, init) => {
+                calls.push([path, init]);
+                if (path === "/ping") return { version: "3.1.0", min_extension_version: "3.1.0" };
+                if (path === "/setup" && !init) return { setup_completed: false, steps: { directory: true, extension: false } };
+                return { success: true };
+            },
+        },
+        extensionVersion: () => "3.1.0",
+        permissions: () => ["storage", "scripting", "http://127.0.0.1:9527/*"],
+        render: () => {},
+    });
+    await controller.refresh();
+    const report = calls.find(([path, init]) => path === "/setup" && init?.method === "POST");
+    assert.ok(report);
+    assert.deepEqual(JSON.parse(report[1].body), {
+        step: "extension",
+        extension_version: "3.1.0",
+        permissions: ["storage", "scripting", "http://127.0.0.1:9527/*"],
+    });
+});

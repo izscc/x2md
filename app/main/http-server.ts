@@ -10,11 +10,12 @@ import { isAutostartEnabled, setAutostartEnabled } from "./autostart.ts";
 import { chooseFolder, openConfiguredTarget, openHistoryEntry, showSettingsWindow } from "./desktop.ts";
 import { log, readLogTail } from "./logger.ts";
 import { notifySaveSuccess } from "./notify.ts";
-import { consumePairingCode, isValidCredential } from "../core/pairing.ts";
+import { consumePairingCode, credentialKind, isValidCredential } from "../core/pairing.ts";
 import { corsHeaders, isAllowedApiOrigin, preflightResponse } from "./request-policy.ts";
 import { CAPTURE_LIMITS } from "../core/contracts.ts";
 import { CaptureBoundaryError, normalizeCaptureRequest } from "../core/legacy-capture.ts";
 import type { CaptureDocumentV1 } from "../core/contracts.ts";
+import { assertPreviousSteps, probeDirectory, SETUP_STEP_ORDER, setupState, validateExtension, type SetupStep } from "../core/setup-doctor.ts";
 
 function json(request: Request, payload: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(sanitizeUnicodePayload(payload)), {
@@ -143,6 +144,9 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
   if (request.method === "GET" && path === "/history") {
     return reply({ success: true, history: readSaveHistory(appDir) });
   }
+  if (request.method === "GET" && path === "/setup") {
+    return reply(setupState(loadConfig(appDir), opts.port ?? LOCAL_API_PORT));
+  }
   if (request.method === "GET" && path === "/autostart") return reply({ success: true, enabled: isAutostartEnabled() });
   if (request.method === "GET" && path === "/profile-capture/state") {
     const handle = normalizeProfileHandle(url.searchParams.get("handle") || "");
@@ -172,12 +176,44 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       if (Array.isArray(data.save_paths) && !data.save_paths.some((item) => String(item || "").trim())) {
         return reply({ success: false, error: "请至少配置一个保存路径" }, 400);
       }
-      if (data.setup_completed === undefined && Array.isArray(data.save_paths) && data.save_paths.some((item) => String(item || "").trim())) {
-        nextConfig.setup_completed = true;
-      }
       const config = saveConfig(nextConfig, appDir);
       log(`配置已更新：keys=${Object.keys(data).join(",")}`, appDir);
       return reply({ success: true, config: publicConfig(config), restart_required: false });
+    }
+    if (path === "/setup") {
+      const step = String(data.step || "") as SetupStep;
+      if (!SETUP_STEP_ORDER.includes(step)) return reply({ success: false, error: "未知 Setup Doctor 步骤" }, 400);
+      const config = loadConfig(appDir);
+      assertPreviousSteps(config, step);
+      let sampleResult: Record<string, any> | undefined;
+      if (step === "runtime") {
+        // Reaching this authenticated handler proves that this runtime owns the configured loopback port.
+      } else if (step === "directory") {
+        probeDirectory(config.save_paths[0] || "");
+      } else if (step === "extension") {
+        if (credentialKind(requestCredential(request), String(config.install_secret || "")) !== "extension") {
+          return reply({ success: false, error: "请先使用当前扩展完成配对" }, 401);
+        }
+        validateExtension(String(data.extension_version || ""), data.permissions);
+      } else if (step === "sample") {
+        sampleResult = await savePayload({
+          type: "article",
+          article_title: "欢迎使用 X2MD",
+          article_content: "这是 Setup Doctor 保存的本地样例。保存成功后，你可以在 Finder 或 Obsidian 中打开它。",
+          url: "https://x2md.local/setup-sample",
+          platform: "X2MD",
+        }, config, appDir);
+        if (!sampleResult.success || !sampleResult.files?.[0]?.history_id) throw new Error("样例保存失败");
+      }
+      const completed = { ...config.setup_steps, [step]: true };
+      const done = SETUP_STEP_ORDER.every((item) => completed[item] === true);
+      const saved = saveConfig({
+        ...config,
+        setup_steps: completed,
+        setup_completed: done,
+        ...(sampleResult?.files?.[0]?.history_id ? { setup_sample_history_id: sampleResult.files[0].history_id } : {}),
+      }, appDir);
+      return reply({ ...setupState(saved, opts.port ?? LOCAL_API_PORT), ...(sampleResult ? { result: sampleResult } : {}) });
     }
     if (path === "/save") {
       const config = loadConfig(appDir);
@@ -224,7 +260,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     const message = error instanceof Error ? error.message : String(error);
     const saveErrorCode = String((error as any)?.code || (/保存路径|路径/.test(message) ? "PATH_DENIED" : "INVALID_CAPTURE")).replace(/[^A-Z0-9_]/g, "").slice(0, 64);
     log(path === "/save" ? `保存请求失败：code=${saveErrorCode}` : `错误 ${path}: ${message}`, appDir);
-    return reply({ success: false, error: message }, path === "/save" || path === "/open" || path === "/history/action" ? 400 : 500);
+    return reply({ success: false, error: message }, path === "/save" || path === "/open" || path === "/history/action" || path === "/setup" ? 400 : 500);
   }
 
   return reply({ error: "Not Found" }, 404);

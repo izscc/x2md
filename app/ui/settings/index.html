@@ -53,6 +53,21 @@
     </aside>
 
     <section class="detail">
+      <section id="setupDoctor" class="setup-doctor" aria-labelledby="setupDoctorTitle" hidden>
+        <p class="section-label">首次激活</p>
+        <h2 id="setupDoctorTitle">先完成 Setup Doctor</h2>
+        <p class="lede">按顺序确认本机服务、保存目录和扩展，然后保存一条无需联网的样例。</p>
+        <ol class="setup-steps">
+          <li data-setup-step="runtime"><span>1</span><div><strong>检查运行版本与端口</strong><small id="setup-runtime-detail">确认当前 App 正在使用本机端口。</small></div><button data-setup-action="runtime" class="soft" type="button">检查</button></li>
+          <li data-setup-step="directory"><span>2</span><div><strong>检查保存目录</strong><small id="setup-directory-detail">先在左侧选择主要保存位置。</small></div><button data-setup-action="directory" class="soft" type="button">检查写入</button></li>
+          <li data-setup-step="extension"><span>3</span><div><strong>配对并检查扩展</strong><small id="setup-extension-detail">在扩展设置中输入本页显示的配对码：<code id="setupPairingCode">------</code></small></div><button data-setup-action="extension" class="soft" type="button">打开扩展</button></li>
+          <li data-setup-step="sample"><span>4</span><div><strong>保存本地样例</strong><small id="setup-sample-detail">使用真实 Save Engine 写入 Markdown。</small></div><button data-setup-action="sample" class="soft" type="button">保存样例</button></li>
+        </ol>
+        <div id="setupResultActions" class="setup-result-actions" hidden>
+          <button data-sample-action="show_file" class="soft" type="button">在 Finder 显示</button>
+          <button data-sample-action="open_obsidian" class="soft" type="button">在 Obsidian 打开</button>
+        </div>
+      </section>
       <header class="detail-head">
         <p id="panelLabel" class="section-label">保存位置</p>
         <h2 id="panelTitle">内容保存到哪里</h2>

@@ -15,7 +15,7 @@
         return 0;
     }
 
-    function createOptionsController({ client, extensionVersion, render }) {
+    function createOptionsController({ client, extensionVersion, permissions = () => [], render }) {
         async function refresh() {
             const currentExtensionVersion = extensionVersion();
             render({ kind: "checking", extensionVersion: currentExtensionVersion, appVersion: "" });
@@ -43,6 +43,13 @@
             }
             try {
                 await client.request("/status");
+                const granted = permissions();
+                const setup = granted.length ? await client.request("/setup") : null;
+                if (setup && !setup.setup_completed && setup.steps?.directory && !setup.steps?.extension) await client.request("/setup", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ step: "extension", extension_version: currentExtensionVersion, permissions: granted }),
+                });
             } catch (error) {
                 const kind = error?.code === "AUTH_INVALID" || error?.code === "PAIRING_REQUIRED" ? "pairing" : "offline";
                 const state = { kind, extensionVersion: currentExtensionVersion, appVersion, minimum };
@@ -99,6 +106,10 @@
         const controller = createOptionsController({
             client: root.X2MDLocalClient.createLocalClient(),
             extensionVersion: () => root.chrome.runtime.getManifest().version || "",
+            permissions: () => {
+                const manifest = root.chrome.runtime.getManifest();
+                return [...(manifest.permissions || []), ...(manifest.host_permissions || [])];
+            },
             render,
         });
 

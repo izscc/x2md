@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { handleApiRequest, listenErrorMessage, startHttpServer } from "../main/http-server.ts";
 import { configPath, logPath, VERSION, loadConfig } from "../core/config.ts";
-import { issuePairingCode } from "../core/pairing.ts";
+import { extensionToken, issuePairingCode } from "../core/pairing.ts";
 
 function tempApp(): string {
   return mkdtempSync(join(tmpdir(), "x2md-api-"));
@@ -145,7 +145,7 @@ test("GET/POST /config 往返媒体与去重策略且不返回密钥", async () 
   assert.notEqual(loadConfig(appDir).local_api_token, "must-not-change");
 });
 
-test("扩展保存 save_paths 时自动完成首次设置", async () => {
+test("新配置保存目录后仍进入 Setup Doctor", async () => {
   const appDir = tempApp();
   const res = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
     method: "POST",
@@ -154,7 +154,49 @@ test("扩展保存 save_paths 时自动完成首次设置", async () => {
   }), { appDir, testBypassAuth: true });
   const body = await json(res);
   assert.equal(res.status, 200);
-  assert.equal(body.config.setup_completed, true);
+  assert.equal(body.config.setup_completed, false);
+});
+
+test("Setup Doctor 顺序执行真实目录探测、扩展健康检查和样例保存，失败不回退", async () => {
+  const appDir = tempApp();
+  const mdDir = join(appDir, "md");
+  await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ save_paths: [mdDir] }),
+  }), { appDir, testBypassAuth: true });
+
+  const run = (step: string, body: Record<string, unknown> = {}, token = "") => handleApiRequest(new Request("http://127.0.0.1:9527/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ step, ...body }),
+  }), { appDir, testBypassAuth: !token });
+
+  assert.equal((await run("directory")).status, 400);
+  assert.equal((await run("runtime")).status, 200);
+  assert.equal((await run("directory")).status, 200);
+  const cfg = loadConfig(appDir);
+  const token = extensionToken(String(cfg.install_secret));
+  const permissions = ["storage", "scripting", "http://127.0.0.1:9527/*"];
+  const badExtension = await run("extension", { extension_version: "0.1.0", permissions }, token);
+  assert.equal(badExtension.status, 400);
+  const retained = await json(await handleApiRequest(new Request("http://127.0.0.1:9527/setup"), { appDir, testBypassAuth: true }));
+  assert.deepEqual(retained.steps, { runtime: true, directory: true, extension: false, sample: false });
+
+  const extension = await run("extension", { extension_version: VERSION, permissions }, token);
+  assert.equal(extension.status, 200);
+  const sample = await run("sample");
+  const result = await json(sample);
+  assert.equal(sample.status, 200);
+  assert.equal(result.setup_completed, true);
+  assert.equal(result.steps.sample, true);
+  assert.ok(result.sample_history_id);
+  assert.match(readFileSync(result.result.saved[0], "utf8"), /Setup Doctor 保存的本地样例/);
+
+  const action = await handleApiRequest(new Request("http://127.0.0.1:9527/history/action", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: result.sample_history_id, action: "show_file" }),
+  }), { appDir, testBypassAuth: true, openDryRun: true });
+  assert.equal(action.status, 200);
+  assert.equal((await json(action)).id, result.sample_history_id);
 });
 
 test("POST /config 拒绝清空保存路径", async () => {
