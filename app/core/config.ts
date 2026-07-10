@@ -1,14 +1,17 @@
-import { mkdirSync } from "node:fs";
+import { constants, copyFileSync, mkdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readJsonStateSync, writeJsonStateSync } from "./state-store.ts";
+import { allowlistedConfig, safePublicConfig } from "./config-schema.ts";
+import { CONFIG_VERSION, migrateConfig } from "./config-migrations.ts";
 
 export const VERSION = "3.1.0";
 export const MIN_EXTENSION_VERSION = "3.1.0";
 export const LOCAL_API_PORT = 9527;
 
 export type X2MDConfig = Record<string, unknown> & {
+  config_version: number;
   save_paths: string[];
   custom_save_paths: Array<{ name: string; path: string }>;
   filename_format: string;
@@ -50,6 +53,7 @@ export function cliArg(name: string): string | undefined {
 }
 
 export const DEFAULT_CONFIG: X2MDConfig = {
+  config_version: CONFIG_VERSION,
   save_paths: [join(HOME, "Desktop", "X2MD", "MD")],
   custom_save_paths: [],
   filename_format: "{summary}",
@@ -114,10 +118,12 @@ export function logPath(appDir = getAppDir()): string {
   return join(appDir, "x2md.log");
 }
 
-export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
-  const cfg = { ...DEFAULT_CONFIG, ...raw } as X2MDConfig;
-  delete cfg.port;
-  const oldConfigHasSavePath = raw.setup_completed === undefined && Array.isArray(raw.save_paths) && raw.save_paths.some((path) => String(path || "").trim());
+export function normalizeConfigWithWarnings(raw: Record<string, unknown> = {}, initialWarnings: string[] = []): { config: X2MDConfig; warnings: string[]; migrated: boolean; fromVersion: number } {
+  const migration = migrateConfig(raw);
+  const warnings = [...initialWarnings, ...migration.warnings];
+  const clean = allowlistedConfig(migration.config, warnings);
+  const cfg = { ...DEFAULT_CONFIG, ...clean, config_version: CONFIG_VERSION } as X2MDConfig;
+  const oldConfigHasSavePath = clean.setup_completed === undefined && Array.isArray(clean.save_paths) && clean.save_paths.some((path) => String(path || "").trim());
   cfg.save_paths = Array.isArray(cfg.save_paths) ? cfg.save_paths.map((path) => String(path).trim()).filter(Boolean) : [...DEFAULT_CONFIG.save_paths];
   cfg.video_save_path = String(cfg.video_save_path || "").trim() || DEFAULT_CONFIG.video_save_path;
   cfg.profile_capture_save_path = String(cfg.profile_capture_save_path || "").trim();
@@ -142,7 +148,24 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   cfg.show_site_save_icon = boolValue(cfg.show_site_save_icon, DEFAULT_CONFIG.show_site_save_icon);
   cfg.show_x_profile_capture_button = boolValue(cfg.show_x_profile_capture_button, DEFAULT_CONFIG.show_x_profile_capture_button);
   cfg.duplicate_policy = ["skip", "update", "always_new"].includes(String(cfg.duplicate_policy)) ? cfg.duplicate_policy : "skip";
-  return cfg;
+  const fallbackChecks: Array<[string, boolean]> = [
+    ["save_paths", clean.save_paths !== undefined && !Array.isArray(clean.save_paths)],
+    ["custom_save_paths", clean.custom_save_paths !== undefined && !Array.isArray(clean.custom_save_paths)],
+    ["max_filename_length", clean.max_filename_length !== undefined && (!Number.isFinite(Number(clean.max_filename_length)) || Number(clean.max_filename_length) < 20)],
+    ["video_duration_threshold", clean.video_duration_threshold !== undefined && (!Number.isFinite(Number(clean.video_duration_threshold)) || Number(clean.video_duration_threshold) < 0)],
+    ["image_embed_style", clean.image_embed_style !== undefined && !["markdown", "obsidian"].includes(String(clean.image_embed_style))],
+    ["duplicate_policy", clean.duplicate_policy !== undefined && !["skip", "update", "always_new"].includes(String(clean.duplicate_policy))],
+  ];
+  for (const [key, invalid] of fallbackChecks) if (invalid) warnings.push(`invalid ${key}; using schema default`);
+  return { config: cfg, warnings, migrated: migration.changed, fromVersion: migration.fromVersion };
+}
+
+export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
+  return normalizeConfigWithWarnings(raw).config;
+}
+
+export function publicConfig(cfg: Record<string, unknown>): Record<string, unknown> {
+  return safePublicConfig(cfg);
 }
 
 function normalizeTagList(value: unknown): string[] {
@@ -169,15 +192,28 @@ export function ensureConfiguredDirs(cfg: X2MDConfig): void {
 export function loadConfig(appDir = getAppDir()): X2MDConfig {
   const sentinel = Symbol("missing");
   const raw = readJsonStateSync<Record<string, unknown> | typeof sentinel>(appDir, "config", () => sentinel);
-  const cfg = normalizeConfig(raw === sentinel ? {} : raw);
-  if (raw === sentinel) writeJsonStateSync(appDir, "config", cfg);
+  const source = raw === sentinel ? {} : raw;
+  const result = normalizeConfigWithWarnings(source);
+  const cfg = result.config;
+  const rewrite = raw === sentinel || result.migrated || JSON.stringify(source) !== JSON.stringify(cfg);
+  if (raw !== sentinel && rewrite) {
+    try {
+      copyFileSync(configPath(appDir), `${configPath(appDir)}.v${result.fromVersion}.bak`, constants.COPYFILE_EXCL);
+    } catch (error: any) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+  }
+  if (rewrite) writeJsonStateSync(appDir, "config", cfg);
+  for (const warning of result.warnings) console.warn(`[x2md config] ${warning}`);
   ensureConfiguredDirs(cfg);
   return cfg;
 }
 
 export function saveConfig(cfg: Record<string, unknown>, appDir = getAppDir()): X2MDConfig {
-  const normalized = normalizeConfig(cfg);
+  const result = normalizeConfigWithWarnings(cfg);
+  const normalized = result.config;
   writeJsonStateSync(appDir, "config", normalized);
+  for (const warning of result.warnings) console.warn(`[x2md config] ${warning}`);
   ensureConfiguredDirs(normalized);
   return normalized;
 }

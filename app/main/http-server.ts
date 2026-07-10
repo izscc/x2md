@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 
-import { loadConfig, saveConfig, VERSION, MIN_EXTENSION_VERSION, LOCAL_API_PORT, getAppDir, configPath, logPath } from "../core/config.ts";
+import { loadConfig, saveConfig, publicConfig, VERSION, MIN_EXTENSION_VERSION, LOCAL_API_PORT, getAppDir, configPath, logPath } from "../core/config.ts";
 import { handleProfileCaptureSave, getProfileStateBucket, loadProfileCaptureState, normalizeProfileHandle } from "../core/profile-capture.ts";
 import { readSaveHistory, savePayload } from "../core/save.ts";
 import { sanitizeUnicodePayload } from "../core/unicode.ts";
@@ -73,11 +73,6 @@ function requestBoolean(value: unknown): boolean {
 function requestCredential(request: Request): string {
   const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   return bearer || request.headers.get("x-x2md-token") || "";
-}
-
-function publicConfig(cfg: Record<string, unknown>): Record<string, unknown> {
-  const { install_secret: _installSecret, local_api_token: _legacyToken, ...safe } = cfg;
-  return safe;
 }
 
 export function listenErrorMessage(error: any, port: number): string {
