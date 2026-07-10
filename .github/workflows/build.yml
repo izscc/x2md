@@ -2,19 +2,18 @@ name: 构建跨平台安装包
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: '版本号（如 2.0.0）'
-        required: false
-        default: '2.0.0'
   push:
     tags:
       - 'v*'
 
 jobs:
   test:
+    uses: ./.github/workflows/ci.yml
+
+  release-gate:
+    needs: test
     runs-on: ubuntu-latest
-    name: 测试
+    name: Release gate
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -24,19 +23,14 @@ jobs:
         with:
           node-version: '22.22.3'
 
-      - name: 安装 Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
       - name: 安装依赖
         run: npm ci
 
-      - name: 类型检查和测试
-        run: npm run check
+      - name: 校验发布源码
+        run: npm run check:clean-release
 
   build-mac:
-    needs: test
+    needs: release-gate
     runs-on: macos-latest
     name: 打包 Mac Electrobun 版
     steps:
@@ -76,7 +70,7 @@ jobs:
           retention-days: 30
 
   build-windows-legacy:
-    needs: test
+    needs: release-gate
     runs-on: windows-latest
     name: 打包 Windows Legacy 版
     steps:
@@ -111,7 +105,7 @@ jobs:
           retention-days: 30
 
   package-extension:
-    needs: test
+    needs: release-gate
     runs-on: ubuntu-latest
     name: 打包 Chrome 扩展
     steps:

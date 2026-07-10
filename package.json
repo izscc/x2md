@@ -29,6 +29,7 @@
     "smoke:mac:startup-time": "node scripts/smoke-mac-startup-time.mjs",
     "sync:extension-version": "node scripts/sync-extension-version.mjs",
     "check:version": "node scripts/sync-extension-version.mjs --check",
+    "check:clean-release": "node scripts/check-clean-release.mjs",
     "package:release": "node scripts/package-release.mjs"
   },
   "dependencies": {
