@@ -17,10 +17,12 @@ if (dirIndex >= 0 && !args[dirIndex + 1]) throw new Error("--dir requires a dire
 const releaseDir = dirIndex >= 0 ? args[dirIndex + 1] : `artifacts/v${pkg.version}`;
 const macZip = macOnlyZip || join(releaseDir, "X2MD_Mac.zip");
 const extZip = join(releaseDir, "X2MD_Extension.zip");
-const winZip = join(releaseDir, "X2MD_Windows_Lite.zip");
+const winZip = join(releaseDir, "X2MD_Windows_Beta.zip");
 const updateJson = join(releaseDir, "update.json");
+const sbom = join(releaseDir, "SBOM.cdx.json");
+const provenance = join(releaseDir, "PROVENANCE.sigstore.json");
 const sums = join(releaseDir, "SHA256SUMS.txt");
-for (const file of macOnlyZip ? [macZip] : [macZip, extZip, winZip, updateJson, sums]) if (!existsSync(file)) throw new Error(`missing release artifact: ${file}`);
+for (const file of macOnlyZip ? [macZip] : [macZip, extZip, winZip, updateJson, sbom, provenance, sums]) if (!existsSync(file)) throw new Error(`missing release artifact: ${file}`);
 
 if (!macOnlyZip) execFileSync("shasum", ["-a", "256", "-c", "SHA256SUMS.txt"], { cwd: releaseDir, stdio: "inherit" });
 
@@ -29,7 +31,8 @@ if (zipMb > 30) throw new Error(`X2MD_Mac.zip too large: ${zipMb.toFixed(1)}MB >
 
 const dir = mkdtempSync(join(tmpdir(), "x2md-release-size-"));
 try {
-  execFileSync("ditto", ["-x", "-k", macZip, dir]);
+  if (process.platform === "darwin") execFileSync("ditto", ["-x", "-k", macZip, dir]);
+  else execFileSync("unzip", ["-q", macZip, "-d", dir]);
   const du = execFileSync("du", ["-sk", join(dir, "X2MD.app")], { encoding: "utf8" });
   const appMb = Number(du.split(/\s+/)[0]) / 1024;
   if (appMb > 90) throw new Error(`X2MD.app too large: ${appMb.toFixed(1)}MB > 90MB`);
@@ -54,7 +57,11 @@ try {
     process.exit(0);
   }
   const recorded = readFileSync(sums, "utf8");
-  if (!recorded.includes("X2MD_Mac.zip") || !recorded.includes("X2MD_Extension.zip") || !recorded.includes("X2MD_Windows_Lite.zip") || !recorded.includes("update.json")) throw new Error("SHA256SUMS missing release files");
+  for (const name of ["X2MD_Mac.zip", "X2MD_Extension.zip", "X2MD_Windows_Beta.zip", "update.json", "SBOM.cdx.json", "PROVENANCE.sigstore.json"]) if (!recorded.includes(name)) throw new Error(`SHA256SUMS missing ${name}`);
+  const sbomJson = JSON.parse(readFileSync(sbom, "utf8"));
+  if (sbomJson.bomFormat !== "CycloneDX" || !Array.isArray(sbomJson.components)) throw new Error("SBOM.cdx.json is not a CycloneDX SBOM");
+  const provenanceJson = JSON.parse(readFileSync(provenance, "utf8"));
+  if (!provenanceJson.mediaType || !provenanceJson.verificationMaterial || (!provenanceJson.dsseEnvelope && !provenanceJson.messageSignature)) throw new Error("provenance bundle is invalid");
 
   const extDir = join(dir, "extension");
   execFileSync("unzip", ["-q", extZip, "-d", extDir]);
@@ -68,8 +75,8 @@ try {
 
   const winDir = join(dir, "windows");
   execFileSync("unzip", ["-q", winZip, "-d", winDir]);
-  for (const file of ["windows-lite/start-windows.bat", "windows-lite/app/main/index.ts"]) {
-    if (!existsSync(join(winDir, file))) throw new Error(`X2MD_Windows_Lite.zip missing ${file}`);
+  for (const file of ["X2MD_Windows_Beta/x2md.exe", "X2MD_Windows_Beta/artifact.json"]) {
+    if (!existsSync(join(winDir, file))) throw new Error(`X2MD_Windows_Beta.zip missing ${file}`);
   }
 
   console.log(`release artifacts ok: zip=${zipMb.toFixed(1)}MB app=${appMb.toFixed(1)}MB`);

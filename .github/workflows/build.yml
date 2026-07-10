@@ -16,10 +16,10 @@ jobs:
     name: Release gate
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.22.3'
 
@@ -36,13 +36,13 @@ jobs:
     name: 打包 Mac Electrobun 版
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: 安装 Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: 安装依赖
-        run: bun install
+        run: npm ci
 
       - name: Electrobun 打包
         run: bun run build:mac
@@ -66,6 +66,7 @@ jobs:
           test -n "$APP_PATH"
           test -d "$APP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" X2MD_Mac.zip
+          cp artifacts/stable-macos-arm64-update.json update.json
 
       - name: 解压并校验最终 Mac 压缩包
         env:
@@ -99,10 +100,12 @@ jobs:
           npm run smoke:mac:menu-visible
 
       - name: 上传 Mac 构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: X2MD_Mac
-          path: X2MD_Mac.zip
+          path: |
+            X2MD_Mac.zip
+            update.json
           retention-days: 30
 
   package-extension:
@@ -111,7 +114,7 @@ jobs:
     name: 打包 Chrome 扩展
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: 同步扩展版本
         run: node scripts/sync-extension-version.mjs
@@ -129,7 +132,7 @@ jobs:
           test -f /tmp/x2md-extension/save_response.js
 
       - name: 上传扩展压缩包
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: X2MD_Extension
           path: X2MD_Extension.zip
@@ -140,15 +143,15 @@ jobs:
     runs-on: windows-latest
     name: 构建 Windows TypeScript Beta
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.22.3'
       - run: npm ci
       - run: node scripts/build-windows-beta.mjs --output artifacts/windows-beta
       - run: node scripts/smoke-windows-beta.mjs --artifact artifacts/windows-beta/X2MD_Windows_Beta
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: X2MD_Windows_Beta
           path: artifacts/windows-beta/X2MD_Windows_Beta.zip
@@ -161,17 +164,44 @@ jobs:
     name: 创建 Release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.22.3'
+
+      - name: 安装冻结依赖
+        run: npm ci
 
       - name: 下载所有构建产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           merge-multiple: true
 
-      - name: 生成 SHA256 校验文件
-        run: sha256sum X2MD_Mac.zip X2MD_Extension.zip X2MD_Windows_Beta.zip > SHA256SUMS.txt
+      - name: 生成 SBOM
+        run: npm run generate:sbom
+
+      - name: 生成签名 provenance
+        id: provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            X2MD_Mac.zip
+            X2MD_Extension.zip
+            X2MD_Windows_Beta.zip
+            update.json
+            SBOM.cdx.json
+
+      - name: 保存 provenance bundle 并生成 SHA256
+        run: |
+          cp "${{ steps.provenance.outputs.bundle-path }}" PROVENANCE.sigstore.json
+          sha256sum X2MD_Mac.zip X2MD_Extension.zip X2MD_Windows_Beta.zip update.json SBOM.cdx.json PROVENANCE.sigstore.json > SHA256SUMS.txt
+          node scripts/check-release-artifacts.mjs --dir .
 
       - name: 校验最终下载产物
         run: |
@@ -190,7 +220,7 @@ jobs:
           fi
 
       - name: 创建 GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: X2MD ${{ github.ref_name }}
           body_path: RELEASE_NOTES.md
@@ -198,6 +228,9 @@ jobs:
             X2MD_Mac.zip
             X2MD_Extension.zip
             X2MD_Windows_Beta.zip
+            update.json
+            SBOM.cdx.json
+            PROVENANCE.sigstore.json
             SHA256SUMS.txt
           draft: false
           prerelease: false
