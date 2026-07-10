@@ -67,25 +67,25 @@ All core phases
 
 ## Phase 1 — Reliable Save Core
 
-- [ ] T09 定义 CaptureDocumentV1 / SaveResultV1 / error codes
-- [ ] T10 旧 payload normalizer 与请求限制
-- [ ] T11 统一原子 State Store
-- [ ] T12 原子输出路径与并发保存
-- [ ] T13 Save Index 与 duplicate policy
-- [ ] T14 安全媒体下载器
-- [ ] T15 图片有限并发与多目录附件语义
-- [ ] T16 视频下载移出 Markdown 渲染副作用
-- [ ] T17 保存阶段指标与脱敏诊断
+- [x] T09 定义 CaptureDocumentV1 / SaveResultV1 / error codes
+- [x] T10 旧 payload normalizer 与请求限制
+- [x] T11 统一原子 State Store
+- [x] T12 原子输出路径与并发保存
+- [x] T13 Save Index 与 duplicate policy
+- [x] T14 安全媒体下载器
+- [x] T15 图片有限并发与多目录附件语义
+- [x] T16 视频下载移出 Markdown 渲染副作用
+- [x] T17 保存阶段指标与脱敏诊断
 
 ### Checkpoint 1
 
-- [ ] 20 个不同 capture key、相同标题并发保存生成 20 个唯一文件
-- [ ] 20 个相同 capture key 并发保存默认得到 1 个 saved、19 个 skipped
-- [ ] config/history/index/profile state 故障后可解析或可恢复
-- [ ] 每个事务 commit 阶段中断后可 reconciliation，无空正式文件或孤立索引
-- [ ] 私网 URL、超限媒体、错误类型和超时被拒绝或安全回退
-- [ ] 多目录 Markdown 的附件引用全部有效
-- [ ] 视频失败不会返回完整成功
+- [x] 20 个不同 capture key、相同标题并发保存生成 20 个唯一文件
+- [x] 20 个相同 capture key 并发保存默认得到 1 个 saved、19 个 skipped
+- [x] config/history/index/profile state 故障后可解析或可恢复
+- [x] 每个事务 commit 阶段中断后可 reconciliation，无空正式文件或孤立索引
+- [x] 私网 URL、超限媒体、错误类型和超时被拒绝或安全回退
+- [x] 多目录 Markdown 的附件引用全部有效
+- [x] 视频失败不会返回完整成功
 
 ## Phase 2 — Capture Modules and Core UX
 
