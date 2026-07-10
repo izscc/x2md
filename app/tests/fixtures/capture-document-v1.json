@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "source": {
+    "platform": "x",
+    "url": "https://x.com/example/status/1234567890?s=20",
+    "canonical_url": "https://x.com/example/status/1234567890",
+    "source_id": "1234567890",
+    "captured_at": "2026-07-11T08:00:00.000Z"
+  },
+  "content": {
+    "type": "thread",
+    "text": "用于契约测试的公开示例内容。",
+    "author": { "name": "示例作者", "handle": "example", "url": "https://x.com/example" },
+    "published_at": "2026-07-11T07:30:00.000Z"
+  },
+  "media": [
+    { "kind": "image", "url": "https://pbs.twimg.com/media/example.jpg", "alt": "示例图片" }
+  ],
+  "relations": {
+    "thread": [{ "text": "第二条示例内容" }]
+  },
+  "preferences": {
+    "duplicate_policy": "skip",
+    "download_images": true,
+    "download_videos": false
+  },
+  "diagnostics": {
+    "capture_path": "dom",
+    "warnings": []
+  }
+}
