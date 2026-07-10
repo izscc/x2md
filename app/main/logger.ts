@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { logPath } from "../core/config.ts";
+import { sanitizeSaveMetrics, type SaveMetrics } from "../core/save-metrics.ts";
 
 export function log(message: string, appDir?: string): void {
   const line = `${new Date().toISOString()} ${message}\n`;
@@ -13,6 +14,10 @@ export function log(message: string, appDir?: string): void {
     // logging must never break saves
   }
   console.log(message);
+}
+
+export function logSaveMetrics(metrics: Partial<SaveMetrics> & Record<string, unknown>, appDir?: string): void {
+  log(`save_metrics ${JSON.stringify(sanitizeSaveMetrics(metrics))}`, appDir);
 }
 
 export function readLogTail(appDir?: string, maxLines = 200): string {

@@ -164,7 +164,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     return reply({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 
-  log(`请求 ${path}: type=${data.type || "?"} platform=${data.platform || "?"} url=${String(data.url || "").slice(0, 80)}`, appDir);
+  log(path === "/save" ? "请求 /save" : `请求 ${path}: type=${data.type || "?"} platform=${data.platform || "?"}`, appDir);
 
   try {
     if (path === "/config") {
@@ -184,7 +184,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     if (path === "/save") {
       const config = loadConfig(appDir);
       const result = await savePayload(data, config, appDir, canonicalCapture);
-      log(result.success ? `保存成功：${(result.saved || []).join(",")}` : `保存失败：${(result.errors || []).join(";")}`, appDir);
+      log(`保存完成：outcome=${result.outcome || (result.success ? "saved" : "failed")} files=${(result.saved || []).length}`, appDir);
       if (result.success) void notifySaveSuccess(config, result);
       return reply(result, result.success ? 200 : 500);
     }
@@ -209,7 +209,8 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     if (path === "/open") return reply({ success: true, target: openConfiguredTarget(data.target, appDir, opts.openDryRun) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    log(path === "/save" ? `保存失败：${message}` : `错误 ${path}: ${message}`, appDir);
+    const saveErrorCode = String((error as any)?.code || (/保存路径|路径/.test(message) ? "PATH_DENIED" : "INVALID_CAPTURE")).replace(/[^A-Z0-9_]/g, "").slice(0, 64);
+    log(path === "/save" ? `保存请求失败：code=${saveErrorCode}` : `错误 ${path}: ${message}`, appDir);
     return reply({ success: false, error: message }, path === "/save" || path === "/open" ? 400 : 500);
   }
 

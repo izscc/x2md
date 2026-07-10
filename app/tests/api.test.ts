@@ -172,12 +172,12 @@ test("POST /save 写入 Markdown 并拒绝未知自定义路径", async () => {
   assert.equal(bad.status, 400);
 
   const logText = readFileSync(logPath(appDir), "utf8");
-  assert.match(logText, /请求 \/save: type=tweet platform=\? url=https:\/\/x\.com\/a\/status\/1/);
+  assert.match(logText, /请求 \/save/);
   const requestLines = logText.split("\n").filter((line) => line.includes("请求 /save"));
   assert.equal(requestLines.some((line) => line.includes("SECRET_PRIVATE_BODY")), false);
   assert.equal(requestLines.some((line) => line.length > 180), false);
-  assert.match(logText, /保存成功：/);
-  assert.match(logText, /保存失败：自定义保存路径无效/);
+  assert.match(logText, /保存完成：outcome=saved files=1/);
+  assert.match(logText, /保存请求失败：code=PATH_DENIED/);
 });
 
 test("20 个不同 capture key 的同标题并发保存不覆盖", async () => {
