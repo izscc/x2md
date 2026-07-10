@@ -36,6 +36,10 @@
           <strong>网页按钮</strong>
           <span>保存和抓取入口</span>
         </button>
+        <button id="tab-organize" class="nav-item" data-panel-button="organize" role="tab" aria-selected="false" aria-controls="panel-organize" type="button">
+          <strong>整理规则</strong>
+          <span>标签和 Front Matter</span>
+        </button>
         <button id="tab-system" class="nav-item" data-panel-button="system" role="tab" aria-selected="false" aria-controls="panel-system" type="button">
           <strong>启动与工具</strong>
           <span>开机启动、日志</span>
@@ -244,6 +248,79 @@
                   <small class="field-hint">如果你希望博主抓取内容放到另一个目录，在这里选择即可。</small>
                 </div>
               </details>
+            </article>
+          </div>
+        </section>
+
+        <section id="panel-organize" class="panel" data-panel-section="organize" role="tabpanel" aria-labelledby="tab-organize" hidden>
+          <div class="panel-grid">
+            <article class="card span-5 priority-card">
+              <div class="card-head compact-head">
+                <div>
+                  <h3>默认标签</h3>
+                  <p>每次保存时写入固定标签，并可按内容自动补充。</p>
+                </div>
+              </div>
+
+              <label class="switch">
+                <input id="autoTagsEnabled" type="checkbox" />
+                <span>
+                  <strong>启用自动标签</strong>
+                  <small>关闭后只保留网页请求自带的标签。</small>
+                </span>
+              </label>
+
+              <label class="field">
+                <span>默认 tags</span>
+                <textarea id="defaultTags" rows="4" placeholder="剪报, 待整理"></textarea>
+                <small class="field-hint">使用逗号或换行分隔；开头的 # 会自动移除。</small>
+              </label>
+            </article>
+
+            <article class="card span-7 compact-card">
+              <div class="card-head compact-head">
+                <div>
+                  <h3>标签规则</h3>
+                  <p>按保存路径、关键词、作者或平台追加标签。</p>
+                </div>
+              </div>
+              <label class="field">
+                <span>规则 JSON</span>
+                <textarea id="tagRules" class="code-editor" rows="13" spellcheck="false" placeholder='{"keywords":[{"keyword":"AI","tags":["人工智能"]}]}'></textarea>
+                <small class="field-hint">仅支持 <code>paths</code>、<code>keywords</code>、<code>authors</code>、<code>platforms</code>。格式错误时不会保存。</small>
+              </label>
+            </article>
+
+            <article class="card span-12 quiet-card">
+              <div class="card-head">
+                <div>
+                  <h3>Front Matter 模板</h3>
+                  <p>选择内置模板，或使用白名单变量编写自定义 YAML。</p>
+                </div>
+              </div>
+              <label class="field fm-preset-field">
+                <span>模板</span>
+                <select id="frontMatterTemplate">
+                  <option value="default">默认</option>
+                  <option value="minimal">精简</option>
+                  <option value="dataview-full">Dataview 完整</option>
+                  <option value="custom">自定义</option>
+                </select>
+              </label>
+              <div id="customFrontMatterEditor" class="fm-editor" hidden>
+                <label class="field">
+                  <span>自定义模板（不包含 <code>---</code> 分隔线）</span>
+                  <textarea id="customFrontMatterTemplate" class="code-editor" rows="10" spellcheck="false" placeholder='title: "{{title}}"&#10;tags: [{{tags}}]'></textarea>
+                </label>
+                <div>
+                  <strong class="subhead">允许变量</strong>
+                  <div id="customFrontMatterVariables" class="variable-list" aria-label="允许的 Front Matter 变量"></div>
+                </div>
+                <div>
+                  <strong class="subhead">预览</strong>
+                  <pre id="customFrontMatterPreview" class="fm-preview" aria-live="polite">输入模板后在这里预览。</pre>
+                </div>
+              </div>
             </article>
           </div>
         </section>

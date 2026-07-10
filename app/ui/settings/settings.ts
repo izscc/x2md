@@ -1,3 +1,5 @@
+import { CUSTOM_FRONT_MATTER_VARIABLES, renderCustomFrontMatter } from "../../core/markdown.ts";
+
 const api = `${location.protocol === "http:" ? location.origin : "http://127.0.0.1:9527"}`;
 const session = String((globalThis as typeof globalThis & { X2MD_SESSION?: string }).X2MD_SESSION || "");
 const apiFetch = (input: string, init: RequestInit = {}) => fetch(input, {
@@ -8,7 +10,7 @@ const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 const field = (id: string) => $(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const pairingCode = String((globalThis as typeof globalThis & { X2MD_PAIRING_CODE?: string }).X2MD_PAIRING_CODE || "");
 
-type PanelKey = "save" | "media" | "capture" | "system";
+type PanelKey = "save" | "media" | "capture" | "organize" | "system";
 
 type PanelMeta = {
   label: string;
@@ -51,12 +53,108 @@ const PANEL_META: Record<PanelKey, PanelMeta> = {
     title: "网页上显示哪些按钮",
     description: "控制保存按钮和博主抓取按钮，默认保持开启即可。",
   },
+  organize: {
+    label: "整理规则",
+    title: "标签和 Front Matter",
+    description: "统一内容标签和文档元数据。规则只影响之后保存的内容。",
+  },
   system: {
     label: "启动与工具",
     title: "启动方式和帮助工具",
     description: "设置登录后自动启动。日志和端口属于排查问题时使用的工具。",
   },
 };
+
+const FRONT_MATTER_PREVIEW_VALUES: Record<typeof CUSTOM_FRONT_MATTER_VARIABLES[number], string> = {
+  title: "示例标题",
+  url: "https://x.com/example/status/123",
+  author_url: "https://x.com/example",
+  created: "2026-07-11 10:30:00",
+  published: "2026-07-11",
+  platform: "Twitter/X",
+  type: "tweet",
+  status_id: "123",
+  tags: "剪报, 示例",
+  poll: "false",
+  has_community_notes: "false",
+  content_state: "available",
+  x2md_version: "3.1.0",
+  repost: "false",
+  repost_author: "",
+};
+
+function parseDefaultTags(value: string): string[] {
+  return Array.from(new Set(value.split(/[,，\n]/).map((tag) => tag.trim().replace(/^#/, "")).filter(Boolean)));
+}
+
+function validateTagList(value: unknown, location: string): void {
+  if (!Array.isArray(value) || value.length === 0 || value.some((tag) => typeof tag !== "string" || !tag.trim())) {
+    throw new Error(`${location} 必须是非空标签字符串数组`);
+  }
+}
+
+function validateMappedRules(value: unknown, location: string): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${location} 必须是对象`);
+  for (const [name, rule] of Object.entries(value)) {
+    if (!name.trim()) throw new Error(`${location} 不能包含空名称`);
+    if (Array.isArray(rule)) validateTagList(rule, `${location}.${name}`);
+    else if (rule && typeof rule === "object" && !Array.isArray(rule)) {
+      const keys = Object.keys(rule);
+      if (keys.length !== 1 || keys[0] !== "tags") throw new Error(`${location}.${name} 只允许 tags 字段`);
+      validateTagList((rule as Record<string, unknown>).tags, `${location}.${name}.tags`);
+    } else throw new Error(`${location}.${name} 必须是标签数组或 { "tags": [...] }`);
+  }
+}
+
+function validateTagRules(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("标签规则必须是 JSON 对象");
+  const rules = value as Record<string, unknown>;
+  const allowed = new Set(["paths", "keywords", "authors", "platforms"]);
+  const unknown = Object.keys(rules).find((key) => !allowed.has(key));
+  if (unknown) throw new Error(`标签规则不支持字段：${unknown}`);
+  for (const key of ["paths", "authors", "platforms"]) {
+    if (rules[key] !== undefined) validateMappedRules(rules[key], key);
+  }
+  if (rules.keywords !== undefined) {
+    if (!Array.isArray(rules.keywords)) throw new Error("keywords 必须是数组");
+    rules.keywords.forEach((rule, index) => {
+      if (!rule || typeof rule !== "object" || Array.isArray(rule)) throw new Error(`keywords[${index}] 必须是对象`);
+      const record = rule as Record<string, unknown>;
+      if (Object.keys(record).some((key) => !["keyword", "tags"].includes(key))) throw new Error(`keywords[${index}] 只允许 keyword 和 tags 字段`);
+      if (typeof record.keyword !== "string" || !record.keyword.trim()) throw new Error(`keywords[${index}].keyword 不能为空`);
+      validateTagList(record.tags, `keywords[${index}].tags`);
+    });
+  }
+  return rules;
+}
+
+function parseTagRules(): Record<string, unknown> {
+  const source = (field("tagRules") as HTMLTextAreaElement).value.trim();
+  if (!source) return {};
+  try {
+    return validateTagRules(JSON.parse(source));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("标签规则不是有效的 JSON");
+    throw error;
+  }
+}
+
+function validateCustomFrontMatterTemplate(template: string): void {
+  const allowed = new Set<string>(CUSTOM_FRONT_MATTER_VARIABLES);
+  const unknown = Array.from(template.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g))
+    .map((match) => match[1])
+    .find((variable) => !allowed.has(variable));
+  if (unknown) throw new Error(`自定义 Front Matter 不支持变量：{{${unknown}}}`);
+}
+
+function updateFrontMatterEditor(): void {
+  const preset = (field("frontMatterTemplate") as HTMLSelectElement).value;
+  const editor = document.getElementById("customFrontMatterEditor");
+  if (editor) editor.hidden = preset !== "custom";
+  const template = (field("customFrontMatterTemplate") as HTMLTextAreaElement).value;
+  const preview = document.getElementById("customFrontMatterPreview");
+  if (preview) preview.textContent = renderCustomFrontMatter(template, FRONT_MATTER_PREVIEW_VALUES) || "输入模板后在这里预览。";
+}
 
 const ACTIVE_PANEL_KEY = "x2md-settings-active-panel";
 const panelButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-panel-button]"));
@@ -338,6 +436,12 @@ async function loadConfig(): Promise<void> {
   $("profileSavePath").value = cfg.profile_capture_save_path || "";
   $("showSiteSaveIcon").checked = Boolean(cfg.show_site_save_icon);
   $("showProfileCapture").checked = Boolean(cfg.show_x_profile_capture_button);
+  $("autoTagsEnabled").checked = cfg.auto_tags_enabled !== false;
+  (field("defaultTags") as HTMLTextAreaElement).value = Array.isArray(cfg.default_tags) ? cfg.default_tags.join(", ") : "";
+  (field("tagRules") as HTMLTextAreaElement).value = JSON.stringify(cfg.tag_rules || {}, null, 2);
+  (field("frontMatterTemplate") as HTMLSelectElement).value = cfg.front_matter_template || "default";
+  (field("customFrontMatterTemplate") as HTMLTextAreaElement).value = cfg.custom_front_matter_template || "";
+  updateFrontMatterEditor();
   const status = await apiFetch(`${api}/status`).then((res) => res.json()).catch(() => ({}));
   setServiceInfo(status);
   const ping = status.version ? status : await apiFetch(`${api}/ping`).then((res) => res.json()).catch(() => ({}));
@@ -348,8 +452,13 @@ async function loadConfig(): Promise<void> {
 
 async function saveConfig(): Promise<void> {
   let customSavePaths: Array<{ name: string; path: string }>;
+  let tagRules: Record<string, unknown>;
   try {
     customSavePaths = syncCustomSavePaths(true);
+    tagRules = parseTagRules();
+    if ((field("frontMatterTemplate") as HTMLSelectElement).value === "custom") {
+      validateCustomFrontMatterTemplate((field("customFrontMatterTemplate") as HTMLTextAreaElement).value);
+    }
   } catch (error) {
     setStatus(error instanceof Error ? error.message : String(error));
     return;
@@ -369,6 +478,11 @@ async function saveConfig(): Promise<void> {
     profile_capture_save_path: $("profileSavePath").value.trim(),
     show_site_save_icon: $("showSiteSaveIcon").checked,
     show_x_profile_capture_button: $("showProfileCapture").checked,
+    auto_tags_enabled: $("autoTagsEnabled").checked,
+    default_tags: parseDefaultTags((field("defaultTags") as HTMLTextAreaElement).value),
+    tag_rules: tagRules,
+    front_matter_template: (field("frontMatterTemplate") as HTMLSelectElement).value,
+    custom_front_matter_template: (field("customFrontMatterTemplate") as HTMLTextAreaElement).value,
     setup_completed: true,
   };
   const response = await apiFetch(`${api}/config`, {
@@ -439,6 +553,16 @@ document.getElementById("addCustomSavePath")?.addEventListener("click", () => ad
 document.querySelectorAll<HTMLButtonElement>("[data-filename-format]").forEach((button) => {
   button.addEventListener("click", () => setFilenameFormat(button.dataset.filenameFormat || DEFAULT_FILENAME_FORMAT));
 });
+(field("frontMatterTemplate") as HTMLSelectElement).addEventListener("change", updateFrontMatterEditor);
+(field("customFrontMatterTemplate") as HTMLTextAreaElement).addEventListener("input", updateFrontMatterEditor);
+const customFrontMatterVariables = document.getElementById("customFrontMatterVariables");
+if (customFrontMatterVariables) {
+  for (const variable of CUSTOM_FRONT_MATTER_VARIABLES) {
+    const code = document.createElement("code");
+    code.textContent = `{{${variable}}}`;
+    customFrontMatterVariables.append(code);
+  }
+}
 document.getElementById("chooseSavePath")?.addEventListener("click", () => void chooseFolderForInput($("savePath"), "主要保存位置"));
 document.getElementById("chooseVideoPath")?.addEventListener("click", () => void chooseFolderForInput($("videoPath"), "视频保存位置", $("savePath").value.trim()));
 document.getElementById("chooseProfilePath")?.addEventListener("click", () => void chooseFolderForInput($("profileSavePath"), "博主内容保存位置", $("savePath").value.trim()));

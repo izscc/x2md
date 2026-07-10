@@ -8,7 +8,7 @@ import { resolveSavePathsForRequest, normalizeConfig, cliArg, saveConfig, logPat
 import { buildLaunchAgentPlist, LABEL, LEGACY_LABEL, plistPath, programArgumentsForExecutable, setAutostartEnabled } from "../main/autostart.ts";
 import { bundledExtensionDirForExecutable, inlineSettingsHtml, settingsUrl, settingsViewsRootForExecutable, settingsWindowOptions } from "../main/desktop.ts";
 import { handleTrayAction, trayMenuItems } from "../main/tray.ts";
-import { buildMarkdown } from "../core/markdown.ts";
+import { buildMarkdown, CUSTOM_FRONT_MATTER_VARIABLES, renderCustomFrontMatter } from "../core/markdown.ts";
 import { sanitizeFilename } from "../core/filenames.ts";
 import { handleProfileCaptureSave } from "../core/profile-capture.ts";
 import { sanitizeUnicodeText } from "../core/unicode.ts";
@@ -471,6 +471,8 @@ test("设置页字段和脚本选择器保持一致", () => {
     "savePath", "customSavePaths", "videoPath", "enableVideoDownload", "enableSaveNotification",
     "videoThreshold", "filenameFormat", "maxFilenameLength", "profileRange",
     "profileCustomDays", "profileSavePath", "showSiteSaveIcon", "showProfileCapture",
+    "autoTagsEnabled", "defaultTags", "tagRules", "frontMatterTemplate",
+    "customFrontMatterTemplate", "customFrontMatterVariables", "customFrontMatterPreview",
     "autostart", "save", "test", "openSave", "openVideo", "openLog", "showLog", "openExtension",
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -481,6 +483,11 @@ test("设置页字段和脚本选择器保持一致", () => {
   assert.match(script, /openTarget\("extension"\)/);
   assert.match(script, /http:\/\/127\.0\.0\.1:9527/);
   assert.match(script, /apiFetch\(`\$\{api\}\/ping`\)/);
+  assert.match(html, /data-panel-button="organize"/);
+  assert.match(script, /validateTagRules/);
+  for (const key of ["auto_tags_enabled", "default_tags", "tag_rules", "front_matter_template", "custom_front_matter_template"]) {
+    assert.match(script, new RegExp(key));
+  }
 });
 
 test("自启参数在 packaged app 内只指向 app 可执行文件", () => {
@@ -720,4 +727,15 @@ test("Front Matter custom 模板只替换白名单变量", () => {
   assert.match(content, /status_id: "123"/);
   assert.match(content, /secret: ""/);
   assert.doesNotMatch(content.split("---")[1], /作者主页/);
+});
+
+test("自定义 Front Matter 预览复用渲染器和变量白名单", () => {
+  assert.deepEqual(CUSTOM_FRONT_MATTER_VARIABLES, [
+    "title", "url", "author_url", "created", "published", "platform", "type", "status_id",
+    "tags", "poll", "has_community_notes", "content_state", "x2md_version", "repost", "repost_author",
+  ]);
+  assert.equal(
+    renderCustomFrontMatter("title: \"{{title}}\"\nunknown: \"{{secret}}\"", { title: "示例标题" }),
+    "---\ntitle: \"示例标题\"\nunknown: \"\"\n---\n",
+  );
 });

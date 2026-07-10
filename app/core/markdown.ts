@@ -231,10 +231,15 @@ function statusIdFromUrl(url: string): string {
   return String(url || "").match(/\/status\/(\d+)/)?.[1] || "";
 }
 
-function renderCustomFrontMatter(template: string, vars: Record<string, string>): string {
-  const allowed = new Set(Object.keys(vars));
+export const CUSTOM_FRONT_MATTER_VARIABLES = [
+  "title", "url", "author_url", "created", "published", "platform", "type", "status_id",
+  "tags", "poll", "has_community_notes", "content_state", "x2md_version", "repost", "repost_author",
+] as const;
+
+export function renderCustomFrontMatter(template: string, vars: Partial<Record<typeof CUSTOM_FRONT_MATTER_VARIABLES[number], string>>): string {
+  const allowed = new Set<string>(CUSTOM_FRONT_MATTER_VARIABLES);
   const rendered = String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
-    return allowed.has(key) ? vars[key] : "";
+    return allowed.has(key) ? vars[key as keyof typeof vars] || "" : "";
   }).trim();
   return rendered ? `---\n${rendered}\n---\n` : "";
 }
