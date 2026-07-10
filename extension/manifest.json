@@ -59,6 +59,8 @@
                 "translation_helpers.js",
                 "bookmark_semantics.js",
                 "capture_ui.js",
+                "capture_contract.js",
+                "site-adapters/x-capture.js",
                 "content.js"
             ],
             "run_at": "document_idle"
