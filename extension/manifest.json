@@ -58,6 +58,7 @@
                 "twitter_graphql.js",
                 "translation_helpers.js",
                 "bookmark_semantics.js",
+                "capture_ui.js",
                 "content.js"
             ],
             "run_at": "document_idle"

@@ -2741,6 +2741,8 @@ function attachBookmarkListener(btn) {
 // ─────────────────────────────────────────────
 function captureAndSend(btn, options = {}) {
     showToast("正在获取完整推文内容…", "loading", null);
+    captureUi.setButtonState(btn, "loading", "X2MD 正在保存");
+    const sendCapture = (data) => sendToBackground(data, { button: btn });
 
     const attachCustomSavePath = (data) => {
         if (!options.customSavePath) return data;
@@ -2764,9 +2766,10 @@ function captureAndSend(btn, options = {}) {
                 const articleData = detectAndExtractArticle();
                 if (articleData && articleData.article_content.trim()) {
                     showToast("已识别为 X Article，正在保存…", "loading", null);
-                    sendToBackground(attachCustomSavePath(withVisibleTranslationOverride(articleData, document)));
+                    sendCapture(attachCustomSavePath(withVisibleTranslationOverride(articleData, document)));
                 } else {
                     showToast("未能提取文章内容，请稍后重试", "error", 4000);
+                    captureUi.setButtonState(btn, "failed", "X2MD：提取失败");
                 }
             } else {
                 setTimeout(() => waitForArticle(retries + 1), 500);
@@ -2781,6 +2784,7 @@ function captureAndSend(btn, options = {}) {
 
     if (!tweetUrl) {
         showToast("未找到推文链接，请进入推文详情页再试", "error", 4000);
+        captureUi.setButtonState(btn, "failed", "X2MD：未找到推文");
         return;
     }
 
@@ -2801,7 +2805,7 @@ function captureAndSend(btn, options = {}) {
             const inlineArticle = detectAndExtractArticle();
             if (inlineArticle && inlineArticle.article_content && inlineArticle.article_content.trim().length > 50) {
                 console.log("[x2md] 当前页面已有内嵌文章内容，直接保存");
-                sendToBackground(attachCustomSavePath(withVisibleTranslationOverride({
+                sendCapture(attachCustomSavePath(withVisibleTranslationOverride({
                     ...inlineArticle,
                     url: tweetUrl,       // 用原始推文链接（/status/xxx）作为源
                     author: inlineArticle.author || author,
@@ -2820,7 +2824,7 @@ function captureAndSend(btn, options = {}) {
 
         // 降级：让 background 尝试 fetch（可能得到空壳），最终降级为摘要+链接
         console.log("[x2md] 当前页面无内嵌内容，由 background 处理");
-        sendToBackground(attachCustomSavePath(withVisibleTranslationOverride({
+        sendCapture(attachCustomSavePath(withVisibleTranslationOverride({
             type: "note",
             url: tweetUrl,
             note_article_url: noteArticleUrl,
@@ -2838,7 +2842,7 @@ function captureAndSend(btn, options = {}) {
     const quote_tweet = extractQuoteTweetBasic(article);
 
     console.log("[x2md] 普通推文：", { handle, url: tweetUrl, text: text.slice(0, 40), hasQuote: !!quote_tweet });
-    sendToBackground(attachCustomSavePath(withVisibleTranslationOverride({
+    sendCapture(attachCustomSavePath(withVisibleTranslationOverride({
         author,
         handle,
         text,
@@ -2853,48 +2857,54 @@ function captureAndSend(btn, options = {}) {
     }, article || document)));
 }
 
-function sendToBackground(data) {
-    chrome.runtime.sendMessage({ action: "save_tweet", data }, (resp) => {
+function sendToBackground(data, uiContext = {}) {
+    chrome.runtime.sendMessage({ action: "save_tweet", data }, async (resp) => {
         if (chrome.runtime.lastError) {
             console.error("[x2md] 扩展通信失败：", chrome.runtime.lastError);
-            showToast("扩展通信失败，请重试", "error", 4000);
+            handleSaveResponse({
+                success: false,
+                outcome: "failed",
+                error: { message: "扩展通信失败，请重试", retryable: true },
+            }, {
+                ...uiContext,
+                captureDocument: data,
+                retry: () => sendToBackground(data, uiContext),
+            });
             return;
         }
 
         // 处理视频超时警告拦截
         if (resp && resp.require_video_confirm && resp.payload) {
-            const yes = window.confirm(`发现这篇推文中包含长达 ${resp.durationMin} 分钟的超长视频。\n\n点击“确定”：一并下载大体积视频文件并保存\n点击“取消”：跳过视频，仅保存图文`);
+            const yes = await captureUi.confirmLongVideo({ durationMin: resp.durationMin });
             resp.payload.download_video = yes;
             resp.payload.video_confirmed = true;
 
             showToast(yes ? "指令已下达，正在连同长视频一并下载..." : "视频已剥离，正在光速脱水图文...");
 
             chrome.runtime.sendMessage({ action: "force_save_tweet", data: resp.payload }, (finalResp) => {
-                handleSaveResponse(finalResp);
+                handleSaveResponse(finalResp, {
+                    ...uiContext,
+                    captureDocument: resp.payload,
+                    retry: () => sendToBackground(resp.payload, uiContext),
+                });
             });
             return;
         }
 
-        handleSaveResponse(resp);
+        handleSaveResponse(resp, {
+            ...uiContext,
+            captureDocument: data,
+            retry: () => sendToBackground(data, uiContext),
+        });
     });
 }
 
-function handleSaveResponse(resp) {
-    if (resp && resp.success) {
-        let savedName = "";
-        if (resp.result?.saved?.[0]) {
-            const parts = resp.result.saved[0].split("/");
-            savedName = parts[parts.length - 1].replace(/\.md$/, "");
-            if (savedName.length > 28) savedName = savedName.slice(0, 28) + "…";
-        }
-        const warning = resp.warning ? `\n⚠️ ${String(resp.warning).slice(0, 36)}` : "";
-        showToast("已保存到 Obsidian" + (savedName ? `\n📄 ${savedName}` : "") + warning, "success", warning ? 6500 : 4500);
-    } else {
-        const errMsg = resp?.result?.errors?.[0] || resp?.error || "未知错误";
-        const code = resp?.code || resp?.error_code || resp?.result?.code || resp?.result?.error_code;
-        const prefix = code ? `${code}：` : "";
-        showToast(`保存失败：${prefix}${String(errMsg).slice(0, 40)}`, "error", 5000);
-    }
+function handleSaveResponse(resp, context = {}) {
+    const result = resp?.result?.outcome
+        ? { ...resp.result, success: resp.success !== false }
+        : resp;
+    const view = captureUi.showSaveResult(result, context);
+    captureUi.setButtonState(context.button, view.state, `X2MD：${view.title}`);
 }
 
 // ─────────────────────────────────────────────
@@ -3562,51 +3572,12 @@ function ensureXProfileCaptureButton() {
 }
 
 // ─────────────────────────────────────────────
-// Toast（三阶段：loading / success / error）
+// Capture UI（toast / modal / result action / button state）
 // ─────────────────────────────────────────────
-const TOAST_COLORS = {
-    loading: { bg: "#1d9bf0", shadow: "rgba(29,155,240,.4)" },
-    success: { bg: "#00ba7c", shadow: "rgba(0,186,124,.4)" },
-    error: { bg: "#f4212e", shadow: "rgba(244,33,46,.4)" },
-};
-
-function getToast() {
-    let t = document.getElementById("__x2md_toast");
-    if (!t) {
-        t = document.createElement("div");
-        t.id = "__x2md_toast";
-        Object.assign(t.style, {
-            position: "fixed", bottom: "24px", right: "24px",
-            minWidth: "220px", maxWidth: "340px",
-            padding: "12px 18px", borderRadius: "12px",
-            fontSize: "14px", fontWeight: "600", color: "#fff",
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-            lineHeight: "1.5", zIndex: "2147483647",
-            boxShadow: "0 8px 24px rgba(0,0,0,.35)",
-            transition: "opacity .3s ease, transform .3s ease",
-            opacity: "0", transform: "translateY(8px)", pointerEvents: "none",
-        });
-        document.body.appendChild(t);
-    }
-    return t;
-}
+const captureUi = createCaptureUi();
 
 function showToast(message, type = "loading", duration = null) {
-    const t = getToast();
-    const c = TOAST_COLORS[type] || TOAST_COLORS.loading;
-    const icons = { loading: "⏳", success: "✅", error: "❌" };
-    t.style.background = c.bg;
-    t.style.boxShadow = `0 8px 24px ${c.shadow}`;
-    t.innerHTML = `<span style="margin-right:8px">${icons[type]}</span>${message}`;
-    t.style.opacity = "1";
-    t.style.transform = "translateY(0)";
-    clearTimeout(t.__timer);
-    if (duration !== null) {
-        t.__timer = setTimeout(() => {
-            t.style.opacity = "0";
-            t.style.transform = "translateY(8px)";
-        }, duration);
-    }
+    captureUi.showToast(message, type === "success" ? "saved" : type === "error" ? "failed" : type, duration);
 }
 
 function ensureFloatingSaveButton() {
