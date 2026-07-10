@@ -13,6 +13,7 @@ import { sanitizeFilename } from "../core/filenames.ts";
 import { handleProfileCaptureSave } from "../core/profile-capture.ts";
 import { sanitizeUnicodeText } from "../core/unicode.ts";
 import { saveNotificationBody } from "../main/notify.ts";
+import { isValidCredential, issueAppSession, revokeAppSession } from "../core/pairing.ts";
 
 const baseCfg = normalizeConfig({ filename_format: "{summary}_{date}_{author}", max_filename_length: 60, video_save_path: "/tmp/x2md-videos" });
 
@@ -269,6 +270,13 @@ test("CLI 参数只保留 app-dir；正式入口不消费 port", () => {
   }
 });
 
+test("App settings session 只在窗口生命周期内有效", () => {
+  const session = issueAppSession();
+  assert.equal(isValidCredential(session, "unrelated-install-secret"), true);
+  revokeAppSession(session);
+  assert.equal(isValidCredential(session, "unrelated-install-secret"), false);
+});
+
 test("旧配置缺少视频字段时保持扩展旧默认值", () => {
   const cfg = normalizeConfig({});
   assert.equal(cfg.enable_video_download, true);
@@ -439,7 +447,7 @@ test("设置页字段和脚本选择器保持一致", () => {
   assert.match(html, /加载已解压的扩展程序/);
   assert.match(script, /openTarget\("extension"\)/);
   assert.match(script, /http:\/\/127\.0\.0\.1:9527/);
-  assert.match(script, /fetch\(`\$\{api\}\/ping`\)/);
+  assert.match(script, /apiFetch\(`\$\{api\}\/ping`\)/);
 });
 
 test("自启参数在 packaged app 内只指向 app 可执行文件", () => {

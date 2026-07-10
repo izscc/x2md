@@ -24,6 +24,7 @@ export type X2MDConfig = Record<string, unknown> & {
   front_matter_template: string;
   custom_front_matter_template: string;
   local_api_token: string;
+  install_secret: string;
   require_local_api_token: boolean;
   download_images: boolean;
   image_attachment_path: string;
@@ -63,6 +64,7 @@ export const DEFAULT_CONFIG: X2MDConfig = {
   front_matter_template: "default",
   custom_front_matter_template: "",
   local_api_token: "",
+  install_secret: "",
   require_local_api_token: false,
   download_images: false,
   image_attachment_path: "X2MD-attachments",
@@ -129,6 +131,7 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   cfg.front_matter_template = ["default", "minimal", "dataview-full", "custom"].includes(String(cfg.front_matter_template)) ? String(cfg.front_matter_template) : DEFAULT_CONFIG.front_matter_template;
   cfg.custom_front_matter_template = String(cfg.custom_front_matter_template || "");
   cfg.local_api_token = String(cfg.local_api_token || "").trim() || randomUUID();
+  cfg.install_secret = String(cfg.install_secret || "").trim() || randomUUID();
   cfg.require_local_api_token = boolValue(cfg.require_local_api_token, DEFAULT_CONFIG.require_local_api_token);
   cfg.download_images = boolValue(cfg.download_images, DEFAULT_CONFIG.download_images);
   cfg.image_attachment_path = String(cfg.image_attachment_path || "").trim() || DEFAULT_CONFIG.image_attachment_path;

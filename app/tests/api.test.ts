@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { handleApiRequest, listenErrorMessage, startHttpServer } from "../main/http-server.ts";
-import { configPath, logPath, VERSION } from "../core/config.ts";
+import { configPath, logPath, VERSION, loadConfig } from "../core/config.ts";
+import { issuePairingCode } from "../core/pairing.ts";
 
 function tempApp(): string {
   return mkdtempSync(join(tmpdir(), "x2md-api-"));
@@ -16,16 +17,40 @@ async function json(res: Response): Promise<any> {
 }
 
 test("GET /ping 返回版本", async () => {
-  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/ping"), { appDir: tempApp() });
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/ping"), { appDir: tempApp(), testBypassAuth: true });
   assert.equal(res.status, 200);
   const body = await json(res);
   assert.equal(body.status, "ok");
   assert.equal(body.version, VERSION);
 });
 
+test("敏感路由要求配对，pairing code 单次签发扩展 token", async () => {
+  const appDir = tempApp();
+  const denied = await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir });
+  assert.equal(denied.status, 401);
+  const cfg = loadConfig(appDir);
+  const code = issuePairingCode(String(cfg.install_secret));
+  const pair = await handleApiRequest(new Request("http://127.0.0.1:9527/pair", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }),
+  }), { appDir });
+  assert.equal(pair.status, 200);
+  const token = (await pair.json()).token;
+  const reused = await handleApiRequest(new Request("http://127.0.0.1:9527/pair", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }),
+  }), { appDir });
+  assert.equal(reused.status, 401);
+  const allowed = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    headers: { Authorization: `Bearer ${token}` },
+  }), { appDir });
+  const body = await allowed.json();
+  assert.equal(allowed.status, 200);
+  assert.equal(body.install_secret, undefined);
+  assert.equal(body.local_api_token, undefined);
+});
+
 test("GET /status 返回服务状态摘要", async () => {
   const appDir = tempApp();
-  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/status"), { appDir });
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/status"), { appDir, testBypassAuth: true });
   const body = await json(res);
   assert.equal(res.status, 200);
   assert.equal(body.status, "ok");
@@ -39,39 +64,39 @@ test("普通网页 Origin 只能访问 /ping，不能读写敏感 API", async ()
   const appDir = tempApp();
   const evilPing = await handleApiRequest(new Request("http://127.0.0.1:9527/ping", {
     headers: { Origin: "https://evil.example" },
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(evilPing.status, 200);
 
   const evilConfig = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
     headers: { Origin: "https://evil.example" },
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(evilConfig.status, 403);
 
   const evilStatus = await handleApiRequest(new Request("http://127.0.0.1:9527/status", {
     headers: { Origin: "https://evil.example" },
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(evilStatus.status, 403);
 
   const localStatus = await handleApiRequest(new Request("http://127.0.0.1:9527/status", {
     headers: { Origin: "http://127.0.0.1:9527" },
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(localStatus.status, 200);
 
   const evilLog = await handleApiRequest(new Request("http://127.0.0.1:9527/log", {
     headers: { Origin: "https://evil.example" },
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(evilLog.status, 403);
 
   const evilSave = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
     method: "POST",
     headers: { Origin: "https://evil.example", "Content-Type": "application/json" },
     body: JSON.stringify({ type: "tweet", text: "bad" }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(evilSave.status, 403);
 
   const extensionConfig = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
     headers: { Origin: "chrome-extension://abcdefghijklmnop" },
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(extensionConfig.status, 200);
 });
 
@@ -82,10 +107,10 @@ test("GET/POST /config 读写配置", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [emojiDir], setup_completed: true }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(post.status, 200);
 
-  const get = await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir });
+  const get = await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir, testBypassAuth: true });
   const cfg = await json(get);
   assert.equal(cfg.setup_completed, true);
   assert.deepEqual(cfg.save_paths, [emojiDir]);
@@ -97,7 +122,7 @@ test("扩展保存 save_paths 时自动完成首次设置", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [join(appDir, "md")] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   const body = await json(res);
   assert.equal(res.status, 200);
   assert.equal(body.config.setup_completed, true);
@@ -109,7 +134,7 @@ test("POST /config 拒绝清空保存路径", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: ["", " "] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(res.status, 400);
   assert.match((await json(res)).error, /保存路径/);
 });
@@ -121,13 +146,13 @@ test("POST /save 写入 Markdown 并拒绝未知自定义路径", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [mdDir], custom_save_paths: [{ name: "允许", path: join(appDir, "allowed") }] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   const ok = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "tweet", text: "hello", url: "https://x.com/a/status/1", handle: "@alice" }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   const result = await json(ok);
   assert.equal(ok.status, 200);
   assert.equal(result.success, true);
@@ -143,7 +168,7 @@ test("POST /save 写入 Markdown 并拒绝未知自定义路径", async () => {
       custom_save_path_name: "未知",
       custom_save_path: "/tmp/nope",
     }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   assert.equal(bad.status, 400);
 
   const logText = readFileSync(logPath(appDir), "utf8");
@@ -162,7 +187,7 @@ test("POST /save 默认保持远程图片链接", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [mdDir] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
     method: "POST",
@@ -173,7 +198,7 @@ test("POST /save 默认保持远程图片链接", async () => {
       url: "https://x.com/a/status/19",
       images: ["https://pbs.twimg.com/media/abc.jpg?format=jpg&name=small"],
     }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   const body = await json(res);
   const md = readFileSync(body.saved[0], "utf8");
   assert.equal(res.status, 200);
@@ -191,7 +216,7 @@ test("POST /save 开启后非 Twitter 图片下载到附件目录", async () => 
       download_images: true,
       image_attachment_path: "attachments",
     }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(new Uint8Array([1, 2, 3]), {
@@ -208,7 +233,7 @@ test("POST /save 开启后非 Twitter 图片下载到附件目录", async () => 
         url: "https://example.com/status/190",
         images: ["https://example.com/media/abc.jpg"],
       }),
-    }), { appDir });
+    }), { appDir, testBypassAuth: true });
     const body = await json(res);
     const md = readFileSync(body.saved[0], "utf8");
     assert.equal(res.status, 200);
@@ -231,7 +256,7 @@ test("POST /save 开启图片下载时 Twitter 仍保持远程原图链接", asy
       download_images: true,
       image_attachment_path: "attachments",
     }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   let fetchCalled = false;
   const originalFetch = globalThis.fetch;
@@ -250,7 +275,7 @@ test("POST /save 开启图片下载时 Twitter 仍保持远程原图链接", asy
         url: "https://x.com/a/status/192",
         images: ["https://pbs.twimg.com/media/abc.jpg?format=jpg&name=small"],
       }),
-    }), { appDir });
+    }), { appDir, testBypassAuth: true });
     const body = await json(res);
     const md = readFileSync(body.saved[0], "utf8");
     assert.equal(res.status, 200);
@@ -273,7 +298,7 @@ test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", a
       download_images: true,
       image_attachment_path: "attachments",
     }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
@@ -289,7 +314,7 @@ test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", a
         url: "https://example.com/status/191",
         images: [imageUrl],
       }),
-    }), { appDir });
+    }), { appDir, testBypassAuth: true });
     const body = await json(res);
     const md = readFileSync(body.saved[0], "utf8");
     assert.equal(res.status, 200);
@@ -316,7 +341,7 @@ test("POST /config 忽略端口，并保留视频和博主配置", async () => {
       profile_capture_custom_days: 14,
       custom_save_paths: [{ name: "素材", path: join(appDir, "assets") }],
     }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   const body = await json(res);
   assert.equal(res.status, 200);
   assert.equal(body.restart_required, false);
@@ -334,7 +359,7 @@ test("POST /profile-capture 写入文件，GET state 返回去重状态", async 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [mdDir] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   const save = await handleApiRequest(new Request("http://127.0.0.1:9527/profile-capture", {
     method: "POST",
@@ -344,13 +369,13 @@ test("POST /profile-capture 写入文件，GET state 返回去重状态", async 
       profile: { handle: "alice", displayName: "Alice" },
       items: [{ url: "https://x.com/alice/status/1", published: "2026-05-29T08:00:00Z", text: "hello" }],
     }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
   const saved = await json(save);
   assert.equal(save.status, 200);
   assert.equal(saved.success, true);
   assert.equal(existsSync(saved.saved[0]), true);
 
-  const state = await handleApiRequest(new Request("http://127.0.0.1:9527/profile-capture/state?handle=alice"), { appDir });
+  const state = await handleApiRequest(new Request("http://127.0.0.1:9527/profile-capture/state?handle=alice"), { appDir, testBypassAuth: true });
   const body = await json(state);
   assert.equal(body.handle, "alice");
   assert.equal(Boolean(body.state.tweets.captured_ids["1"]), true);
@@ -358,7 +383,7 @@ test("POST /profile-capture 写入文件，GET state 返回去重状态", async 
 
 test("POST /autostart dry-run 不修改系统但返回目标状态", async () => {
   const appDir = tempApp();
-  const get = await handleApiRequest(new Request("http://127.0.0.1:9527/autostart"), { appDir });
+  const get = await handleApiRequest(new Request("http://127.0.0.1:9527/autostart"), { appDir, testBypassAuth: true });
   const current = await json(get);
   assert.equal(get.status, 200);
   assert.equal(current.success, true);
@@ -368,7 +393,7 @@ test("POST /autostart dry-run 不修改系统但返回目标状态", async () =>
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled: true }),
-  }), { appDir, autostartDryRun: true });
+  }), { appDir, testBypassAuth: true, autostartDryRun: true });
   const body = await json(res);
   assert.equal(res.status, 200);
   assert.equal(body.success, true);
@@ -378,7 +403,7 @@ test("POST /autostart dry-run 不修改系统但返回目标状态", async () =>
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled: "false" }),
-  }), { appDir, autostartDryRun: true });
+  }), { appDir, testBypassAuth: true, autostartDryRun: true });
   assert.equal((await json(off)).enabled, false);
   const logText = readFileSync(logPath(appDir), "utf8");
   assert.match(logText, /开机自动运行：enabled/);
@@ -393,13 +418,13 @@ test("POST /open 只允许打开白名单目标", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [join(appDir, "md")], video_save_path: join(appDir, "video") }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   const ok = await handleApiRequest(new Request("http://127.0.0.1:9527/open", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target: "save" }),
-  }), { appDir, openDryRun: true });
+  }), { appDir, testBypassAuth: true, openDryRun: true });
   assert.equal(ok.status, 200);
   assert.equal((await json(ok)).target, "save");
 
@@ -407,7 +432,7 @@ test("POST /open 只允许打开白名单目标", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target: "/tmp/evil" }),
-  }), { appDir, openDryRun: true });
+  }), { appDir, testBypassAuth: true, openDryRun: true });
   assert.equal(bad.status, 400);
 });
 
@@ -418,13 +443,13 @@ test("POST /choose-folder 使用系统文件夹选择器并支持 dry-run", asyn
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [mdDir] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   const res = await handleApiRequest(new Request("http://127.0.0.1:9527/choose-folder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ currentPath: mdDir }),
-  }), { appDir, dialogDryRun: true });
+  }), { appDir, testBypassAuth: true, dialogDryRun: true });
   const body = await json(res);
   assert.equal(res.status, 200);
   assert.equal(body.path, mdDir);
@@ -437,9 +462,9 @@ test("GET /log 返回日志尾部", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [join(appDir, "md")] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
-  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/log"), { appDir });
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/log"), { appDir, testBypassAuth: true });
   const body = await json(res);
   assert.equal(res.status, 200);
   assert.equal(body.success, true);
@@ -490,7 +515,7 @@ test("Bun 常见端口占用错误也返回明确提示", () => {
 });
 
 test("CORS OPTIONS 兼容扩展", async () => {
-  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", { method: "OPTIONS" }), { appDir: tempApp() });
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", { method: "OPTIONS" }), { appDir: tempApp(), testBypassAuth: true });
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("Access-Control-Allow-Origin"), "*");
 });
@@ -503,15 +528,15 @@ test("GET /history 返回最近保存记录", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ save_paths: [mdDir] }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
   await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "tweet", text: "history title", url: "https://x.com/a/status/9" }),
-  }), { appDir });
+  }), { appDir, testBypassAuth: true });
 
-  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/history"), { appDir });
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/history"), { appDir, testBypassAuth: true });
   const body = await json(res);
   assert.equal(res.status, 200);
   assert.equal(body.success, true);
@@ -521,34 +546,13 @@ test("GET /history 返回最近保存记录", async () => {
 });
 
 
-test("POST /save 可选校验 local_api_token", async () => {
+test("新配置持久化 install secret 但 API 不返回凭据", async () => {
   const appDir = tempApp();
-  const mdDir = join(appDir, "md");
-  const cfgRes = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ save_paths: [mdDir], require_local_api_token: true, local_api_token: "secret-token" }),
-  }), { appDir });
-  assert.equal(cfgRes.status, 200);
-
-  const denied = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "tweet", text: "denied" }),
-  }), { appDir });
-  assert.equal(denied.status, 401);
-
-  const ok = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-x2md-token": "secret-token" },
-    body: JSON.stringify({ type: "tweet", text: "allowed" }),
-  }), { appDir });
-  assert.equal(ok.status, 200);
-});
-
-test("新配置自动生成 local_api_token 且默认不强制", async () => {
-  const cfg = await json(await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir: tempApp() }));
-  assert.equal(typeof cfg.local_api_token, "string");
-  assert.ok(cfg.local_api_token.length > 8);
-  assert.equal(cfg.require_local_api_token, false);
+  const first = loadConfig(appDir).install_secret;
+  const second = loadConfig(appDir).install_secret;
+  assert.equal(first, second);
+  assert.ok(String(first).length > 8);
+  const cfg = await json(await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir, testBypassAuth: true }));
+  assert.equal(cfg.install_secret, undefined);
+  assert.equal(cfg.local_api_token, undefined);
 });

@@ -13,6 +13,19 @@ importScripts("translation_helpers.js");
 importScripts("save_response.js");
 
 const SERVER_BASE = "http://127.0.0.1:9527";
+
+async function localToken() {
+    const stored = await chrome.storage.local.get("x2md_api_token");
+    return stored.x2md_api_token || "";
+}
+
+async function localFetch(path, init = {}) {
+    const token = await localToken();
+    return fetch(`${SERVER_BASE}${path}`, {
+        ...init,
+        headers: { ...init.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+}
 const TWITTER_BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 const GRAPHQL_DISCOVERY_CACHE = new Map();
 const GRAPHQL_STORAGE_CACHE_KEY = typeof GRAPHQL_OPS_STORAGE_KEY === "string" ? GRAPHQL_OPS_STORAGE_KEY : "graphql_ops_v1";
@@ -1104,7 +1117,7 @@ async function fetchProfileArticleForBatch(articleData = {}) {
 }
 
 async function postProfileCapturePayload(payload) {
-    const resp = await fetch(`${SERVER_BASE}/profile-capture`, {
+    const resp = await localFetch(`/profile-capture`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1429,7 +1442,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const payload = message.data || {};
                 let batchConfig = {};
                 try {
-                    const cfgResp = await fetch(`${SERVER_BASE}/config`);
+                    const cfgResp = await localFetch(`/config`);
                     batchConfig = await cfgResp.json();
                 } catch {}
                 const mode = payload.mode === "articles" ? "articles" : "tweets";
@@ -1630,7 +1643,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 let durationThresholdMin = 5;
                 let cfg = {};
                 try {
-                    const cfgResp = await fetch(`${SERVER_BASE}/config`);
+                    const cfgResp = await localFetch(`/config`);
                     cfg = await cfgResp.json();
                     enableVideoDownload = cfg.enable_video_download !== false;
                     durationThresholdMin = cfg.video_duration_threshold || 5;
@@ -1675,7 +1688,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
                 // ---------------------------------------------
 
-                const resp = await fetch(`${SERVER_BASE}/save`, {
+                const resp = await localFetch(`/save`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data)
@@ -1750,7 +1763,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         (async () => {
             try {
                 const data = applyTranslationOverrideToData(message.data || {});
-                const resp = await fetch(`${SERVER_BASE}/save`, {
+                const resp = await localFetch(`/save`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data)
@@ -1768,10 +1781,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.action === "pair") {
+        (async () => {
+            try {
+                const resp = await fetch(`${SERVER_BASE}/pair`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code: String(message.code || "").trim() }),
+                });
+                const json = await resp.json();
+                if (resp.ok && json.token) await chrome.storage.local.set({ x2md_api_token: json.token });
+                sendResponse({ success: resp.ok && !!json.token, error: json.error });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
     if (message.action === "get_config") {
         (async () => {
             try {
-                const resp = await fetch(`${SERVER_BASE}/config`);
+                const resp = await localFetch(`/config`);
                 const cfg = await resp.json();
                 sendResponse({ success: true, config: cfg });
             } catch (err) {
@@ -1784,7 +1815,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "get_history") {
         (async () => {
             try {
-                const resp = await fetch(`${SERVER_BASE}/history`);
+                const resp = await localFetch(`/history`);
                 const json = await resp.json();
                 sendResponse({ success: json.success !== false, history: json.history || [] });
             } catch (err) {
@@ -1797,7 +1828,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "update_config") {
         (async () => {
             try {
-                const resp = await fetch(`${SERVER_BASE}/config`, {
+                const resp = await localFetch(`/config`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(message.config)
@@ -1814,7 +1845,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "get_autostart") {
         (async () => {
             try {
-                const resp = await fetch(`${SERVER_BASE}/autostart`);
+                const resp = await localFetch(`/autostart`);
                 const json = await resp.json();
                 sendResponse({ success: json.success !== false, enabled: !!json.enabled });
             } catch (err) {
@@ -1827,7 +1858,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "set_autostart") {
         (async () => {
             try {
-                const resp = await fetch(`${SERVER_BASE}/autostart`, {
+                const resp = await localFetch(`/autostart`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ enabled: !!message.enabled })
@@ -1844,7 +1875,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "ping") {
         (async () => {
             try {
-                const resp = await fetch(`${SERVER_BASE}/ping`, {
+                const resp = await localFetch(`/ping`, {
                     signal: AbortSignal.timeout(2000)
                 });
                 const json = await resp.json();

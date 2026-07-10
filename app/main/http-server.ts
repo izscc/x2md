@@ -8,6 +8,7 @@ import { isAutostartEnabled, setAutostartEnabled } from "./autostart.ts";
 import { chooseFolder, openConfiguredTarget, showSettingsWindow } from "./desktop.ts";
 import { log, readLogTail } from "./logger.ts";
 import { notifySaveSuccess } from "./notify.ts";
+import { consumePairingCode, isValidCredential } from "../core/pairing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,11 +47,14 @@ function requestBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true";
 }
 
-function hasValidLocalApiToken(request: Request, cfg: Record<string, unknown>): boolean {
-  if (!cfg.require_local_api_token) return true;
-  const expected = String(cfg.local_api_token || "");
-  if (!expected) return false;
-  return request.headers.get("x-x2md-token") === expected;
+function requestCredential(request: Request): string {
+  const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  return bearer || request.headers.get("x-x2md-token") || "";
+}
+
+function publicConfig(cfg: Record<string, unknown>): Record<string, unknown> {
+  const { install_secret: _installSecret, local_api_token: _legacyToken, ...safe } = cfg;
+  return safe;
 }
 
 export function listenErrorMessage(error: any, port: number): string {
@@ -61,7 +65,7 @@ export function listenErrorMessage(error: any, port: number): string {
   return `端口 ${port} 启动失败：${message}`;
 }
 
-export async function handleApiRequest(request: Request, opts: { appDir?: string; autostartDryRun?: boolean; openDryRun?: boolean; dialogDryRun?: boolean; port?: number } = {}): Promise<Response> {
+export async function handleApiRequest(request: Request, opts: { appDir?: string; autostartDryRun?: boolean; openDryRun?: boolean; dialogDryRun?: boolean; port?: number; testBypassAuth?: boolean } = {}): Promise<Response> {
   const appDir = opts.appDir || getAppDir();
   const url = new URL(request.url);
   const path = url.pathname;
@@ -70,7 +74,17 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
 
   if (request.method === "GET" && path === "/ping") return json({ status: "ok", version: VERSION, min_extension_version: MIN_EXTENSION_VERSION });
   if (!isTrustedApiOrigin(request)) return json({ success: false, error: "Forbidden" }, 403);
-  if (request.method === "GET" && path === "/config") return json(loadConfig(appDir));
+  if (request.method === "POST" && path === "/pair") {
+    const data: Record<string, any> = await readJson(request).catch(() => ({}));
+    const cfg = loadConfig(appDir);
+    const token = consumePairingCode(String(data.code || ""), String(cfg.install_secret || ""));
+    return token ? json({ success: true, token }) : json({ success: false, error: "Invalid or expired pairing code" }, 401);
+  }
+  const authConfig = loadConfig(appDir);
+  if (!opts.testBypassAuth && !isValidCredential(requestCredential(request), String(authConfig.install_secret || ""))) {
+    return json({ success: false, error: "Authentication required" }, 401);
+  }
+  if (request.method === "GET" && path === "/config") return json(publicConfig(authConfig));
   if (request.method === "GET" && path === "/status") {
     const cfg = loadConfig(appDir);
     return json({
@@ -122,13 +136,10 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       }
       const config = saveConfig(nextConfig, appDir);
       log(`配置已更新：keys=${Object.keys(data).join(",")}`, appDir);
-      return json({ success: true, config, restart_required: false });
+      return json({ success: true, config: publicConfig(config), restart_required: false });
     }
     if (path === "/save") {
       const config = loadConfig(appDir);
-      if (!hasValidLocalApiToken(request, config)) {
-        return json({ success: false, error: "Invalid local API token" }, 401);
-      }
       const result = await savePayload(data, config, appDir);
       log(result.success ? `保存成功：${(result.saved || []).join(",")}` : `保存失败：${(result.errors || []).join(";")}`, appDir);
       if (result.success) void notifySaveSuccess(config, result);
@@ -184,6 +195,7 @@ export async function startHttpServer(opts: { appDir?: string; testPort?: number
   const dialogDryRun = process.env.X2MD_DIALOG_DRY_RUN === "1" || openDryRun;
   log(`配置路径：${configPath(appDir)}`, appDir);
   const port = opts.testPort ?? LOCAL_API_PORT;
+  const testBypassAuth = opts.testPort !== undefined;
   const hostname = opts.hostname || "127.0.0.1";
 
   if ((globalThis as any).Bun?.serve) {
@@ -192,7 +204,7 @@ export async function startHttpServer(opts: { appDir?: string; testPort?: number
       const server = (globalThis as any).Bun.serve({
         hostname,
         port,
-        fetch: (request: Request) => handleApiRequest(request, { appDir, port: actualPort, openDryRun, dialogDryRun }),
+        fetch: (request: Request) => handleApiRequest(request, { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth }),
       });
       actualPort = server.port;
       log(`x2md 服务已启动：http://${hostname}:${server.port}`, appDir);
@@ -204,7 +216,7 @@ export async function startHttpServer(opts: { appDir?: string; testPort?: number
   }
 
   let actualPort = port;
-  const server: Server = createServer(async (req, res) => writeNodeResponse(res, await handleApiRequest(await requestFromIncoming(req), { appDir, port: actualPort, openDryRun, dialogDryRun })));
+  const server: Server = createServer(async (req, res) => writeNodeResponse(res, await handleApiRequest(await requestFromIncoming(req), { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth })));
   await new Promise<void>((resolve, reject) => {
     server.once("error", (error: any) => {
       reject(new Error(listenErrorMessage(error, port)));

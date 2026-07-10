@@ -1,6 +1,12 @@
 const api = `${location.protocol === "http:" ? location.origin : "http://127.0.0.1:9527"}`;
+const session = String((globalThis as typeof globalThis & { X2MD_SESSION?: string }).X2MD_SESSION || "");
+const apiFetch = (input: string, init: RequestInit = {}) => fetch(input, {
+  ...init,
+  headers: { ...init.headers, Authorization: `Bearer ${session}` },
+});
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 const field = (id: string) => $(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+const pairingCode = String((globalThis as typeof globalThis & { X2MD_PAIRING_CODE?: string }).X2MD_PAIRING_CODE || "");
 
 type PanelKey = "save" | "media" | "capture" | "system";
 
@@ -117,7 +123,7 @@ function setFilenameFormat(format: string): void {
 }
 
 async function chooseFolder(currentPath: string): Promise<string> {
-  const response = await fetch(`${api}/choose-folder`, {
+  const response = await apiFetch(`${api}/choose-folder`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ currentPath }),
@@ -316,7 +322,7 @@ function showPanel(panel: PanelKey): void {
 }
 
 async function loadConfig(): Promise<void> {
-  const response = await fetch(`${api}/config`);
+  const response = await apiFetch(`${api}/config`);
   const cfg = await response.json();
   $("savePath").value = cfg.save_paths?.[0] || "";
   const customPaths = Array.isArray(cfg.custom_save_paths) ? cfg.custom_save_paths : [];
@@ -332,10 +338,10 @@ async function loadConfig(): Promise<void> {
   $("profileSavePath").value = cfg.profile_capture_save_path || "";
   $("showSiteSaveIcon").checked = Boolean(cfg.show_site_save_icon);
   $("showProfileCapture").checked = Boolean(cfg.show_x_profile_capture_button);
-  const status = await fetch(`${api}/status`).then((res) => res.json()).catch(() => ({}));
+  const status = await apiFetch(`${api}/status`).then((res) => res.json()).catch(() => ({}));
   setServiceInfo(status);
-  const ping = status.version ? status : await fetch(`${api}/ping`).then((res) => res.json()).catch(() => ({}));
-  const autostart = await fetch(`${api}/autostart`).then((res) => res.json()).catch(() => ({}));
+  const ping = status.version ? status : await apiFetch(`${api}/ping`).then((res) => res.json()).catch(() => ({}));
+  const autostart = await apiFetch(`${api}/autostart`).then((res) => res.json()).catch(() => ({}));
   $("autostart").checked = Boolean(autostart.enabled);
   setStatus(ping.version ? "已连接，保存功能可用" : "已连接");
 }
@@ -365,7 +371,7 @@ async function saveConfig(): Promise<void> {
     show_x_profile_capture_button: $("showProfileCapture").checked,
     setup_completed: true,
   };
-  const response = await fetch(`${api}/config`, {
+  const response = await apiFetch(`${api}/config`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -376,7 +382,7 @@ async function saveConfig(): Promise<void> {
 }
 
 async function openTarget(target: string): Promise<void> {
-  const response = await fetch(`${api}/open`, {
+  const response = await apiFetch(`${api}/open`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target }),
@@ -385,7 +391,7 @@ async function openTarget(target: string): Promise<void> {
 }
 
 async function updateAutostart(): Promise<void> {
-  const response = await fetch(`${api}/autostart`, {
+  const response = await apiFetch(`${api}/autostart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled: $("autostart").checked }),
@@ -399,7 +405,7 @@ async function showLog(): Promise<void> {
   showPanel("system");
   const view = document.getElementById("logView") as HTMLPreElement | null;
   if (!view) return;
-  const response = await fetch(`${api}/log`);
+  const response = await apiFetch(`${api}/log`);
   const result = await response.json().catch(() => ({}));
   view.hidden = false;
   view.textContent = result.log || "暂无日志";
@@ -423,7 +429,7 @@ panelButtons.forEach((button) => {
 
 $("save").addEventListener("click", () => void saveConfig());
 $("test").addEventListener("click", async () => {
-  const response = await fetch(`${api}/ping`);
+  const response = await apiFetch(`${api}/ping`);
   await response.json().catch(() => ({}));
   setStatus(response.ok ? "服务正常，可以保存内容" : "服务不可用");
 });
@@ -452,5 +458,7 @@ $("openExtension").addEventListener("click", () => {
   void openTarget("extension");
 });
 
+const pairingCodeElement = document.getElementById("pairingCode");
+if (pairingCodeElement && pairingCode) pairingCodeElement.textContent = pairingCode;
 showPanel(safeGetPanel());
 loadConfig().catch((error) => setStatus(`连接失败：${error.message}`));

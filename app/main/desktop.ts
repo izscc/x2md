@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 
 import { getAppDir, loadConfig, logPath, LOCAL_API_PORT } from "../core/config.ts";
 import { log } from "./logger.ts";
+import { issueAppSession, issuePairingCode, revokeAppSession } from "../core/pairing.ts";
 
 let settingsWindow: any;
 
@@ -20,14 +21,14 @@ function escapeInlineStyle(style: string): string {
   return style.replace(/<\/style/gi, "<\\/style");
 }
 
-export function inlineSettingsHtml(html: string, css: string, script: string, port: number | string): string {
+export function inlineSettingsHtml(html: string, css: string, script: string, port: number | string, session = "", pairingCode = ""): string {
   const withCss = html.replace(
     /<link\s+rel="stylesheet"\s+href="styles\.css"\s*\/?>/,
     `<style>${escapeInlineStyle(css)}</style>`,
   );
   return withCss.replace(
     /<script\s+type="module"\s+src="settings\.js"><\/script>/,
-    `<script>globalThis.X2MD_PORT = ${JSON.stringify(String(port))};</script><script type="module">${escapeInlineScript(script)}</script>`,
+    `<script>globalThis.X2MD_PORT = ${JSON.stringify(String(port))};globalThis.X2MD_SESSION = ${JSON.stringify(session)};globalThis.X2MD_PAIRING_CODE = ${JSON.stringify(pairingCode)};</script><script type="module">${escapeInlineScript(script)}</script>`,
   );
 }
 
@@ -45,21 +46,21 @@ function readFirst(paths: string[]): string | null {
   return null;
 }
 
-export function settingsHtml(port: number | string, executable = process.execPath): string {
+export function settingsHtml(port: number | string, executable = process.execPath, session = "", pairingCode = ""): string {
   const settingsRoot = join(settingsViewsRootForExecutable(executable), "settings");
   const html = readFirst([join(settingsRoot, "index.html"), resolve("app/ui/settings/index.html")]);
   const css = readFirst([join(settingsRoot, "styles.css"), resolve("app/ui/settings/styles.css")]) || "";
   const script = readFirst([join(settingsRoot, "settings.js")]);
 
-  if (html && script) return inlineSettingsHtml(html, css, script, port);
+  if (html && script) return inlineSettingsHtml(html, css, script, port, session, pairingCode);
 
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>X2MD 设置</title><style>body{font:16px -apple-system,BlinkMacSystemFont,sans-serif;padding:32px;color:#111}code{background:#eee;padding:2px 4px;border-radius:4px}</style></head><body><h1>X2MD 设置</h1><p>设置页资源未找到，请重新安装 X2MD。</p><p><code>${settingsRoot}</code></p></body></html>`;
 }
 
-export function settingsWindowOptions(port: number | string, executable = process.execPath): { html: string; viewsRoot: string } {
+export function settingsWindowOptions(port: number | string, executable = process.execPath, session = "", pairingCode = ""): { html: string; viewsRoot: string } {
   const viewsRoot = settingsViewsRootForExecutable(executable);
   return {
-    html: settingsHtml(port, executable),
+    html: settingsHtml(port, executable, session, pairingCode),
     viewsRoot,
   };
 }
@@ -80,13 +81,18 @@ export async function showSettingsWindow(appDir = getAppDir(), port?: number): P
       }
     }
 
+    const cfg = loadConfig(appDir);
+    const session = issueAppSession();
+    const pairingCode = issuePairingCode(String(cfg.install_secret));
+
     const window = new BrowserWindow({
       title: "X2MD 设置",
-      ...settingsWindowOptions(configuredPort),
+      ...settingsWindowOptions(configuredPort, process.execPath, session, pairingCode),
       frame: { x: 120, y: 120, width: 980, height: 720 },
     });
     settingsWindow = window;
     settingsWindow.on?.("close", () => {
+      revokeAppSession(session);
       if (settingsWindow === window) settingsWindow = null;
     });
     log(`设置页已打开：inline viewsRoot=${settingsViewsRootForExecutable()}`, appDir);

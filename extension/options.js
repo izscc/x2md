@@ -26,6 +26,14 @@ function apiBase() {
     return "http://127.0.0.1:9527";
 }
 
+async function localFetch(path, init = {}) {
+    const stored = await chrome.storage.local.get("x2md_api_token");
+    return fetch(`${apiBase()}${path}`, {
+        ...init,
+        headers: { ...init.headers, ...(stored.x2md_api_token ? { Authorization: `Bearer ${stored.x2md_api_token}` } : {}) },
+    });
+}
+
 function showToast(message, isError = false) {
     const toast = $("toast");
     toast.textContent = message;
@@ -103,7 +111,7 @@ function setFilenameFormat(format) {
 }
 
 async function chooseFolder(currentPath = "") {
-    const response = await fetch(`${apiBase()}/choose-folder`, {
+    const response = await localFetch("/choose-folder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPath }),
@@ -250,7 +258,7 @@ async function loadConfig() {
 
 async function loadAutostart() {
     try {
-        const response = await fetch(`${apiBase()}/autostart`);
+        const response = await localFetch("/autostart");
         const result = await response.json();
         $("enableAutostart").checked = Boolean(result.enabled);
         $("autostartHint").textContent = result.enabled ? "已开启，登录 macOS 后会自动启动。" : "未开启，可在这里直接打开。";
@@ -261,7 +269,7 @@ async function loadAutostart() {
 
 async function saveAutostart() {
     try {
-        const response = await fetch(`${apiBase()}/autostart`, {
+        const response = await localFetch("/autostart", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ enabled: $("enableAutostart").checked }),
@@ -315,6 +323,13 @@ async function saveConfig() {
     checkStatus();
 }
 
+async function pairExtension() {
+    const code = $("pairingCode").value.trim();
+    const resp = await sendMessage({ action: "pair", code });
+    showToast(resp.success ? "扩展配对成功" : (resp.error || "配对失败"), !resp.success);
+    if (resp.success) await loadConfig();
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("[data-panel-button]").forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.panelButton || "save")));
     document.querySelectorAll("[data-filename-format]").forEach((button) => button.addEventListener("click", () => setFilenameFormat(button.dataset.filenameFormat || DEFAULT_FILENAME_FORMAT)));
@@ -326,6 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("chooseProfileCaptureSavePath").addEventListener("click", () => chooseFolderForInput($("profileCaptureSavePath"), "博主内容保存位置", $("primarySavePath").value.trim()));
     $("clearProfileCaptureSavePath").addEventListener("click", () => { $("profileCaptureSavePath").value = ""; showToast("博主内容将使用主目录"); });
     $("enableAutostart").addEventListener("change", saveAutostart);
+    $("pairExtension").addEventListener("click", pairExtension);
     showPanel(safePanel());
     loadConfig().then(loadAutostart).then(checkStatus).catch(() => setStatus("服务未启动", "正在连接 localhost:9527", false));
 });
