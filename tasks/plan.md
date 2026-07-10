@@ -1,73 +1,237 @@
-# Implementation Plan: X2MD v3 Improvement Iteration
+# Implementation Plan: X2MD Reliable Knowledge Inbox
+
+> **For agentic workers:** Execute `tasks/todo.md` in dependency order. Use a fresh branch/worktree, test-first changes, narrow Conventional Commit commits, and do not perform history rewriting without explicit human approval.
 
 ## Overview
-基于 `docs/prd/x2md-v3-improvement-prd.md`，按 PRD 的 Phase 0 → Phase 1 → Phase 2 推进。先做低风险、可验证、能提升后续迭代确定性的基础项：版本单一源、GraphQL 韧性测试基建、重复检测、popup/离线体验与保存后动作；再做 X 内容类型补全与批量能力；最后做模板、图片本地化、跨平台与更新。
+
+本计划落实 `docs/prd/x2md-v4-reliable-knowledge-inbox-prd.md`。顺序不是先做新 UI，而是先收敛产品真相和安全边界，再建立保存契约与原子写入，随后拆分扩展入口、补齐知识工作流，最后交付持久化批量任务和可信发布。
+
+旧 `X2MD v3 Improvement Iteration` 计划已被当前运行事实超越；其中已交付能力保留，未形成用户闭环的条目重新纳入本计划，不沿用旧勾选状态作为完成证据。
 
 ## Architecture Decisions
-- 根目录 `package.json` 的 `version` 作为唯一真源；同步脚本负责写入扩展 manifest 与 `app/core/config.ts`。
-- Phase 0 避免一次性大拆 `content.js`，先抽可测试的小模块或修小确定项，保持行为兼容。
-- 所有 X GraphQL 新解析能力先以脱敏 fixture + golden 输出验证，再接入运行时。
-- 批量导出默认低并发、可暂停，避免为速度牺牲稳定性。
-- Obsidian 输出保持现有 Front Matter 字段不删除，只新增可选字段。
 
-## Task List
+- X/Twitter 是主产品面；其他站点保持 Adapter 兼容，不新增站点。
+- `app/core/` 的 TypeScript 实现是唯一功能核心；Python legacy 冻结并退出 stable release。
+- 本地服务固定 `127.0.0.1:9527`，移除无效的用户端口设置。
+- 所有站点输出 `CaptureDocumentV1`，所有保存返回 `SaveResultV1`。
+- 扩展只有一个 Local Client，负责配对、认证、请求和错误映射。
+- 保存引擎按 validate → dedupe → media → render → atomic write → state commit 执行。
+- 状态继续使用本地文件，但统一经过 mutex + 临时文件 + 原子 rename。
+- Bookmarks/Profile 共用持久化 Job Engine。
+- 桌面 App 是唯一完整设置中心；扩展 options 只负责连接、配对和跳转。
+- 不引入数据库服务器、ORM、队列框架或新的扩展 bundler。
 
-### Phase 0: 稳定基线 v2.1
-- [ ] Task 1: 版本单一源与小修复
-- [ ] Task 2: GraphQL op-id 缓存与错误码契约
-- [ ] Task 3: GraphQL fixture 基建与回归样例
-- [ ] Task 4: popup 文案、版本、离线态升级
-- [ ] Task 5: 视频确认从原生 confirm 改为自绘 modal
-- [ ] Task 6: 重复检测 save_index.json 与默认 ask/skip 策略基础
-- [ ] Task 7: 保存后显示文件 / 复制路径响应能力
-- [ ] Task 8: content.js 拆分第一刀：toast / 保存响应 / GraphQL 探测工具
+## Dependency Graph
 
-### Checkpoint: v2.1
-- [ ] `npm run check` 通过
-- [ ] `/ping`、manifest、配置版本一致
-- [ ] 服务离线、重复保存、视频保存三条主流程人工验证
+```text
+Release truth / privacy cleanup
+        │
+        ├─ Pairing + fixed endpoint + Local Client
+        │                    │
+        │                    └─ Setup Doctor / extension connection UX
+        │
+CaptureDocument + SaveResult contracts
+        │
+        ├─ State Store ── Save index / history / jobs
+        │       │
+        │       └─ Atomic output / config / profile state
+        │
+        ├─ Safe media pipeline
+        │
+        └─ Extension capture modules
+                 │
+                 └─ Persistent Bookmarks/Profile Job Center
 
-### Phase 1: X 深度 v2.2
-- [ ] Task 9: 时间线卡片完整度校验与详情页媒体一致性测试
-- [ ] Task 10: Poll 结构化解析与 Markdown 输出
-- [ ] Task 11: Community Notes 结构化解析与 Markdown 输出
-- [ ] Task 12: 链接卡片元数据解析与输出
-- [ ] Task 13: Bookmarks 页工具条与导出可见列表
-- [ ] Task 14: Bookmarks 批量进度、暂停/取消、失败重试
-- [ ] Task 15: Profile 抓取进度与视频策略对齐
-- [ ] Task 16: 标签规则引擎最小版本
-- [ ] Task 17: 本地 API token 可选收紧
+All core phases
+        └─ Artifact smoke / signing / Windows beta gate / v4 release
+```
 
-### Checkpoint: v2.2
-- [ ] Poll / Community Notes / Link Card fixture 快照稳定
-- [ ] 人工 Bookmarks 导出 ≥ 30 条，重复执行跳过正确
-- [ ] Home 卡片与详情页归一化媒体一致
+## Phase 0 — Release Reset and Truth
 
-### Phase 2: 知识库与平台 v3.0
-- [ ] Task 18: Front Matter 模板内置档位
-- [ ] Task 19: 图片本地化下载与失败回退
-- [ ] Task 20: Quote 两层链与 Retweet 语义
-- [ ] Task 21: 敏感 / 受限 / 删除态错误分类
-- [ ] Task 22: Mac 自动更新与扩展升级提示
-- [ ] Task 23: Windows 轻量客户端发布链路
-- [ ] Task 24: i18n 雏形与注入按钮无障碍补齐
-- [ ] Task 25: 最近保存历史
+- [x] T01 仓库禁止文件与隐私清理
+- [x] T02 Release 二进制退出 Git，建立不可变 artifact 策略
+- [x] T03 版本与下载文档单一真源
+- [x] T04 拆分 PR CI 与 release workflow
+- [x] T05 固定 9527 并移除无效端口配置
+- [x] T06 Pairing 与全路由 capability token
+- [x] T07 收紧 Origin/CORS 并加入 abuse matrix
+- [x] T08 冻结 Python legacy，重定义 Windows 支持矩阵
 
-### Checkpoint: v3.0
-- [ ] PRD 11.1 AC1–AC10 全部通过
-- [ ] PRD 11.2 UX 门禁通过
-- [ ] Mac 自动验收与新增 fixture 测试通过
+### Checkpoint 0
+
+- [x] clean checkout 不含 config/log/pid/发布二进制
+- [x] 未配对调用不能读取配置、日志、路径或触发写入
+- [x] 官方扩展完成配对后 `/config`、`/save`、`/history` 正常
+- [x] tag/package/manifest/README/live ping 一致
+- [x] PR/main CI 自动运行，无 tag-only 空窗
+
+## Phase 1 — Reliable Save Core
+
+- [ ] T09 定义 CaptureDocumentV1 / SaveResultV1 / error codes
+- [ ] T10 旧 payload normalizer 与请求限制
+- [ ] T11 统一原子 State Store
+- [ ] T12 原子输出路径与并发保存
+- [ ] T13 Save Index 与 duplicate policy
+- [ ] T14 安全媒体下载器
+- [ ] T15 图片有限并发与多目录附件语义
+- [ ] T16 视频下载移出 Markdown 渲染副作用
+- [ ] T17 保存阶段指标与脱敏诊断
+
+### Checkpoint 1
+
+- [ ] 20 个不同 capture key、相同标题并发保存生成 20 个唯一文件
+- [ ] 20 个相同 capture key 并发保存默认得到 1 个 saved、19 个 skipped
+- [ ] config/history/index/profile state 故障后可解析或可恢复
+- [ ] 每个事务 commit 阶段中断后可 reconciliation，无空正式文件或孤立索引
+- [ ] 私网 URL、超限媒体、错误类型和超时被拒绝或安全回退
+- [ ] 多目录 Markdown 的附件引用全部有效
+- [ ] 视频失败不会返回完整成功
+
+## Phase 2 — Capture Modules and Core UX
+
+- [ ] T18 建立扩展 Local Client
+- [ ] T19 修复 bookmark/removeBookmark 语义
+- [ ] T20 提取 Capture UI：toast/modal/action
+- [ ] T21 拆分 X 单条 Capture Adapter
+- [ ] T22 拆分 X enrichment/GraphQL 编排
+- [ ] T23 拆分 X 翻译与复制流程
+- [ ] T24 拆分 X Bookmarks/Profile 采集入口
+- [ ] T25 迁移 LINUX DO/飞书/微信 Adapter
+- [ ] T26 收敛 content/background 入口和消息编排测试
+
+### Checkpoint 2
+
+- [ ] `content.js` 和 `background.js` 只保留启动/分发职责
+- [ ] 所有本地 HTTP 请求均通过 Local Client
+- [ ] `removeBookmark` 不触发保存
+- [ ] 主流程不存在 `window.confirm`
+- [ ] 现有多站点 golden Markdown 保持兼容
+
+## Phase 3 — Knowledge Inbox UX
+
+- [ ] T27 配置 schema version 与显式 migrations
+- [ ] T28 扩展 options 降级为连接与配对页
+- [ ] T29 桌面设置开放整理规则与 FM 模板
+- [ ] T30 桌面设置开放去重、图片和视频策略
+- [ ] T31 保存历史与打开/显示/复制/打开原文动作
+- [ ] T32 Setup Doctor 首次激活流程
+- [ ] T33 脱敏诊断包与连接修复页
+
+### Checkpoint 3
+
+- [ ] 新用户能完成目录选择、扩展配对、样例保存和打开结果
+- [ ] tags/FM/重复/图片/视频全部可在桌面设置配置
+- [ ] 扩展与 App 不再维护两套完整设置表单
+- [ ] 保存成功和失败均提供可执行动作
+
+## Phase 4 — Persistent Job Center
+
+- [ ] T34 Job state machine 与持久存储
+- [ ] T35 Job API 与任务控制
+- [ ] T36 Bookmarks 任务接入 Job Engine
+- [ ] T37 Profile/Articles 任务接入 Job Engine
+- [ ] T38 任务中心 UI 与报告
+- [ ] T39 重启恢复、rate-limit 暂停和失败重试测试
+
+### Checkpoint 4
+
+- [ ] Bookmarks/Profile 可暂停、继续、取消和只重试失败
+- [ ] 扩展、页面或 App 重启后任务可恢复
+- [ ] 已成功/已跳过 item 不重复执行
+- [ ] UI 计数与持久状态一致
+
+## Phase 5 — Release Confidence
+
+- [ ] T40 Fixture privacy、coverage 与 requirement-evidence matrix
+- [ ] T41 Mac 真实 artifact 全验收
+- [ ] T42 Mac Developer ID 签名与 notarization
+- [ ] T43 Windows TypeScript beta artifact spike 与 smoke
+- [ ] T44 SBOM、provenance、dependency lock 与 action pinning
+- [ ] T45 v4 候选文档、迁移说明和发布前总审计
+
+### Final Checkpoint
+
+- [ ] PRD 第 13 节全部验收项有权威证据
+- [ ] `npm run check` 和新增安全、并发、浏览器、artifact gate 全部通过
+- [ ] Mac stable artifact 签名、公证和安装态版本正确
+- [ ] H02 已在受保护环境完成真实 codesign/notary/staple 验证，并把证据写入矩阵
+- [ ] Windows 未达到真实 TS artifact gate 时不宣称 stable 支持
+- [ ] GitHub Release 是二进制唯一发布来源
+- [ ] 当前任务清单中没有以“文件存在”替代运行验证的完成项
+
+## Parallelization
+
+### 可并行
+
+- T10 与 T11 可在 T09 完成后并行；它们不修改同一组核心文件。
+- T29 与 T31 可在 T27 完成后并行；T30 与 T29 修改同一组设置文件，必须串行。
+- 其余任务默认串行；扩展迁移任务共享 `content.js`、`background.js` 或 manifest，不在同一工作树并行修改。
+
+### 必须串行
+
+- T06 → T07 → T18：先确定认证，再实现唯一客户端。
+- T09 → T10 → T12/T13：先固定契约，再迁保存逻辑。
+- T34 → T35 → T36/T37：先状态机和接口，再接具体批量场景。
+- T36 → T37：先验证 Bookmarks worker/lease 协议，再迁 Profile/Articles。
+- T29 → T30：两个任务修改相同设置文件，避免并行冲突。
+- T42 必须在 T41 的 artifact 流程稳定后进行。
+
+## Human Stable-Release Gate
+
+- T45 只产生 release candidate 文档和预发布证据，不代表 stable 完成。
+- 完成 T42 与 T45 后，由 H02 在受保护凭据环境运行真实签名、公证和 staple 验证。
+- H02 将证据追加到 `docs/acceptance/v4-evidence-matrix.md` 并由仓库负责人批准，之后才能满足 Final Checkpoint。
 
 ## Risks and Mitigations
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| X GraphQL / DOM 变化 | 高 | op-id 缓存、错误码、fixture 回放、降级链 |
-| 批量导出触发风控 | 中 | 默认并发 1、抖动间隔、暂停/取消、明确范围 |
-| content.js 拆分回归 | 高 | 分模块小步迁移，每步保留测试与行为兼容 |
-| 重复检测误判覆盖用户文件 | 高 | 默认 ask；写入前索引匹配 status_id/url；保留另存 |
-| 图片本地化占磁盘 | 中 | 默认关闭，失败回退远程 URL |
 
-## Open Questions
-- Bookmarks 批量是否默认开启：建议默认开启，首次提示风险。
-- Community Notes 是否翻译：建议默认不翻译。
-- 端口是否继续暴露给普通用户：建议产品层锁定 9527，开发者项保留说明。
+| 风险 | 影响 | 缓解 |
+| --- | --- | --- |
+| 历史净化影响所有 clone | 高 | 不放入自动 Task；只生成清单，人工批准后单独执行 |
+| 强制配对导致旧扩展断联 | 高 | Setup Doctor 和明确升级提示；不保留永久无鉴权 fallback |
+| 大文件拆分引入 X 回归 | 高 | 契约 fixture、每次迁一个流程、旧入口立即删除被替代分支 |
+| 原子写入改变文件名行为 | 中 | 保存 golden、并发测试和兼容迁移说明 |
+| 媒体安全限制误伤 CDN | 中 | 允许列表基于协议/地址/类型，不硬编码单一域名；记录稳定 warning |
+| Windows 路线不确定 | 中 | Mac stable 独立；Windows 只以真实 TS artifact 通过为准 |
+| 任务数较多导致半完成 | 中 | 每个 checkpoint 可独立发布，未通过 checkpoint 不进入下一阶段 |
+
+## Commands
+
+```bash
+# 基线
+npm ci
+npm run check
+
+# 扩展真实加载
+npm run smoke:chrome-extension-load
+
+# Mac 构建与 smoke
+bun run build:mac
+npm run smoke:mac
+npm run acceptance:mac:auto
+
+# Release artifact
+npm run check:release-artifacts
+```
+
+## Boundaries
+
+### Always
+
+- 每个行为变更先增加回归测试。
+- 先跑窄测试，再跑 `npm run check`。
+- 涉及 manifest、打包或入口时运行对应 smoke。
+- 每个任务独立 Conventional Commit。
+
+### Ask First
+
+- Git 历史净化和 force push。
+- 新增运行时依赖。
+- 修改默认 Markdown 字段或目录结构。
+- 开启正式签名、公证和 GitHub Environment secrets。
+
+### Never
+
+- 提交真实 config、日志、PID、token、cookie、个人路径或发布二进制。
+- 通过关闭测试、删除失败测试或把真实验收改成存在性检查来“完成”任务。
+- 为兼容旧客户端保留永久无鉴权本地 API。
+- 在没有真实 artifact smoke 时宣称 Windows stable 或自动更新已完成。
