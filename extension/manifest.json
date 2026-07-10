@@ -62,6 +62,7 @@
                 "capture_ui.js",
                 "capture_contract.js",
                 "site-adapters/x-capture.js",
+                "x-batch-capture.js",
                 "content.js"
             ],
             "run_at": "document_idle"

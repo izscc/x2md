@@ -31,21 +31,6 @@
         return isX && /^\/i\/bookmarks\/?$/.test(pathname);
     }
 
-    function collectUniqueStatusUrls(root = globalScope.document) {
-        const urls = [];
-        const seen = new Set();
-        const links = Array.from(root?.querySelectorAll?.('a[href*="/status/"]') || []);
-        for (const link of links) {
-            const href = link.getAttribute?.("href") || link.href || "";
-            const match = String(href).match(/(?:https?:\/\/(?:x|twitter)\.com)?\/([^/?#]+)\/status\/(\d+)/i);
-            if (!match) continue;
-            const key = match[2];
-            if (seen.has(key)) continue;
-            seen.add(key);
-            urls.push(`https://x.com/${match[1]}/status/${match[2]}`);
-        }
-        return urls;
-    }
 
     function getFloatingSaveSiteConfig(siteKey) {
         if (siteKey === "linux_do") {
@@ -80,7 +65,6 @@
 
     const exported = {
         SITE_FLOATING_SAVE_BUTTON_ID,
-        collectUniqueStatusUrls,
         detectFloatingSaveSite,
         getFloatingSaveSiteConfig,
         isFloatingSaveIconEnabled,
