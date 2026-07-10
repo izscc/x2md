@@ -33,11 +33,11 @@
 ### 第 1 步：下载客户端（基于 GitHub Release）
 
 - 打开 [Releases](https://github.com/izscc/x2md/releases/latest)
-- 当前最新版本：[`v3.0.0`](https://github.com/izscc/x2md/releases/tag/v3.0.0)
+- 当前最新版本：[查看 GitHub Latest Release](https://github.com/izscc/x2md/releases/latest)
 - 下载对应平台包：
-  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/download/v3.0.0/X2MD_Mac.zip)
-  - Windows: [`X2MD_Windows_Lite.zip`](https://github.com/izscc/x2md/releases/download/v3.0.0/X2MD_Windows_Lite.zip)
-  - 扩展: [`X2MD_Extension.zip`](https://github.com/izscc/x2md/releases/download/v3.0.0/X2MD_Extension.zip)
+  - Mac: [`X2MD_Mac.zip`](https://github.com/izscc/x2md/releases/latest/download/X2MD_Mac.zip)
+  - Windows: [`X2MD_Windows_Lite.zip`](https://github.com/izscc/x2md/releases/latest/download/X2MD_Windows_Lite.zip)
+  - 扩展: [`X2MD_Extension.zip`](https://github.com/izscc/x2md/releases/latest/download/X2MD_Extension.zip)
 
 ### 第 2 步：首次运行并完成设置
 

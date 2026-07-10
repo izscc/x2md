@@ -4,15 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "electrobun dev",
-    "build:dev": "electrobun build && npm run postbuild:extension",
-    "build:mac": "electrobun build --env=stable && npm run postbuild:extension",
+    "build:dev": "npm run sync:extension-version && electrobun build && npm run postbuild:extension",
+    "build:mac": "npm run sync:extension-version && electrobun build --env=stable && npm run postbuild:extension",
     "serve:node": "node app/main/index.ts",
-    "test:js": "node --test app/tests/*.test.ts extension/tests/*.test.js tests/*.js",
+    "test:js": "node --test app/tests/*.test.ts extension/tests/*.test.js scripts/*.test.mjs tests/*.js",
     "test:python": "python3 -m unittest discover -s tests -p 'test_*.py'",
     "test": "npm run test:js && npm run test:python",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test",
-    "postbuild:extension": "npm run sync:extension-version && node scripts/copy-extension-to-apps.mjs",
+    "postbuild:extension": "node scripts/copy-extension-to-apps.mjs",
     "smoke:mac": "node scripts/smoke-packaged-mac.mjs",
     "smoke:mac:autostart": "X2MD_SMOKE_AUTOSTART=1 node scripts/smoke-packaged-mac.mjs",
     "smoke:mac:first-run": "X2MD_SMOKE_FIRST_RUN=1 node scripts/smoke-packaged-mac.mjs",
@@ -28,6 +28,7 @@
     "check:forbidden-files": "node scripts/check-forbidden-files.mjs",
     "smoke:mac:startup-time": "node scripts/smoke-mac-startup-time.mjs",
     "sync:extension-version": "node scripts/sync-extension-version.mjs",
+    "check:version": "node scripts/sync-extension-version.mjs --check",
     "package:release": "node scripts/package-release.mjs"
   },
   "dependencies": {
