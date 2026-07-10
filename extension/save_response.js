@@ -1,11 +1,15 @@
 (function () {
     async function parseSaveResponse(resp) {
-        const json = await resp.json().catch(() => ({}));
-        const error = json?.errors?.[0] || json?.error || (!resp.ok ? `HTTP ${resp.status}` : "");
+        const isResponse = resp && typeof resp.json === "function";
+        const json = isResponse ? await resp.json().catch(() => ({})) : (resp || {});
+        const ok = isResponse ? resp.ok : json.success !== false;
+        const errorValue = json?.errors?.[0] || json?.error || (!ok ? `HTTP ${resp.status || 500}` : "");
+        const error = typeof errorValue === "object" ? errorValue.message : errorValue;
         return {
-            success: resp.ok && json.success !== false,
+            success: ok && json.success !== false,
             result: json,
             error: error || undefined,
+            error_code: json?.error?.code,
         };
     }
 

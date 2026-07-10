@@ -17,21 +17,10 @@ const FILENAME_PRESETS = [
 
 let currentConfig = {};
 const $ = (id) => document.getElementById(id);
+const localClient = X2MDLocalClient.createLocalClient();
 
 function sendMessage(message) {
     return new Promise((resolve) => chrome.runtime.sendMessage(message, (resp) => resolve(resp || {})));
-}
-
-function apiBase() {
-    return "http://127.0.0.1:9527";
-}
-
-async function localFetch(path, init = {}) {
-    const stored = await chrome.storage.local.get("x2md_api_token");
-    return fetch(`${apiBase()}${path}`, {
-        ...init,
-        headers: { ...init.headers, ...(stored.x2md_api_token ? { Authorization: `Bearer ${stored.x2md_api_token}` } : {}) },
-    });
 }
 
 function showToast(message, isError = false) {
@@ -111,13 +100,11 @@ function setFilenameFormat(format) {
 }
 
 async function chooseFolder(currentPath = "") {
-    const response = await localFetch("/choose-folder", {
+    const result = await localClient.request("/choose-folder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPath }),
     });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || "文件夹选择失败");
     return String(result.path || "").trim();
 }
 
@@ -258,8 +245,7 @@ async function loadConfig() {
 
 async function loadAutostart() {
     try {
-        const response = await localFetch("/autostart");
-        const result = await response.json();
+        const result = await localClient.request("/autostart");
         $("enableAutostart").checked = Boolean(result.enabled);
         $("autostartHint").textContent = result.enabled ? "已开启，登录 macOS 后会自动启动。" : "未开启，可在这里直接打开。";
     } catch {
@@ -269,15 +255,14 @@ async function loadAutostart() {
 
 async function saveAutostart() {
     try {
-        const response = await localFetch("/autostart", {
+        const result = await localClient.request("/autostart", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ enabled: $("enableAutostart").checked }),
         });
-        const result = await response.json().catch(() => ({}));
         $("enableAutostart").checked = Boolean(result.enabled);
         $("autostartHint").textContent = result.enabled ? "已开启，登录 macOS 后会自动启动。" : "未开启，可在这里直接打开。";
-        showToast(response.ok ? "启动设置已更新" : "启动设置失败", !response.ok);
+        showToast("启动设置已更新");
     } catch {
         showToast("启动设置失败，请确认 App 正在运行", true);
     }
