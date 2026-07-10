@@ -7,6 +7,14 @@ export const STABLE_ERROR_CODES = [
 ] as const;
 
 export type StableErrorCode = typeof STABLE_ERROR_CODES[number];
+export const CAPTURE_LIMITS = {
+  body_bytes: 5 * 1024 * 1024,
+  depth: 12,
+  array_items: 500,
+  media_items: 200,
+  string_chars: 256 * 1024,
+  content_chars: 2 * 1024 * 1024,
+} as const;
 export type CapturePlatform = "x" | "linuxdo" | "feishu" | "wechat";
 export type CaptureContentType = "tweet" | "thread" | "article" | "profile-item" | "web-article";
 

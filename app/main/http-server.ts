@@ -10,6 +10,8 @@ import { log, readLogTail } from "./logger.ts";
 import { notifySaveSuccess } from "./notify.ts";
 import { consumePairingCode, isValidCredential } from "../core/pairing.ts";
 import { corsHeaders, isAllowedApiOrigin, preflightResponse } from "./request-policy.ts";
+import { CAPTURE_LIMITS } from "../core/contracts.ts";
+import { CaptureBoundaryError, normalizeCaptureRequest } from "../core/legacy-capture.ts";
 
 function json(request: Request, payload: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(sanitizeUnicodePayload(payload)), {
@@ -24,6 +26,43 @@ async function readJson(request: Request): Promise<Record<string, any>> {
   } catch {
     throw new Error("Invalid JSON");
   }
+}
+
+async function readCaptureJson(request: Request): Promise<Record<string, any>> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > CAPTURE_LIMITS.body_bytes) {
+    throw new CaptureBoundaryError("PAYLOAD_TOO_LARGE", "capture body exceeds 5 MiB");
+  }
+  if (!request.body) throw new CaptureBoundaryError("INVALID_CAPTURE", "capture body is required");
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > CAPTURE_LIMITS.body_bytes) {
+        await reader.cancel("capture body exceeds 5 MiB");
+        throw new CaptureBoundaryError("PAYLOAD_TOO_LARGE", "capture body exceeds 5 MiB");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const combined = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) { combined.set(chunk, offset); offset += chunk.byteLength; }
+  try {
+    return JSON.parse(new TextDecoder().decode(combined));
+  } catch {
+    throw new CaptureBoundaryError("INVALID_CAPTURE", "capture body must be valid JSON");
+  }
+}
+
+function boundaryPayload(error: CaptureBoundaryError): Record<string, unknown> {
+  return { success: false, error: { code: error.code, message: error.message, retryable: false } };
 }
 
 function requestBoolean(value: unknown): boolean {
@@ -64,9 +103,25 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     const token = consumePairingCode(String(data.code || ""), String(cfg.install_secret || ""));
     return token ? reply({ success: true, token }) : reply({ success: false, error: "Invalid or expired pairing code" }, 401);
   }
+  let captureData: Record<string, any> | undefined;
+  let legacyCapture = true;
+  if (request.method === "POST" && path === "/save") {
+    try {
+      const normalized = normalizeCaptureRequest(await readCaptureJson(request));
+      captureData = sanitizeUnicodePayload(normalized.savePayload) as Record<string, any>;
+      legacyCapture = normalized.legacy;
+    } catch (error) {
+      if (error instanceof CaptureBoundaryError) return reply(boundaryPayload(error), error.status);
+      return reply({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  }
   const authConfig = loadConfig(appDir);
   if (!opts.testBypassAuth && !isValidCredential(requestCredential(request), String(authConfig.install_secret || ""))) {
     return reply({ success: false, error: "Authentication required" }, 401);
+  }
+  if (captureData && !legacyCapture && captureData.custom_save_path_name) {
+    const entry = authConfig.custom_save_paths.find((item) => item.name === captureData!.custom_save_path_name);
+    if (entry) captureData.custom_save_path = entry.path;
   }
   if (request.method === "GET" && path === "/config") return reply(publicConfig(authConfig));
   if (request.method === "GET" && path === "/status") {
@@ -100,8 +155,9 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
 
   let data: Record<string, any>;
   try {
-    data = await readJson(request);
+    data = captureData || await readJson(request);
   } catch (error) {
+    if (error instanceof CaptureBoundaryError) return reply(boundaryPayload(error), error.status);
     return reply({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 
@@ -158,12 +214,39 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
 }
 
 async function requestFromIncoming(req: any): Promise<Request> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(Buffer.from(chunk));
-  return new Request(`http://${req.headers.host || "127.0.0.1"}${req.url}`, {
-    method: req.method,
-    headers: req.headers,
-    body: chunks.length ? Buffer.concat(chunks) : undefined,
+  const capped = req.method === "POST" && String(req.url || "").split("?", 1)[0] === "/save";
+  const declared = Number(req.headers["content-length"]);
+  if (capped && Number.isFinite(declared) && declared > CAPTURE_LIMITS.body_bytes) {
+    req.resume();
+    throw new CaptureBoundaryError("PAYLOAD_TOO_LARGE", "capture body exceeds 5 MiB");
+  }
+  return await new Promise<Request>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let exceeded = false;
+    const onData = (chunk: unknown) => {
+      const buffer = Buffer.from(chunk as any);
+      bytes += buffer.byteLength;
+      if (capped && bytes > CAPTURE_LIMITS.body_bytes) {
+        exceeded = true;
+        chunks.length = 0;
+        req.off("data", onData);
+        req.resume();
+        reject(new CaptureBoundaryError("PAYLOAD_TOO_LARGE", "capture body exceeds 5 MiB"));
+        return;
+      }
+      chunks.push(buffer);
+    };
+    req.on("data", onData);
+    req.once("error", reject);
+    req.once("end", () => {
+      if (exceeded) return;
+      resolve(new Request(`http://${req.headers.host || "127.0.0.1"}${req.url}`, {
+        method: req.method,
+        headers: req.headers,
+        body: chunks.length ? Buffer.concat(chunks) : undefined,
+      }));
+    });
   });
 }
 
@@ -200,7 +283,20 @@ export async function startHttpServer(opts: { appDir?: string; testPort?: number
   }
 
   let actualPort = port;
-  const server: Server = createServer(async (req, res) => writeNodeResponse(res, await handleApiRequest(await requestFromIncoming(req), { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth })));
+  const server: Server = createServer(async (req, res) => {
+    try {
+      await writeNodeResponse(res, await handleApiRequest(await requestFromIncoming(req), { appDir, port: actualPort, openDryRun, dialogDryRun, testBypassAuth }));
+    } catch (error) {
+      if (!(error instanceof CaptureBoundaryError)) throw error;
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (value !== undefined) headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
+      }
+      const request = new Request(`http://${req.headers.host || "127.0.0.1"}${req.url}`, { headers });
+      res.setHeader("Connection", "close");
+      await writeNodeResponse(res, json(request, boundaryPayload(error), error.status));
+    }
+  });
   await new Promise<void>((resolve, reject) => {
     server.once("error", (error: any) => {
       reject(new Error(listenErrorMessage(error, port)));
