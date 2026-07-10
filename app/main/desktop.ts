@@ -3,13 +3,13 @@ import { dirname, join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 
-import { getAppDir, loadConfig, logPath } from "../core/config.ts";
+import { getAppDir, loadConfig, logPath, LOCAL_API_PORT } from "../core/config.ts";
 import { log } from "./logger.ts";
 
 let settingsWindow: any;
 
-export function settingsUrl(appDir = getAppDir(), port?: number): string {
-  return `views://settings/index.html#port=${encodeURIComponent(String(port || loadConfig(appDir).port || 9527))}`;
+export function settingsUrl(_appDir = getAppDir()): string {
+  return `views://settings/index.html#port=${LOCAL_API_PORT}`;
 }
 
 function escapeInlineScript(script: string): string {
@@ -67,7 +67,7 @@ export function settingsWindowOptions(port: number | string, executable = proces
 export async function showSettingsWindow(appDir = getAppDir(), port?: number): Promise<void> {
   try {
     const { BrowserWindow } = await import("electrobun/bun");
-    const configuredPort = port || loadConfig(appDir).port || 9527;
+    const configuredPort = port || LOCAL_API_PORT;
     if (settingsWindow) {
       try {
         settingsWindow.show?.();

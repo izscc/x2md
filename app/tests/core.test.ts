@@ -259,12 +259,11 @@ test("博主推文按日聚合并跳过重复项", () => {
 
 
 
-test("CLI 参数支持 --app-dir=value 和 --port value", () => {
+test("CLI 参数只保留 app-dir；正式入口不消费 port", () => {
   const old = process.argv;
   process.argv = ["node", "x2md", "--app-dir=/tmp/x2md-app", "--port", "19527"];
   try {
     assert.equal(cliArg("app-dir"), "/tmp/x2md-app");
-    assert.equal(cliArg("port"), "19527");
   } finally {
     process.argv = old;
   }
@@ -298,10 +297,9 @@ test("空视频目录回到默认值", () => {
   assert.match(cfg.video_save_path, /Videos/);
 });
 
-test("无效配置端口回到默认值", () => {
-  assert.equal(normalizeConfig({ port: "bad" }).port, 9527);
-  assert.equal(normalizeConfig({ port: 0 }).port, 9527);
-  assert.equal(normalizeConfig({ port: 70000 }).port, 9527);
+test("旧配置端口会被移除", () => {
+  assert.equal(normalizeConfig({ port: 19527 }).port, undefined);
+  assert.equal(normalizeConfig({ port: "bad" }).port, undefined);
 });
 
 test("无效数值配置回到默认值", () => {
@@ -365,11 +363,10 @@ test("打包 App 内扩展目录解析到 Contents/Resources/extension", () => {
   assert.equal(bundledExtensionDirForExecutable("/usr/local/bin/node"), null);
 });
 
-test("设置页 URL 带当前服务端口", () => {
+test("设置页 URL 固定使用 9527", () => {
   const appDir = mkdtempSync(join(tmpdir(), "x2md-settings-"));
   saveConfig({ port: 19527 }, appDir);
-  assert.equal(settingsUrl(appDir), "views://settings/index.html#port=19527");
-  assert.equal(settingsUrl(appDir, 19001), "views://settings/index.html#port=19001");
+  assert.equal(settingsUrl(appDir), "views://settings/index.html#port=9527");
 });
 
 test("设置页 HTML 内联样式和脚本，避免 views scheme 空白", () => {
@@ -431,7 +428,7 @@ test("设置页字段和脚本选择器保持一致", () => {
   const script = readFileSync("app/ui/settings/settings.ts", "utf8");
   for (const id of [
     "savePath", "customSavePaths", "videoPath", "enableVideoDownload", "enableSaveNotification",
-    "videoThreshold", "port", "filenameFormat", "maxFilenameLength", "profileRange",
+    "videoThreshold", "filenameFormat", "maxFilenameLength", "profileRange",
     "profileCustomDays", "profileSavePath", "showSiteSaveIcon", "showProfileCapture",
     "autostart", "save", "test", "openSave", "openVideo", "openLog", "showLog", "openExtension",
   ]) {
@@ -441,7 +438,7 @@ test("设置页字段和脚本选择器保持一致", () => {
   assert.match(html, /chrome:\/\/extensions\//);
   assert.match(html, /加载已解压的扩展程序/);
   assert.match(script, /openTarget\("extension"\)/);
-  assert.match(script, /location\.hash/);
+  assert.match(script, /http:\/\/127\.0\.0\.1:9527/);
   assert.match(script, /fetch\(`\$\{api\}\/ping`\)/);
 });
 

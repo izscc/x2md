@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 
-import { loadConfig, saveConfig, VERSION, MIN_EXTENSION_VERSION, getAppDir, configPath, logPath } from "../core/config.ts";
+import { loadConfig, saveConfig, VERSION, MIN_EXTENSION_VERSION, LOCAL_API_PORT, getAppDir, configPath, logPath } from "../core/config.ts";
 import { handleProfileCaptureSave, getProfileStateBucket, loadProfileCaptureState, normalizeProfileHandle } from "../core/profile-capture.ts";
 import { readSaveHistory, savePayload } from "../core/save.ts";
 import { sanitizeUnicodePayload } from "../core/unicode.ts";
@@ -56,14 +56,9 @@ function hasValidLocalApiToken(request: Request, cfg: Record<string, unknown>): 
 export function listenErrorMessage(error: any, port: number): string {
   const message = String(error?.message || error);
   if (error?.code === "EADDRINUSE" || /EADDRINUSE|in use|address already in use/i.test(message)) {
-    return `端口 ${port} 已被占用，请退出旧版 X2MD 或修改配置端口`;
+    return `端口 ${port} 已被占用，请退出旧版 X2MD`;
   }
   return `端口 ${port} 启动失败：${message}`;
-}
-
-export function resolveListenPort(override: unknown, configured: number): number {
-  const port = Number(override ?? configured);
-  return Number.isInteger(port) && port >= 0 && port <= 65535 ? port : configured;
 }
 
 export async function handleApiRequest(request: Request, opts: { appDir?: string; autostartDryRun?: boolean; openDryRun?: boolean; dialogDryRun?: boolean; port?: number } = {}): Promise<Response> {
@@ -82,7 +77,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       success: true,
       status: "ok",
       version: VERSION,
-      port: opts.port ?? cfg.port,
+      port: opts.port ?? LOCAL_API_PORT,
       config_path: configPath(appDir),
       log_path: logPath(appDir),
       save_paths: cfg.save_paths,
@@ -118,6 +113,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
     if (path === "/config") {
       const oldConfig = loadConfig(appDir);
       const nextConfig = { ...oldConfig, ...data };
+      delete nextConfig.port;
       if (Array.isArray(data.save_paths) && !data.save_paths.some((item) => String(item || "").trim())) {
         return json({ success: false, error: "请至少配置一个保存路径" }, 400);
       }
@@ -126,7 +122,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       }
       const config = saveConfig(nextConfig, appDir);
       log(`配置已更新：keys=${Object.keys(data).join(",")}`, appDir);
-      return json({ success: true, config, restart_required: Number(oldConfig.port) !== Number(config.port) });
+      return json({ success: true, config, restart_required: false });
     }
     if (path === "/save") {
       const config = loadConfig(appDir);
@@ -181,13 +177,13 @@ async function writeNodeResponse(res: any, response: Response): Promise<void> {
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
-export async function startHttpServer(opts: { appDir?: string; port?: number; hostname?: string } = {}): Promise<{ port: number; stop: () => Promise<void> | void }> {
+export async function startHttpServer(opts: { appDir?: string; testPort?: number; hostname?: string } = {}): Promise<{ port: number; stop: () => Promise<void> | void }> {
   const appDir = opts.appDir || getAppDir();
   const cfg = loadConfig(appDir);
   const openDryRun = process.env.X2MD_OPEN_DRY_RUN === "1";
   const dialogDryRun = process.env.X2MD_DIALOG_DRY_RUN === "1" || openDryRun;
   log(`配置路径：${configPath(appDir)}`, appDir);
-  const port = resolveListenPort(opts.port, cfg.port ?? 9527);
+  const port = opts.testPort ?? LOCAL_API_PORT;
   const hostname = opts.hostname || "127.0.0.1";
 
   if ((globalThis as any).Bun?.serve) {

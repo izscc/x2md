@@ -6,7 +6,7 @@ const PANEL_META = {
     save: { label: "保存位置", title: "内容保存到哪里", description: "选择一个主目录。额外保存位置只在需要分类时再打开。" },
     media: { label: "视频", title: "视频如何保存", description: "控制视频下载、保存目录和长视频提醒。" },
     capture: { label: "网页按钮", title: "网页上显示哪些入口", description: "控制保存按钮、博主抓取按钮和抓取范围。" },
-    system: { label: "启动与工具", title: "本地服务和启动方式", description: "设置端口、登录后自动启动和服务检查。" },
+    system: { label: "启动与工具", title: "本地服务和启动方式", description: "设置登录后自动启动和检查本地服务。" },
 };
 const FILENAME_PRESETS = [
     { value: "{summary}", label: "标题" },
@@ -22,12 +22,8 @@ function sendMessage(message) {
     return new Promise((resolve) => chrome.runtime.sendMessage(message, (resp) => resolve(resp || {})));
 }
 
-function getPort() {
-    return Number($("portInput")?.value || currentConfig.port || 9527) || 9527;
-}
-
 function apiBase() {
-    return `http://127.0.0.1:${getPort()}`;
+    return "http://127.0.0.1:9527";
 }
 
 function showToast(message, isError = false) {
@@ -41,7 +37,7 @@ function setStatus(text, sub = "", online = false) {
     const status = $("statusText");
     status.textContent = text;
     status.classList.toggle("is-online", online);
-    $("statusSub").textContent = sub || `正在连接 localhost:${getPort()}`;
+    $("statusSub").textContent = sub || "正在连接 localhost:9527";
 }
 
 function showPanel(panel) {
@@ -118,11 +114,11 @@ async function chooseFolder(currentPath = "") {
 }
 
 async function chooseFolderForInput(input, label, fallbackPath = "") {
-    setStatus("正在打开文件夹选择器…", `通过 localhost:${getPort()} 调用本机 App`, true);
+    setStatus("正在打开文件夹选择器…", `通过 localhost:9527 调用本机 App`, true);
     try {
         const selected = await chooseFolder(input.value.trim() || fallbackPath);
         if (!selected) {
-            setStatus("已取消选择", `localhost:${getPort()}`, true);
+            setStatus("已取消选择", `localhost:9527`, true);
             return;
         }
         input.value = selected;
@@ -229,8 +225,6 @@ function collectCustomPaths(keepIncomplete = false) {
 
 function applyConfigToUI(cfg) {
     currentConfig = cfg || {};
-    $("portInput").value = cfg.port || 9527;
-    $("portLabel").textContent = cfg.port || 9527;
     renderPrimaryPath(Array.isArray(cfg.save_paths) ? (cfg.save_paths[0] || "") : "");
     setFilenameFormat(cfg.filename_format || DEFAULT_FILENAME_FORMAT);
     $("maxLen").value = cfg.max_filename_length || DEFAULT_FILENAME_LENGTH;
@@ -284,7 +278,7 @@ async function saveAutostart() {
 async function checkStatus() {
     const resp = await sendMessage({ action: "ping" });
     const online = Boolean(resp.online);
-    setStatus(online ? "已连接，保存功能可用" : "服务未启动", online ? `本机服务正常，端口 ${getPort()}` : `正在连接 localhost:${getPort()}`, online);
+    setStatus(online ? "已连接，保存功能可用" : "服务未启动", online ? `本机服务正常，端口 9527` : "正在连接 localhost:9527", online);
 }
 
 async function saveConfig() {
@@ -301,7 +295,6 @@ async function saveConfig() {
         return;
     }
     const config = {
-        port: Number($("portInput").value || 9527),
         save_paths: [savePath],
         custom_save_paths: collectCustomPaths(false),
         filename_format: $("filenameFormat").value.trim() || DEFAULT_FILENAME_FORMAT,
@@ -334,5 +327,5 @@ document.addEventListener("DOMContentLoaded", () => {
     $("clearProfileCaptureSavePath").addEventListener("click", () => { $("profileCaptureSavePath").value = ""; showToast("博主内容将使用主目录"); });
     $("enableAutostart").addEventListener("change", saveAutostart);
     showPanel(safePanel());
-    loadConfig().then(loadAutostart).then(checkStatus).catch(() => setStatus("服务未启动", `正在连接 localhost:${getPort()}`, false));
+    loadConfig().then(loadAutostart).then(checkStatus).catch(() => setStatus("服务未启动", "正在连接 localhost:9527", false));
 });

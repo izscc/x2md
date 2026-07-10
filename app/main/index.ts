@@ -1,4 +1,4 @@
-import { loadConfig, getAppDir, cliArg } from "../core/config.ts";
+import { loadConfig, getAppDir } from "../core/config.ts";
 import { startHttpServer } from "./http-server.ts";
 import { log } from "./logger.ts";
 import { createTray } from "./tray.ts";
@@ -7,7 +7,7 @@ import { openExtensionDir, openFirstSaveDir, openLog, openVideoDir, showSettings
 const appDir = getAppDir();
 let server;
 try {
-  server = await startHttpServer({ appDir, port: cliArg("port") ? Number(cliArg("port")) : undefined });
+  server = await startHttpServer({ appDir });
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   log(`启动失败：${message}`, appDir);
@@ -17,7 +17,7 @@ try {
 
 async function restartServer(): Promise<void> {
   await server.stop();
-  server = await startHttpServer({ appDir, port: cliArg("port") ? Number(cliArg("port")) : undefined });
+  server = await startHttpServer({ appDir });
 }
 
 await createTray({

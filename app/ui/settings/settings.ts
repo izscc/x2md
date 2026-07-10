@@ -1,7 +1,4 @@
-const configuredPort = (globalThis as typeof globalThis & { X2MD_PORT?: string }).X2MD_PORT
-  || new URLSearchParams(location.search || location.hash.slice(1)).get("port")
-  || "9527";
-const api = `${location.protocol === "http:" ? location.origin : `http://127.0.0.1:${configuredPort}`}`;
+const api = `${location.protocol === "http:" ? location.origin : "http://127.0.0.1:9527"}`;
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 const field = (id: string) => $(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
@@ -328,7 +325,6 @@ async function loadConfig(): Promise<void> {
   $("enableVideoDownload").checked = Boolean(cfg.enable_video_download);
   $("enableSaveNotification").checked = Boolean(cfg.enable_save_notification);
   $("videoThreshold").value = cfg.video_duration_threshold || 5;
-  $("port").value = cfg.port || 9527;
   setFilenameFormat(cfg.filename_format || DEFAULT_FILENAME_FORMAT);
   $("maxFilenameLength").value = cfg.max_filename_length || DEFAULT_FILENAME_LENGTH;
   (field("profileRange") as HTMLSelectElement).value = cfg.profile_capture_range || "today";
@@ -360,7 +356,6 @@ async function saveConfig(): Promise<void> {
     enable_video_download: $("enableVideoDownload").checked,
     enable_save_notification: $("enableSaveNotification").checked,
     video_duration_threshold: Number($("videoThreshold").value || 5),
-    port: Number($("port").value || 9527),
     filename_format: $("filenameFormat").value.trim() || DEFAULT_FILENAME_FORMAT,
     max_filename_length: Number($("maxFilenameLength").value || DEFAULT_FILENAME_LENGTH),
     profile_capture_range: (field("profileRange") as HTMLSelectElement).value,
@@ -377,7 +372,7 @@ async function saveConfig(): Promise<void> {
   });
   const result = await response.json().catch(() => ({}));
   updateCustomSaveSummary(customSavePaths);
-  setStatus(response.ok ? (result.restart_required ? "已保存，端口变更后需要重启服务" : "已保存") : "保存失败");
+  setStatus(response.ok ? "已保存" : "保存失败");
 }
 
 async function openTarget(target: string): Promise<void> {

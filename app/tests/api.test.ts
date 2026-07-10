@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { handleApiRequest, listenErrorMessage, resolveListenPort, startHttpServer } from "../main/http-server.ts";
+import { handleApiRequest, listenErrorMessage, startHttpServer } from "../main/http-server.ts";
 import { configPath, logPath, VERSION } from "../core/config.ts";
 
 function tempApp(): string {
@@ -303,7 +303,7 @@ test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", a
 
 
 
-test("POST /config 标记端口变更，并保留视频和博主配置", async () => {
+test("POST /config 忽略端口，并保留视频和博主配置", async () => {
   const appDir = tempApp();
   const res = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
     method: "POST",
@@ -319,7 +319,8 @@ test("POST /config 标记端口变更，并保留视频和博主配置", async (
   }), { appDir });
   const body = await json(res);
   assert.equal(res.status, 200);
-  assert.equal(body.restart_required, true);
+  assert.equal(body.restart_required, false);
+  assert.equal(body.config.port, undefined);
   assert.equal(body.config.enable_video_download, true);
   assert.equal(body.config.video_duration_threshold, 9);
   assert.equal(body.config.profile_capture_custom_days, 14);
@@ -449,7 +450,7 @@ test("GET /log 返回日志尾部", async () => {
 
 test("启动日志记录配置路径和保存路径", async () => {
   const appDir = tempApp();
-  const server = await startHttpServer({ appDir, port: 0 });
+  const server = await startHttpServer({ appDir, testPort: 0 });
   await server.stop();
   const logText = readFileSync(logPath(appDir), "utf8");
   assert.match(logText, new RegExp(configPath(appDir).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -459,7 +460,7 @@ test("启动日志记录配置路径和保存路径", async () => {
 
 test("GET /status 返回实际监听端口", async () => {
   const appDir = tempApp();
-  const server = await startHttpServer({ appDir, port: 0 });
+  const server = await startHttpServer({ appDir, testPort: 0 });
   try {
     const res = await fetch(`http://127.0.0.1:${server.port}/status`);
     const body = await res.json();
@@ -473,9 +474,9 @@ test("GET /status 返回实际监听端口", async () => {
 
 test("端口占用时返回明确错误", async () => {
   const appDir = tempApp();
-  const first = await startHttpServer({ appDir, port: 0 });
+  const first = await startHttpServer({ appDir, testPort: 0 });
   await assert.rejects(
-    () => startHttpServer({ appDir: tempApp(), port: first.port }),
+    () => startHttpServer({ appDir: tempApp(), testPort: first.port }),
     /端口 .* 已被占用/,
   );
   await first.stop();
@@ -484,15 +485,8 @@ test("端口占用时返回明确错误", async () => {
 test("Bun 常见端口占用错误也返回明确提示", () => {
   assert.equal(
     listenErrorMessage(new Error("Failed to start server. Is port 9527 in use?"), 9527),
-    "端口 9527 已被占用，请退出旧版 X2MD 或修改配置端口",
+    "端口 9527 已被占用，请退出旧版 X2MD",
   );
-});
-
-test("启动端口参数无效时回退配置端口", () => {
-  assert.equal(resolveListenPort(undefined, 9527), 9527);
-  assert.equal(resolveListenPort(0, 9527), 0);
-  assert.equal(resolveListenPort(Number.NaN, 19527), 19527);
-  assert.equal(resolveListenPort("bad", 19527), 19527);
 });
 
 test("CORS OPTIONS 兼容扩展", async () => {

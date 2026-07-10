@@ -5,9 +5,9 @@ import { dirname, join } from "node:path";
 
 export const VERSION = "3.1.0";
 export const MIN_EXTENSION_VERSION = "3.1.0";
+export const LOCAL_API_PORT = 9527;
 
 export type X2MDConfig = Record<string, unknown> & {
-  port: number;
   save_paths: string[];
   custom_save_paths: Array<{ name: string; path: string }>;
   filename_format: string;
@@ -47,7 +47,6 @@ export function cliArg(name: string): string | undefined {
 }
 
 export const DEFAULT_CONFIG: X2MDConfig = {
-  port: 9527,
   save_paths: [join(HOME, "Desktop", "X2MD", "MD")],
   custom_save_paths: [],
   filename_format: "{summary}",
@@ -112,9 +111,8 @@ export function logPath(appDir = getAppDir()): string {
 
 export function normalizeConfig(raw: Record<string, unknown> = {}): X2MDConfig {
   const cfg = { ...DEFAULT_CONFIG, ...raw } as X2MDConfig;
+  delete cfg.port;
   const oldConfigHasSavePath = raw.setup_completed === undefined && Array.isArray(raw.save_paths) && raw.save_paths.some((path) => String(path || "").trim());
-  const port = Number(cfg.port);
-  cfg.port = Number.isInteger(port) && port >= 1 && port <= 65535 ? port : DEFAULT_CONFIG.port;
   cfg.save_paths = Array.isArray(cfg.save_paths) ? cfg.save_paths.map((path) => String(path).trim()).filter(Boolean) : [...DEFAULT_CONFIG.save_paths];
   cfg.video_save_path = String(cfg.video_save_path || "").trim() || DEFAULT_CONFIG.video_save_path;
   cfg.profile_capture_save_path = String(cfg.profile_capture_save_path || "").trim();
