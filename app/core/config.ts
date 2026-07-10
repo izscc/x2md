@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { randomUUID } from "node:crypto";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { readJsonStateSync, writeJsonStateSync } from "./state-store.ts";
 
 export const VERSION = "3.1.0";
 export const MIN_EXTENSION_VERSION = "3.1.0";
@@ -163,26 +164,17 @@ export function ensureConfiguredDirs(cfg: X2MDConfig): void {
 }
 
 export function loadConfig(appDir = getAppDir()): X2MDConfig {
-  const file = configPath(appDir);
-  if (existsSync(file)) {
-    try {
-      const cfg = normalizeConfig(JSON.parse(readFileSync(file, "utf8")));
-      ensureConfiguredDirs(cfg);
-      return cfg;
-    } catch {
-      // ponytail: corrupt config falls back to defaults; richer recovery can wait for support cases.
-    }
-  }
-  const cfg = normalizeConfig();
-  saveConfig(cfg, appDir);
+  const sentinel = Symbol("missing");
+  const raw = readJsonStateSync<Record<string, unknown> | typeof sentinel>(appDir, "config", () => sentinel);
+  const cfg = normalizeConfig(raw === sentinel ? {} : raw);
+  if (raw === sentinel) writeJsonStateSync(appDir, "config", cfg);
+  ensureConfiguredDirs(cfg);
   return cfg;
 }
 
 export function saveConfig(cfg: Record<string, unknown>, appDir = getAppDir()): X2MDConfig {
   const normalized = normalizeConfig(cfg);
-  const file = configPath(appDir);
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(normalized, null, 2), "utf8");
+  writeJsonStateSync(appDir, "config", normalized);
   ensureConfiguredDirs(normalized);
   return normalized;
 }

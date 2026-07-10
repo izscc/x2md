@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { type X2MDConfig, profileStatePath } from "./config.ts";
 import { formatDateTime, nowIsoSeconds, parseTwitterDatetime, profileDateKey, profileTimeLabel } from "./dates.ts";
 import { normalizeArticleUrl, normalizeImageUrl, sanitizeFilename } from "./filenames.ts";
+import { readJsonStateSync, writeJsonStateSync } from "./state-store.ts";
 
 export function normalizeProfileHandle(handle: unknown): string {
   return String(handle ?? "").replace(/^@/, "").replace(/[^A-Za-z0-9_]/g, "").toLowerCase();
@@ -32,25 +33,18 @@ function resolveProfileCaptureDir(cfg: X2MDConfig | Record<string, any>, profile
 }
 
 export function loadProfileCaptureState(appDir?: string): Record<string, any> {
-  const file = profileStatePath(appDir);
-  if (existsSync(file)) {
-    try {
-      const state = JSON.parse(readFileSync(file, "utf8"));
-      if (state && typeof state === "object") {
-        state.profiles ||= {};
-        return state;
-      }
-    } catch {
-      // ponytail: bad state is non-critical; rebuild from new captures.
-    }
+  const state = readJsonStateSync<unknown>(appDir || dirname(profileStatePath(appDir)), "profile", () => ({ profiles: {} }));
+  if (state && typeof state === "object" && !Array.isArray(state)) {
+    const record = state as Record<string, any>;
+    record.profiles ||= {};
+    return record;
   }
   return { profiles: {} };
 }
 
 export function saveProfileCaptureState(state: Record<string, any>, appDir?: string): void {
-  const file = profileStatePath(appDir);
-  mkdirSync(join(file, ".."), { recursive: true });
-  writeFileSync(file, JSON.stringify(state, null, 2), "utf8");
+  const dir = appDir || dirname(profileStatePath(appDir));
+  writeJsonStateSync(dir, "profile", state);
 }
 
 export function getProfileStateBucket(state: Record<string, any>, handle: unknown): Record<string, any> {
