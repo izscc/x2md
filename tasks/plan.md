@@ -49,21 +49,21 @@ All core phases
 ## Phase 0 — Release Reset and Truth
 
 - [x] T01 仓库禁止文件与隐私清理
-- [ ] T02 Release 二进制退出 Git，建立不可变 artifact 策略
-- [ ] T03 版本与下载文档单一真源
-- [ ] T04 拆分 PR CI 与 release workflow
-- [ ] T05 固定 9527 并移除无效端口配置
-- [ ] T06 Pairing 与全路由 capability token
-- [ ] T07 收紧 Origin/CORS 并加入 abuse matrix
-- [ ] T08 冻结 Python legacy，重定义 Windows 支持矩阵
+- [x] T02 Release 二进制退出 Git，建立不可变 artifact 策略
+- [x] T03 版本与下载文档单一真源
+- [x] T04 拆分 PR CI 与 release workflow
+- [x] T05 固定 9527 并移除无效端口配置
+- [x] T06 Pairing 与全路由 capability token
+- [x] T07 收紧 Origin/CORS 并加入 abuse matrix
+- [x] T08 冻结 Python legacy，重定义 Windows 支持矩阵
 
 ### Checkpoint 0
 
-- [ ] clean checkout 不含 config/log/pid/发布二进制
-- [ ] 未配对调用不能读取配置、日志、路径或触发写入
-- [ ] 官方扩展完成配对后 `/config`、`/save`、`/history` 正常
-- [ ] tag/package/manifest/README/live ping 一致
-- [ ] PR/main CI 自动运行，无 tag-only 空窗
+- [x] clean checkout 不含 config/log/pid/发布二进制
+- [x] 未配对调用不能读取配置、日志、路径或触发写入
+- [x] 官方扩展完成配对后 `/config`、`/save`、`/history` 正常
+- [x] tag/package/manifest/README/live ping 一致
+- [x] PR/main CI 自动运行，无 tag-only 空窗
 
 ## Phase 1 — Reliable Save Core
 
