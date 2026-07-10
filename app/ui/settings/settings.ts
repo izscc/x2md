@@ -619,6 +619,39 @@ async function showLog(): Promise<void> {
   setStatus(response.ok ? "已刷新日志" : "日志读取失败");
 }
 
+async function retryConnection(): Promise<void> {
+  const detail = document.getElementById("diagnosticsConnection");
+  setStatus("正在重试本机连接…");
+  try {
+    const response = await apiFetch(`${api}/status`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.status !== "ok") throw new Error(result.error || "本机服务未响应");
+    if (detail) detail.textContent = `连接正常：App ${result.version}，端口 ${result.port}。`;
+    setServiceInfo(result);
+    setStatus("连接已恢复，保存功能可用");
+  } catch (error) {
+    if (detail) detail.textContent = "仍无法连接。请确认 X2MD 正在运行且端口 9527 未被其他程序占用。";
+    setStatus(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function exportDiagnostics(): Promise<void> {
+  setStatus("正在生成脱敏诊断包…");
+  const response = await apiFetch(`${api}/diagnostics/export`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "诊断包生成失败");
+  const location = document.getElementById("diagnosticsLocation");
+  if (location) {
+    location.hidden = false;
+    location.textContent = `已导出：${result.file}`;
+  }
+  const open = document.getElementById("openDiagnostics") as HTMLButtonElement | null;
+  if (open) open.disabled = false;
+  setStatus("脱敏诊断包已生成");
+}
+
 function toggleExtensionHelp(): void {
   showPanel("system");
   const help = document.getElementById("extensionHelp");
@@ -672,6 +705,9 @@ $("openLog").addEventListener("click", () => {
   void openTarget("log");
 });
 $("showLog").addEventListener("click", () => void showLog());
+document.getElementById("retryConnection")?.addEventListener("click", () => void retryConnection());
+document.getElementById("exportDiagnostics")?.addEventListener("click", () => void exportDiagnostics().catch((error) => setStatus(error.message)));
+document.getElementById("openDiagnostics")?.addEventListener("click", () => void openTarget("diagnostics"));
 $("openExtension").addEventListener("click", () => {
   toggleExtensionHelp();
   void openTarget("extension");

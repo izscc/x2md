@@ -430,6 +430,17 @@
                 <button id="openExtension" class="soft" type="button">浏览器扩展</button>
               </div>
 
+              <section class="help-card diagnostics-card" aria-labelledby="diagnosticsTitle">
+                <h4 id="diagnosticsTitle">连接修复与脱敏诊断</h4>
+                <p id="diagnosticsConnection">需要排查时可重试本机连接，或导出不含正文和凭据的诊断 JSON。</p>
+                <div class="inline-actions">
+                  <button id="retryConnection" class="soft" type="button">重试连接</button>
+                  <button id="exportDiagnostics" class="soft" type="button">导出诊断包</button>
+                  <button id="openDiagnostics" class="soft" type="button" disabled>打开诊断目录</button>
+                </div>
+                <p id="diagnosticsLocation" class="path-preview" hidden></p>
+              </section>
+
               <pre id="logView" hidden></pre>
 
               <section id="extensionHelp" class="help-card" hidden>

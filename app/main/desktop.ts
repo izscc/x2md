@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { getAppDir, loadConfig, logPath, LOCAL_API_PORT } from "../core/config.ts";
 import { log } from "./logger.ts";
 import { issueAppSession, issuePairingCode, revokeAppSession } from "../core/pairing.ts";
+import { diagnosticsDirectory } from "../core/diagnostics.ts";
 
 let settingsWindow: any;
 
@@ -151,6 +152,7 @@ export function openConfiguredTarget(target: unknown, appDir?: string, dryRun = 
   else if (key === "video") openVideoDir(appDir, dryRun);
   else if (key === "log") openLog(appDir, dryRun);
   else if (key === "extension") openExtensionDir(dryRun);
+  else if (key === "diagnostics") openPath(diagnosticsDirectory(appDir), dryRun);
   else throw new Error("不支持的打开目标");
   return key;
 }

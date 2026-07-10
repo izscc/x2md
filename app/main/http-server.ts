@@ -16,6 +16,7 @@ import { CAPTURE_LIMITS } from "../core/contracts.ts";
 import { CaptureBoundaryError, normalizeCaptureRequest } from "../core/legacy-capture.ts";
 import type { CaptureDocumentV1 } from "../core/contracts.ts";
 import { assertPreviousSteps, probeDirectory, SETUP_STEP_ORDER, setupState, validateExtension, type SetupStep } from "../core/setup-doctor.ts";
+import { buildDiagnostics, exportDiagnostics } from "../core/diagnostics.ts";
 
 function json(request: Request, payload: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(sanitizeUnicodePayload(payload)), {
@@ -147,6 +148,9 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
   if (request.method === "GET" && path === "/setup") {
     return reply(setupState(loadConfig(appDir), opts.port ?? LOCAL_API_PORT));
   }
+  if (request.method === "GET" && path === "/diagnostics") {
+    return reply({ success: true, diagnostics: buildDiagnostics({ appDir, port: opts.port }) });
+  }
   if (request.method === "GET" && path === "/autostart") return reply({ success: true, enabled: isAutostartEnabled() });
   if (request.method === "GET" && path === "/profile-capture/state") {
     const handle = normalizeProfileHandle(url.searchParams.get("handle") || "");
@@ -179,6 +183,11 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       const config = saveConfig(nextConfig, appDir);
       log(`配置已更新：keys=${Object.keys(data).join(",")}`, appDir);
       return reply({ success: true, config: publicConfig(config), restart_required: false });
+    }
+    if (path === "/diagnostics/export") {
+      const exported = exportDiagnostics({ appDir, port: opts.port });
+      log("已导出脱敏诊断包", appDir);
+      return reply({ success: true, file: exported.file, directory: exported.directory });
     }
     if (path === "/setup") {
       const step = String(data.step || "") as SetupStep;
