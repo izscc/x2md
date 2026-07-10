@@ -22,7 +22,7 @@ async function restartServer(): Promise<void> {
   server = await startHttpServer({ appDir });
 }
 
-await createTray({
+const tray = await createTray({
   showSettings: () => showSettingsWindow(appDir, server.port),
   openSaveDir: () => openFirstSaveDir(appDir),
   openVideoDir: () => openVideoDir(appDir),
@@ -36,6 +36,16 @@ await createTray({
     process.exit(0);
   },
 });
+if (!tray?.visible) {
+  log("菜单栏创建失败", appDir);
+} else {
+  try {
+    const bounds = tray.getBounds();
+    log(`菜单栏已创建：${bounds?.width || 0}x${bounds?.height || 0}`, appDir);
+  } catch (error) {
+    log(`菜单栏创建失败：${error instanceof Error ? error.message : String(error)}`, appDir);
+  }
+}
 
 if (!loadConfig(appDir).setup_completed || process.argv.includes("--settings")) {
   await showSettingsWindow(appDir, server.port);

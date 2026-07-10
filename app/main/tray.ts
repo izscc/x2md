@@ -42,7 +42,7 @@ export async function handleTrayAction(action: string, actions: TrayActions): Pr
 export async function createTray(actions: TrayActions): Promise<any> {
   try {
     const { Tray } = await import("electrobun/bun");
-    const tray = new Tray({ image: "views://assets/tray-icon.png", template: false, width: 18, height: 18 });
+    const tray = new Tray({ title: "X2MD", image: "views://assets/tray-icon.png", template: false, width: 18, height: 18 });
     const updateMenu = () => tray.setMenu(trayMenuItems(isAutostartEnabled(), actions.serviceRunning?.() ?? true));
     updateMenu();
     tray.on("tray-clicked", async (event: any) => {

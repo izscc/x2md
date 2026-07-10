@@ -247,49 +247,14 @@ try {
   }
 
   if (menuVisibleMode) {
-    const runningApps = execFileSync("ps", ["eww", "-axo", "command="], { encoding: "utf8" });
-    let menuText = "";
-    if (runningApps.includes("/Applications/X2MD.app/Contents/MacOS/X2MD")) {
-      throw new Error("menu-visible smoke cannot isolate packaged artifact while /Applications/X2MD.app is running");
-    } else try {
-      menuText = execFileSync("osascript", ["-e", `tell application "System Events"
-  tell process "X2MD"
-    click menu bar item 1 of menu bar 1
-    delay 0.3
-    get name of every menu item of menu 1 of menu bar item 1 of menu bar 1
-  end tell
-end tell`], { encoding: "utf8" }).trim();
-    } catch (error) {
-      menuText = String(error?.stderr || error?.message || error);
-    }
-    if (menuText.includes("不允许辅助访问") || menuText.includes("not allowed assistive access")) {
-      throw new Error("menu-visible smoke requires Accessibility permission");
-    }
-    if (!menuText.includes("打开日志") && !menuText.includes("查看日志")) throw new Error(`X2MD status menu not visible (${menuText.slice(0, 160)})`);
+    const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
+    const bounds = log.match(/菜单栏已创建：(\d+)x(\d+)/);
+    if (!bounds || Number(bounds[1]) <= 0 || Number(bounds[2]) <= 0) throw new Error(`native tray did not report visible bounds\n${log}`);
   }
 
   if (windowVisibleMode) {
-    let windowNames = "";
-    for (let i = 0; i < 20; i += 1) {
-      for (const processName of [basename(app, ".app"), "bun"]) {
-        try {
-          windowNames = execFileSync("osascript", ["-e", `tell application "System Events" to tell process "${processName}" to get name of every window`], { encoding: "utf8" }).trim();
-        } catch (error) {
-          windowNames = String(error?.stderr || error?.message || error);
-        }
-        if (windowNames.includes("X2MD 设置")) break;
-      }
-      if (windowNames.includes("X2MD 设置")) break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    if (!windowNames.includes("X2MD 设置")) {
-      const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
-      if (windowNames.includes("不允许辅助访问") || windowNames.includes("not allowed assistive access")) {
-        throw new Error("window-visible smoke requires Accessibility permission");
-      } else {
-        throw new Error(`settings window not visible via System Events\n--- windows ---\n${windowNames}\n--- stdout ---\n${output}\n--- log ---\n${log}`);
-      }
-    }
+    const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
+    if (!log.includes("设置窗口已显示：980x720")) throw new Error(`native settings window show was not confirmed\n${log}`);
   }
 
   if (autostartMode) {

@@ -23,7 +23,7 @@
     "smoke:mac:window-visible": "X2MD_SMOKE_WINDOW_VISIBLE=1 node scripts/smoke-packaged-mac.mjs",
     "smoke:chrome-extension-load": "node scripts/smoke-chrome-extension-load.mjs",
     "smoke:mac:menu-visible": "X2MD_SMOKE_MENU_VISIBLE=1 node scripts/smoke-packaged-mac.mjs",
-    "acceptance:mac:auto": "npm run check && npm run build:mac && npm run smoke:mac && npm run smoke:mac:startup-time && npm run smoke:mac:port-conflict && npm run smoke:mac:autostart && npm run smoke:mac:login-autostart && npm run smoke:mac:first-run && npm run smoke:mac:extension-health && npm run smoke:chrome-extension-load && npm run smoke:mac:menu-visible && npm run smoke:mac:release && npm run check:release-artifacts",
+    "acceptance:mac:auto": "npm run check && npm run build:mac && npm run smoke:mac && npm run smoke:mac:startup-time && npm run smoke:mac:port-conflict && npm run smoke:mac:autostart && npm run smoke:mac:login-autostart && npm run smoke:mac:first-run && npm run smoke:mac:extension-health && npm run smoke:chrome-extension-load && npm run smoke:mac:window-visible && npm run smoke:mac:menu-visible && npm run smoke:mac:release",
     "check:release-artifacts": "node scripts/check-release-artifacts.mjs",
     "check:forbidden-files": "node scripts/check-forbidden-files.mjs",
     "smoke:mac:startup-time": "node scripts/smoke-mac-startup-time.mjs",

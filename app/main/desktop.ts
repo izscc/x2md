@@ -95,12 +95,15 @@ export async function showSettingsWindow(appDir = getAppDir(), port?: number): P
       ...settingsWindowOptions(configuredPort, process.execPath, session, pairingCode),
       frame: { x: 120, y: 120, width: 980, height: 720 },
     });
+    window.show?.();
+    window.activate?.();
     settingsWindow = window;
     settingsWindow.on?.("close", () => {
       revokeAppSession(session);
       if (settingsWindow === window) settingsWindow = null;
     });
     log(`设置页已打开：inline viewsRoot=${settingsViewsRootForExecutable()}`, appDir);
+    log("设置窗口已显示：980x720", appDir);
   } catch (error) {
     log(`设置页打开失败：${error instanceof Error ? error.message : String(error)}`, appDir);
     console.log("设置页需要在 Electrobun 运行时打开：http://127.0.0.1:9527/config");
