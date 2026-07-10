@@ -69,41 +69,6 @@ jobs:
           path: X2MD_Mac.zip
           retention-days: 30
 
-  build-windows-legacy:
-    needs: release-gate
-    runs-on: windows-latest
-    name: 打包 Windows Legacy 版
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: 安装依赖
-        run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: 生成 Windows 图标
-        run: |
-          python -c "from PIL import Image; img = Image.open('assets/icon.png'); img.save('assets/icon.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
-
-      - name: PyInstaller 打包
-        run: pyinstaller x2md.spec --clean --noconfirm
-
-      - name: 压缩 Windows 文件夹
-        run: Compress-Archive -Path dist\X2MD\* -DestinationPath X2MD_Windows.zip
-
-      - name: 上传 Windows 构建产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: X2MD_Windows
-          path: X2MD_Windows.zip
-          retention-days: 30
-
   package-extension:
     needs: release-gate
     runs-on: ubuntu-latest
@@ -135,7 +100,7 @@ jobs:
           retention-days: 30
 
   release:
-    needs: [build-mac, build-windows-legacy, package-extension]
+    needs: [build-mac, package-extension]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     name: 创建 Release
@@ -151,7 +116,7 @@ jobs:
           merge-multiple: true
 
       - name: 生成 SHA256 校验文件
-        run: sha256sum X2MD_Mac.zip X2MD_Windows.zip X2MD_Extension.zip > SHA256SUMS.txt
+        run: sha256sum X2MD_Mac.zip X2MD_Extension.zip > SHA256SUMS.txt
 
       - name: 准备 Release Notes
         run: |
@@ -159,7 +124,7 @@ jobs:
           if [ -f "$NOTES" ]; then
             cp "$NOTES" RELEASE_NOTES.md
           else
-            printf "X2MD %s\n\n- Mac：Electrobun 版\n- Windows：迁移期 legacy 版\n- Chrome 扩展包\n" "${{ github.ref_name }}" > RELEASE_NOTES.md
+            printf "X2MD %s\n\n- Mac：Electrobun stable 版\n- Chrome 扩展包\n" "${{ github.ref_name }}" > RELEASE_NOTES.md
           fi
 
       - name: 创建 GitHub Release
@@ -169,7 +134,6 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: |
             X2MD_Mac.zip
-            X2MD_Windows.zip
             X2MD_Extension.zip
             SHA256SUMS.txt
           draft: false

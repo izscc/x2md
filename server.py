@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 x2md 本地服务器
+
+FROZEN LEGACY / EOL：此 Python 实现仅保留兼容性维护，不再新增功能，不承诺与 v4
+TypeScript 实现保持一致，也不得用于 stable release 构建。
+
 监听 localhost:9527，接收 Chrome 扩展推送的推文/X Article 数据，
 转换为 Obsidian 兼容的 Markdown 文件并保存到指定目录。
 """

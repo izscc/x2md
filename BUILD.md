@@ -72,7 +72,6 @@ npm run acceptance:mac:auto
 CI 默认产出：
 
 - `X2MD_Mac.zip`：Electrobun `.app`
-- `X2MD_Windows.zip`：迁移期 Python legacy 版
 - `X2MD_Extension.zip`：Chrome 扩展
 - `SHA256SUMS.txt`
 
@@ -82,20 +81,18 @@ CI 默认产出：
 `npm run check:release-artifacts -- --dir <产物目录>`。`release/` 只保留人工维护的
 `RELEASE_NOTES.md`。清理既有 Git 历史中的二进制需要人工另行批准，本次不执行历史改写。
 
-## Python legacy（回滚路径）
+## Python legacy（冻结兼容实现）
 
-迁移期仍保留旧版 Python 桌面端：
+旧版 Python 桌面端仅为已有用户保留，不再新增功能、不承诺 v4 parity，也不进入 stable
+workflow。Windows 当前为 beta；支持范围和恢复 stable 所需的 TypeScript artifact gate 见
+[`docs/platform-support.md`](./docs/platform-support.md)。
+
+需要维护冻结实现时可运行现有回归测试：
 
 ```bash
-pip3 install -r requirements.txt
-pip3 install pyinstaller
-
 # 开发运行
 python3 tray_app.py
 
 # 仅运行服务
 python3 server.py
-
-# 打包 legacy 版
-pyinstaller x2md.spec --clean --noconfirm
 ```
