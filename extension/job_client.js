@@ -32,7 +32,7 @@
             return result;
         }
         function isRateLimited(value) {
-            return [value?._x2md_warning_code, value?.warning_code, value?.error_code, value?.error?.code]
+            return [value?.code, value?._x2md_warning_code, value?.warning_code, value?.error_code, value?.error?.code]
                 .some((code) => code === "RATE_LIMITED" || code === "X_RATE_LIMITED");
         }
         async function processJob(job) {
