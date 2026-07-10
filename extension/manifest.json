@@ -8,7 +8,8 @@
         "notifications",
         "cookies",
         "tabs",
-        "scripting"
+        "scripting",
+        "alarms"
     ],
     "host_permissions": [
         "*://*.twitter.com/*",

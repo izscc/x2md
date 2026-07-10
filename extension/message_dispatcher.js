@@ -108,6 +108,10 @@
             },
             history_action: async (message) => deps.historyAction({ id: message.id, action: message.command }),
             capture_result_action: async (message) => deps.historyAction({ id: message.id, action: message.command }),
+            create_capture_job: (message) => deps.jobs.create(message.job_type, message.items || [], message.metadata || {}),
+            list_capture_jobs: () => deps.jobs.list(),
+            get_capture_job: (message) => deps.jobs.detail(message.id),
+            control_capture_job: (message) => deps.jobs.control(message.id, message.command, message.data || {}),
             update_config: async (message) => deps.updateConfig(message.config),
             get_autostart: async () => deps.getAutostart(),
             set_autostart: async (message) => {

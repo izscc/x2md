@@ -682,11 +682,46 @@ function ensureXProfileCaptureButton() {
 
 const X_BOOKMARKS_TOOLBAR_ID = "__x2md_bookmarks_toolbar";
 let xBookmarksExportState = null;
+let xBookmarksPollTimer = null;
 
-function sendBookmarkSaveMessage(data) {
+function sendBookmarksJobMessage(message) {
     return new Promise((resolve) => {
-        chrome.runtime.sendMessage({ action: "save_tweet", data }, (resp) => resolve(resp || { success: false, error: "扩展无响应" }));
+        chrome.runtime.sendMessage(message, (resp) => resolve(resp || { success: false, error: "扩展无响应" }));
     });
+}
+
+async function collectBookmarksToLimit(limit) {
+    let urls = collectUniqueStatusUrls(document);
+    let unchanged = 0;
+    while (urls.length < limit && unchanged < 3) {
+        const before = urls.length;
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        urls = collectUniqueStatusUrls(document);
+        unchanged = urls.length === before ? unchanged + 1 : 0;
+    }
+    return urls.slice(0, limit);
+}
+
+async function refreshBookmarksJob(id) {
+    const response = await sendBookmarksJobMessage({ action: "get_capture_job", id });
+    if (response?.success && response.job) xBookmarksExportState = response.job;
+    updateBookmarksToolbarStatus();
+}
+
+function pollBookmarksJob(id) {
+    clearInterval(xBookmarksPollTimer);
+    refreshBookmarksJob(id);
+    xBookmarksPollTimer = setInterval(async () => {
+        await refreshBookmarksJob(id);
+        if (["completed", "failed", "cancelled"].includes(xBookmarksExportState?.status)) clearInterval(xBookmarksPollTimer);
+    }, 1000);
+}
+
+async function recoverBookmarksJob() {
+    const response = await sendBookmarksJobMessage({ action: "list_capture_jobs" });
+    const latest = (response?.jobs || []).filter((job) => job.type === "bookmarks").sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (latest) pollBookmarksJob(latest.id);
 }
 
 function updateBookmarksToolbarStatus() {
@@ -702,49 +737,25 @@ function updateBookmarksToolbarStatus() {
         if (retry) retry.disabled = true;
         return;
     }
-    if (status) status.textContent = `进度 ${state.index}/${state.urls.length} · 成功 ${state.success} · 跳过 ${state.skipped} · 失败 ${state.failed.length}`;
+    const counts = state.counts || {};
+    if (status) status.textContent = `${state.status}${state.pause_reason ? ` (${state.pause_reason})` : ""} · 完成 ${(counts.saved || 0) + (counts.updated || 0)}/${counts.total || 0} · 跳过 ${counts.skipped || 0} · 失败 ${counts.failed || 0}`;
     if (pause) {
-        pause.disabled = state.done || state.cancelled;
-        pause.textContent = state.paused ? "继续" : "暂停";
+        pause.disabled = ["completed", "failed", "cancelled"].includes(state.status);
+        pause.textContent = state.status === "paused" ? "继续" : "暂停";
     }
-    if (retry) retry.disabled = state.running || !state.failed.length;
+    if (retry) retry.disabled = state.status !== "failed" || !(counts.failed > 0);
 }
 
 async function runBookmarksExport(urls) {
-    const state = {
-        urls,
-        index: 0,
-        success: 0,
-        skipped: 0,
-        failed: [],
-        paused: false,
-        cancelled: false,
-        running: true,
-        done: false,
-    };
-    xBookmarksExportState = state;
-    updateBookmarksToolbarStatus();
-
-    while (state.index < state.urls.length) {
-        if (state.cancelled) break;
-        if (state.paused) {
-            await new Promise((resolve) => setTimeout(resolve, 250));
-            continue;
-        }
-
-        const url = state.urls[state.index];
-        const resp = await sendBookmarkSaveMessage({ type: "tweet", url, text: "", images: [], thread_tweets: [] });
-        if (resp?.success) state.success += 1;
-        else if (resp?.result?.skipped || resp?.skipped) state.skipped += 1;
-        else state.failed.push(url);
-        state.index += 1;
-        updateBookmarksToolbarStatus();
+    const items = urls.map((url) => ({ id: url.match(/\/status\/(\d+)/)?.[1], payload: { type: "tweet", url, text: "", images: [], thread_tweets: [] } }));
+    const response = await sendBookmarksJobMessage({ action: "create_capture_job", job_type: "bookmarks", items, metadata: { source: "x-bookmarks" } });
+    if (!response?.success || !response.job) {
+        showToast(response?.error || "无法创建书签任务", "error", 5000);
+        return;
     }
-
-    state.running = false;
-    state.done = true;
-    updateBookmarksToolbarStatus();
-    showToast(state.cancelled ? "书签导出已取消" : `书签导出完成：成功 ${state.success}，失败 ${state.failed.length}`, state.failed.length ? "error" : "success", 5000);
+    xBookmarksExportState = response.job;
+    pollBookmarksJob(response.job.id);
+    showToast(`已创建 ${urls.length} 项书签任务`, "success", 3500);
 }
 
 function ensureBookmarksToolbar() {
@@ -761,6 +772,8 @@ function ensureBookmarksToolbar() {
             <strong style="font-size:13px;">X2MD 书签导出</strong>
             <span data-x2md-role="bookmarks-status" style="font-size:12px;color:rgb(83,100,113);">可导出当前已加载书签</span>
             <button type="button" aria-label="X2MD 导出当前已加载书签" data-x2md-role="bookmarks-export">导出可见</button>
+            <input data-x2md-role="bookmarks-limit" aria-label="继续加载书签数量上限" type="number" min="1" max="500" value="100" style="width:64px;" />
+            <button type="button" aria-label="继续加载并导出书签" data-x2md-role="bookmarks-load-export">加载到上限</button>
             <button type="button" aria-label="暂停或继续 X2MD 书签导出" data-x2md-role="bookmarks-pause" disabled>暂停</button>
             <button type="button" aria-label="取消 X2MD 书签导出" data-x2md-role="bookmarks-cancel">取消</button>
             <button type="button" aria-label="重试失败的 X2MD 书签导出" data-x2md-role="bookmarks-retry" disabled>重试失败</button>
@@ -798,20 +811,31 @@ function ensureBookmarksToolbar() {
             }
             runBookmarksExport(urls);
         });
-        toolbar.querySelector('[data-x2md-role="bookmarks-pause"]').addEventListener("click", () => {
+        toolbar.querySelector('[data-x2md-role="bookmarks-load-export"]').addEventListener("click", async () => {
+            const input = toolbar.querySelector('[data-x2md-role="bookmarks-limit"]');
+            const limit = Math.min(500, Math.max(1, Number.parseInt(input.value, 10) || 100));
+            input.value = String(limit);
+            const urls = await collectBookmarksToLimit(limit);
+            if (urls.length) runBookmarksExport(urls);
+        });
+        toolbar.querySelector('[data-x2md-role="bookmarks-pause"]').addEventListener("click", async () => {
             if (!xBookmarksExportState) return;
-            xBookmarksExportState.paused = !xBookmarksExportState.paused;
-            updateBookmarksToolbarStatus();
+            const command = xBookmarksExportState.status === "paused" ? "resume" : "pause";
+            await sendBookmarksJobMessage({ action: "control_capture_job", id: xBookmarksExportState.id, command });
+            refreshBookmarksJob(xBookmarksExportState.id);
         });
-        toolbar.querySelector('[data-x2md-role="bookmarks-cancel"]').addEventListener("click", () => {
-            if (xBookmarksExportState) xBookmarksExportState.cancelled = true;
-            updateBookmarksToolbarStatus();
+        toolbar.querySelector('[data-x2md-role="bookmarks-cancel"]').addEventListener("click", async () => {
+            if (!xBookmarksExportState) return;
+            await sendBookmarksJobMessage({ action: "control_capture_job", id: xBookmarksExportState.id, command: "cancel" });
+            refreshBookmarksJob(xBookmarksExportState.id);
         });
-        toolbar.querySelector('[data-x2md-role="bookmarks-retry"]').addEventListener("click", () => {
-            const failed = xBookmarksExportState?.failed || [];
-            if (failed.length) runBookmarksExport(failed);
+        toolbar.querySelector('[data-x2md-role="bookmarks-retry"]').addEventListener("click", async () => {
+            if (!xBookmarksExportState) return;
+            await sendBookmarksJobMessage({ action: "control_capture_job", id: xBookmarksExportState.id, command: "retry" });
+            pollBookmarksJob(xBookmarksExportState.id);
         });
         (document.querySelector("main") || document.body).prepend(toolbar);
+        recoverBookmarksJob();
     }
     updateBookmarksToolbarStatus();
 }

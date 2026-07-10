@@ -509,6 +509,7 @@
             return parsed;
         }
 
+        let jobClient;
         const dispatchMessage = X2MDMessageDispatcher.createMessageDispatcher({
             getConfig: () => localClient.request(`/config`),
             enrich: (mode, data) => xEnrichment.enrich(mode, data),
@@ -540,7 +541,21 @@
             ping: () => localClient.request(`/ping`, { auth: false }),
             openOptions: () => chrome.runtime.openOptionsPage(),
             extensionVersion: () => chrome.runtime.getManifest?.().version || "",
+            jobs: {
+                create: (...args) => jobClient.create(...args),
+                list: () => jobClient.list(),
+                detail: (id) => jobClient.detail(id),
+                control: (...args) => jobClient.control(...args),
+            },
         });
+
+        jobClient = X2MDJobClient.createJobClient({
+            request: (...args) => localClient.request(...args),
+            processCapture: (data) => dispatchMessage({ action: "save_tweet", data }),
+            alarms: chrome.alarms,
+        });
+        jobClient.installAlarm();
+        jobClient.kick();
 
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             dispatchMessage(message, sender).then(sendResponse);
