@@ -1,6 +1,3 @@
-import { mkdirSync } from "node:fs";
-import { extname, join } from "node:path";
-
 import { resolveSavePathsForRequest, type X2MDConfig } from "./config.ts";
 import { sanitizeFilename } from "./filenames.ts";
 import { buildMarkdown } from "./markdown.ts";
@@ -10,62 +7,11 @@ import { runSaveTransaction } from "./save-transaction.ts";
 import type { CaptureDocumentV1 } from "./contracts.ts";
 import { normalizeCaptureRequest } from "./legacy-capture.ts";
 import { captureKey, readSaveIndex, recordSaveRevision, updateIndexedFiles, withCaptureLock, type DuplicatePolicy } from "./save-index.ts";
-import { safeDownload, SafeDownloadError } from "./safe-download.ts";
+import { localizeImages } from "./image-localizer.ts";
 
 export function readSaveHistory(appDir = ""): Array<Record<string, any>> {
   const raw = readJsonStateSync<unknown>(appDir || ".", "history", () => []);
   return Array.isArray(raw) ? raw.slice(0, 20) : [];
-}
-
-function statusIdFromUrl(url: unknown): string {
-  return String(url || "").match(/\/status\/(\d+)/)?.[1] || "misc";
-}
-
-function imageExtension(url: string, contentType = ""): string {
-  const fromType = contentType.includes("png") ? ".png" : contentType.includes("webp") ? ".webp" : contentType.includes("gif") ? ".gif" : contentType.includes("jpeg") || contentType.includes("jpg") ? ".jpg" : "";
-  if (fromType) return fromType;
-  try {
-    const ext = extname(new URL(url).pathname);
-    return ext || ".jpg";
-  } catch {
-    return ".jpg";
-  }
-}
-
-function isTwitterPayload(data: Record<string, any>): boolean {
-  const platform = String(data.platform || "").toLowerCase();
-  const url = String(data.url || "");
-  return platform === "x" || platform.includes("twitter") || /https?:\/\/(?:x|twitter)\.com\//i.test(url);
-}
-
-async function localizeImages(data: Record<string, any>, cfg: Record<string, any>, saveRoot: string): Promise<Record<string, any>> {
-  if (!cfg.download_images || isTwitterPayload(data)) return data;
-  const images = Array.isArray(data.images) ? data.images : [];
-  if (!images.length) return data;
-
-  const root = String(cfg.image_attachment_path || "X2MD-attachments");
-  const statusId = statusIdFromUrl(data.url);
-  const attachDir = root.startsWith("/") ? join(root, statusId) : join(saveRoot, root, statusId);
-  const displayRoot = root.startsWith("/") ? root : root.replace(/^\.?\//, "");
-  const nextImages: string[] = [];
-  const failures: string[] = [];
-  mkdirSync(attachDir, { recursive: true });
-
-  for (let index = 0; index < images.length; index += 1) {
-    const url = String(images[index] || "");
-    try {
-      const filename = `image_${index + 1}${imageExtension(url)}`;
-      await safeDownload(url, join(attachDir, filename), { allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"], maxBytes: 25 * 1024 * 1024, timeoutMs: 30_000 });
-      const relativePath = `${displayRoot}/${statusId}/${filename}`;
-      nextImages.push(cfg.image_embed_style === "obsidian" ? `![[${relativePath}]]` : relativePath);
-    } catch (error) {
-      const code = error instanceof SafeDownloadError ? error.code : "MEDIA_WRITE_FAILED";
-      failures.push(`${url} [${code}] (${error instanceof Error ? error.message : String(error)})`);
-      nextImages.push(url);
-    }
-  }
-
-  return { ...data, images: nextImages, image_localization_errors: failures };
 }
 
 export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string, canonicalCapture?: CaptureDocumentV1): Promise<Record<string, any>> {
@@ -83,7 +29,8 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
       const saved = latest?.files || [];
       return { success: true, outcome: "skipped", capture_key: key, saved, files: saved.map((path) => ({ path })), errors: [], warnings: [], media: { completed: 0, failed: 0, pending: 0 } };
     }
-    const preparedData = await localizeImages(data, cfg, savePaths[0]);
+    const localized = await localizeImages(data, cfg, savePaths);
+    const preparedData = localized.data;
     const [filename, content] = buildMarkdown(preparedData, cfg, appDir);
     const safeFilename = sanitizeUnicodeText(sanitizeFilename(filename, Number(cfg.max_filename_length || 100))) || "untitled";
     const imageErrors = Array.isArray(preparedData.image_localization_errors) ? preparedData.image_localization_errors : [];
@@ -95,7 +42,7 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
       await updateIndexedFiles(latest.files, safeContent);
       const transactionId = `update-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       await recordSaveRevision(dir, capture, key, latest.files, transactionId);
-      return { success: true, outcome: "updated", capture_key: key, saved: latest.files, files: latest.files.map((path) => ({ path })), errors: [], warnings: [], media: { completed: 0, failed: imageErrors.length, pending: 0 } };
+      return { success: true, outcome: localized.failed ? "partial" : "updated", capture_key: key, saved: latest.files, files: latest.files.map((path) => ({ path })), errors: [], warnings: localized.warnings, media: { completed: localized.completed, failed: localized.failed, pending: 0 } };
     }
     const history = appDir ? {
       title: String(preparedData.article_title || preparedData.text || preparedData.title || safeFilename).split(/\s+/).join(" ").slice(0, 120),
@@ -106,6 +53,6 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
       saveIndex: { key, capture },
     });
     const outcome = saved.length ? (errors.length ? "partial" : "saved") : "failed";
-    return { success: saved.length > 0, outcome, capture_key: key, saved, files: saved.map((path) => ({ path })), errors, warnings: [], media: { completed: 0, failed: imageErrors.length, pending: 0 } };
+    return { success: saved.length > 0, outcome: localized.failed && saved.length ? "partial" : outcome, capture_key: key, saved, files: saved.map((path) => ({ path })), errors, warnings: localized.warnings, media: { completed: localized.completed, failed: localized.failed, pending: 0 } };
   });
 }
