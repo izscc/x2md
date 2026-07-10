@@ -101,3 +101,23 @@ export type CaptureJob = {
   created_at: string;
   updated_at: string;
 };
+
+export type JobCounts = Record<JobItemStatus, number> & { total: number; remaining: number };
+
+export type JobItemView = Omit<JobItem, "payload" | "result" | "idempotency_key">;
+
+export type JobView = Omit<CaptureJob, "items" | "metadata"> & {
+  counts: JobCounts;
+  items?: JobItemView[];
+};
+
+export type JobClaim = JobItem;
+
+export type JobResult = {
+  success: boolean;
+  job?: JobView;
+  jobs?: JobView[];
+  item?: JobItemView;
+  claim?: JobClaim | null;
+  error?: { code: StableErrorCode; message: string; retryable: boolean };
+};

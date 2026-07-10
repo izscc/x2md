@@ -17,6 +17,7 @@ import { CaptureBoundaryError, normalizeCaptureRequest } from "../core/legacy-ca
 import type { CaptureDocumentV1 } from "../core/contracts.ts";
 import { assertPreviousSteps, probeDirectory, SETUP_STEP_ORDER, setupState, validateExtension, type SetupStep } from "../core/setup-doctor.ts";
 import { buildDiagnostics, exportDiagnostics } from "../core/diagnostics.ts";
+import { handleJobRoute, isJobRoute } from "./job-routes.ts";
 
 function json(request: Request, payload: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(sanitizeUnicodePayload(payload)), {
@@ -120,6 +121,18 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
   const authConfig = loadConfig(appDir);
   if (!opts.testBypassAuth && !isValidCredential(requestCredential(request), String(authConfig.install_secret || ""))) {
     return reply({ success: false, error: "Authentication required" }, 401);
+  }
+  if (isJobRoute(path)) {
+    let jobData: Record<string, unknown> = {};
+    if (request.method === "POST") {
+      try {
+        jobData = await readJson(request);
+      } catch {
+        return reply({ success: false, error: { code: "INVALID_CAPTURE", message: "Invalid JSON", retryable: false } }, 400);
+      }
+    }
+    const result = await handleJobRoute(request.method, path, jobData, appDir);
+    if (result) return reply(result.body as unknown as Record<string, unknown>, result.status);
   }
   if (captureData && !legacyCapture && captureData.custom_save_path_name) {
     const entry = authConfig.custom_save_paths.find((item) => item.name === captureData!.custom_save_path_name);

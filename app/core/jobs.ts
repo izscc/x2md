@@ -5,7 +5,7 @@ import { JobStore } from "./job-store.ts";
 
 type Clock = () => Date;
 type LeaseProof = { leaseOwner: string; attempt: number; idempotencyKey: string };
-type Submission = { key: string; operation: "complete" | "fail" };
+type Submission = { key: string; operation: "complete" | "fail"; leaseOwner: string; attempt: number };
 type StoredItem = JobItem & { last_submission?: Submission };
 
 export class JobTransitionError extends Error {
@@ -165,7 +165,9 @@ export class JobEngine {
       const job = this.requireJob(jobs, jobId);
       const item = this.requireItem(job, itemId) as StoredItem;
       if (item.last_submission?.key === proof.idempotencyKey) {
-        if (item.last_submission.operation !== operation) throw new JobTransitionError("Idempotency key was used for a different operation");
+        if (item.last_submission.operation !== operation || item.last_submission.leaseOwner !== proof.leaseOwner || item.last_submission.attempt !== proof.attempt) {
+          throw new JobTransitionError("Idempotency key was used for a different operation or lease proof");
+        }
         return copy(item);
       }
       this.assertLease(item, proof, at);
@@ -173,7 +175,7 @@ export class JobEngine {
       mutate(item);
       item.lease_owner = null;
       item.lease_expires_at = null;
-      item.last_submission = { key: proof.idempotencyKey, operation };
+      item.last_submission = { key: proof.idempotencyKey, operation, leaseOwner: proof.leaseOwner, attempt: proof.attempt };
       item.updated_at = iso(at);
       job.updated_at = iso(at);
       this.settle(job, at);
