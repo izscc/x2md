@@ -126,12 +126,12 @@ All core phases
 
 ## Phase 4 — Persistent Job Center
 
-- [ ] T34 Job state machine 与持久存储
-- [ ] T35 Job API 与任务控制
-- [ ] T36 Bookmarks 任务接入 Job Engine
-- [ ] T37 Profile/Articles 任务接入 Job Engine
-- [ ] T38 任务中心 UI 与报告
-- [ ] T39 重启恢复、rate-limit 暂停和失败重试测试
+- [x] T34 Job state machine 与持久存储
+- [x] T35 Job API 与任务控制
+- [x] T36 Bookmarks 任务接入 Job Engine
+- [x] T37 Profile/Articles 任务接入 Job Engine
+- [x] T38 任务中心 UI 与报告
+- [x] T39 重启恢复、rate-limit 暂停和失败重试测试
 
 ### Checkpoint 4
 
