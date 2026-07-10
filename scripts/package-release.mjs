@@ -5,10 +5,17 @@ import { readFileSync } from "node:fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 const version = pkg.version;
-const releaseDir = join("release", `v${version}`);
+const args = process.argv.slice(2);
+if (args.includes("--help")) {
+  console.log("Usage: node scripts/package-release.mjs [--output-dir <directory>]\n\nDefaults to artifacts/v<package version> and refuses to overwrite an existing directory.");
+  process.exit(0);
+}
+const outputIndex = args.indexOf("--output-dir");
+if (outputIndex >= 0 && !args[outputIndex + 1]) throw new Error("--output-dir requires a directory");
+const releaseDir = outputIndex >= 0 ? args[outputIndex + 1] : join("artifacts", `v${version}`);
 const appPath = "build/stable-macos-arm64/X2MD.app";
 if (!existsSync(appPath)) throw new Error(`missing ${appPath}; run npm run build:mac first`);
-rmSync(releaseDir, { recursive: true, force: true });
+if (existsSync(releaseDir)) throw new Error(`output directory already exists: ${releaseDir}`);
 mkdirSync(releaseDir, { recursive: true });
 
 execFileSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appPath, join(releaseDir, "X2MD_Mac.zip")], { stdio: "inherit" });
@@ -29,7 +36,8 @@ if (existsSync("artifacts/stable-macos-arm64-update.json")) {
   writeFileSync(join(releaseDir, "update.json"), JSON.stringify({ version, notes: `X2MD v${version}` }, null, 2), "utf8");
 }
 
-writeFileSync(join(releaseDir, "RELEASE_NOTES.md"), `# X2MD v${version}\n\n- 浏览器扩展采用与设置页一致的 Apple 风格视觉：更清晰的服务状态、保存位置与最近保存信息。\n- 加固扩展弹窗对本地服务返回文本的渲染，避免路径或标题作为 HTML 执行。\n- 新增保存管线性能与架构改进 PRD，为后续并发媒体、本地原子写入和模块化提供实施路径。\n`, "utf8");
+const notesPath = join("release", `v${version}`, "RELEASE_NOTES.md");
+if (existsSync(notesPath)) cpSync(notesPath, join(releaseDir, "RELEASE_NOTES.md"));
 const sums = execFileSync("shasum", ["-a", "256", "X2MD_Mac.zip", "X2MD_Extension.zip", "X2MD_Windows_Lite.zip", "update.json"], { cwd: releaseDir, encoding: "utf8" });
 writeFileSync(join(releaseDir, "SHA256SUMS.txt"), sums, "utf8");
 console.log(`packaged release ${releaseDir}`);

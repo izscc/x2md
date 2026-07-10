@@ -4,7 +4,14 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-const releaseDir = `release/v${pkg.version}`;
+const args = process.argv.slice(2);
+if (args.includes("--help")) {
+  console.log("Usage: node scripts/check-release-artifacts.mjs [--dir <directory>]\n\nValidates artifacts in the explicit directory, or artifacts/v<package version> by default.");
+  process.exit(0);
+}
+const dirIndex = args.indexOf("--dir");
+if (dirIndex >= 0 && !args[dirIndex + 1]) throw new Error("--dir requires a directory");
+const releaseDir = dirIndex >= 0 ? args[dirIndex + 1] : `artifacts/v${pkg.version}`;
 const macZip = join(releaseDir, "X2MD_Mac.zip");
 const extZip = join(releaseDir, "X2MD_Extension.zip");
 const winZip = join(releaseDir, "X2MD_Windows_Lite.zip");

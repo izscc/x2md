@@ -76,6 +76,12 @@ CI 默认产出：
 - `X2MD_Extension.zip`：Chrome 扩展
 - `SHA256SUMS.txt`
 
+发布二进制统一生成到未纳入 Git 的 `artifacts/v<version>/`；也可用
+`node scripts/package-release.mjs --output-dir <临时目录>` 指定 CI 临时目录。若目标目录已存在，
+打包会直接失败，避免静默覆盖。校验时使用
+`npm run check:release-artifacts -- --dir <产物目录>`。`release/` 只保留人工维护的
+`RELEASE_NOTES.md`。清理既有 Git 历史中的二进制需要人工另行批准，本次不执行历史改写。
+
 ## Python legacy（回滚路径）
 
 迁移期仍保留旧版 Python 桌面端：

@@ -13,6 +13,11 @@ node_modules/
 build/
 dist/
 artifacts/
+release/**/*.zip
+release/**/*.dmg
+release/**/*.zst
+release/**/update.json
+release/**/SHA256SUMS.txt
 *.spec.bak
 *.pkg
 

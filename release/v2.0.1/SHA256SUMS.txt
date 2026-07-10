@@ -1,2 +1,0 @@
-f8638aa002a8dbecb1e8dc2f5ebcbbcec48e991bcb55a229b3a9ed420cb48ebd  X2MD_Mac.zip
-168d07392134f43925ffc37157ccf9b77b9d3f7edbb9f9c31a32d7e9e2c10d9a  X2MD_Extension.zip
