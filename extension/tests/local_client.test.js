@@ -77,12 +77,14 @@ test("retries idempotent requests once but never retries POST", async () => {
 
 test("background, popup, and options have no direct local fetch and load the client first", () => {
     const background = readFileSync("extension/background.js", "utf8");
+    const backgroundRuntime = readFileSync("extension/background_runtime.js", "utf8");
     const popup = readFileSync("extension/popup.js", "utf8");
     const options = readFileSync("extension/options.js", "utf8");
     const optionsHtml = readFileSync("extension/options.html", "utf8");
     for (const source of [background, popup, options]) {
         assert.doesNotMatch(source, /fetch\([^\n]*(?:127\.0\.0\.1|\/config|\/save|\/history|\/autostart|\/pair)/);
     }
-    assert.match(background, /importScripts\("local_client\.js"\);[\s\S]*X2MDLocalClient\.createLocalClient\(\)/);
+    assert.ok(background.indexOf('"local_client.js"') < background.indexOf('"background_runtime.js"'));
+    assert.match(backgroundRuntime, /X2MDLocalClient\.createLocalClient\(\)/);
     assert.ok(optionsHtml.indexOf('src="local_client.js"') < optionsHtml.indexOf('src="options.js"'));
 });

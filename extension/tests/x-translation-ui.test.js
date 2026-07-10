@@ -41,9 +41,11 @@ test("normalizes translated copy content as HTML and plain text", () => {
 
 test("content entry delegates X translation UI and contains no DOM translation algorithms", () => {
     const source = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
-    assert.match(source, /X2MDXTranslationUI\.mount\(\)/);
-    assert.match(source, /X2MDXTranslationUI\.schedule\(\)/);
-    assert.match(source, /X2MDXTranslationUI\.applyVisibleTranslationOverride/);
+    const runtime = fs.readFileSync(path.join(__dirname, "..", "content_runtime.js"), "utf8");
+    assert.match(source, /X2MDContentRuntime\.start\(\)/);
+    assert.match(runtime, /X2MDXTranslationUI\.mount\(\)/);
+    assert.match(runtime, /X2MDXTranslationUI\.schedule\(\)/);
+    assert.match(runtime, /X2MDXTranslationUI\.applyVisibleTranslationOverride/);
     for (const implementation of [
         "translateArticleInPlace",
         "replaceElementTextWithTranslation",

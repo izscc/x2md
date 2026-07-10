@@ -64,6 +64,7 @@
                 "site-adapters/web-capture.js",
                 "site-adapters/x-capture.js",
                 "x-batch-capture.js",
+                "content_runtime.js",
                 "content.js"
             ],
             "run_at": "document_idle"

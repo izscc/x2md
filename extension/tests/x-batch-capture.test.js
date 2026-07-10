@@ -40,12 +40,10 @@ test("getXProfileCaptureRangeStart returns deterministic range boundaries", () =
     assert.equal(getXProfileCaptureRangeStart({ range: "days", days: 3 }, now).toISOString(), "2026-07-08T12:00:00.000Z");
 });
 
-test("content entry delegates batch UI and contains no toolbar or profile menu implementation", () => {
+test("content entry only starts the content runtime", () => {
     const content = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
-    assert.equal(content.includes('const X_BOOKMARKS_TOOLBAR_ID'), false);
-    assert.equal(content.includes('const X_PROFILE_CAPTURE_MENU_ID'), false);
-    assert.equal(content.includes('data-x2md-role="bookmarks-export"'), false);
-    assert.equal(content.includes('data-x2md-role="profile-capture-range"'), false);
-    assert.match(content, /ensureXProfileCaptureButton\(\)/);
-    assert.match(content, /ensureBookmarksToolbar\(\)/);
+    assert.match(content, /X2MDContentRuntime\.start\(\)/);
+    assert.equal(content.includes("function "), false);
+    assert.equal(content.includes("chrome.runtime.sendMessage"), false);
+    assert.equal(content.includes("MutationObserver"), false);
 });
