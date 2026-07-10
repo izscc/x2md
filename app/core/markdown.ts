@@ -1,10 +1,6 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
-
 import { type X2MDConfig } from "./config.ts";
 import { formatDate, formatDateTime } from "./dates.ts";
 import { sanitizeFilename, normalizeImageUrl, normalizeImageUrlForCompare } from "./filenames.ts";
-import { downloadVideoAsync } from "./media.ts";
 
 function cleanupTwitterDisplayUrlLineBreaks(text: string): string {
   return text.replace(
@@ -303,7 +299,25 @@ ${pollEnd}${extra}---
 `;
 }
 
-export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): [string, string] {
+export function markdownFilename(input: Record<string, any>, cfg: X2MDConfig | Record<string, any>): string {
+  const data = applyTranslationOverride(input);
+  const author = data.author || "unknown";
+  const handle = data.handle || "";
+  const text = data.text || "";
+  const articleTitle = data.article_title || "";
+  const repostText = data.repost_source_text || data.original_text || data.repost_text || "";
+  const summarySrc = data.repost && repostText ? repostText : (articleTitle || text);
+  const summaryShort = sanitizeFilename(summarySrc || "untitled", Number(cfg.max_filename_length || 100));
+  const authorClean = sanitizeFilename(handle ? String(handle).replace(/^@/, "") : author, 20);
+  return String(cfg.filename_format || "{summary}")
+    .replace("{date}", formatDate())
+    .replace("{author}", authorClean)
+    .replace("{summary}", summaryShort)
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Record<string, any>, _appDir?: string): [string, string] {
   const data = applyTranslationOverride(input);
   const author = data.author || "unknown";
   const handle = data.handle || "";
@@ -314,7 +328,6 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   let images: string[] = uniqueImageUrls(Array.isArray(data.images) ? data.images : []);
   const imageAltTexts = data.image_alt_texts || {};
   const videos: string[] = Array.isArray(data.videos) ? data.videos : [];
-  const downloadVideo = Boolean(data.download_video) && cfg.enable_video_download !== false;
   const articleContent = data.article_content || "";
   const articleTitle = data.article_title || "";
   const threadTweets: Array<Record<string, any>> = Array.isArray(data.thread_tweets) ? data.thread_tweets : [];
@@ -325,20 +338,8 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   const communityNotes = Array.isArray(data.community_notes) ? data.community_notes : [];
   const linkCard = data.link_card || data.card;
 
-  const dateStr = formatDate();
   const datetimeStr = formatDateTime();
-  const repostText = data.repost_source_text || data.original_text || data.repost_text || "";
-  const summarySrc = data.repost && repostText ? repostText : (articleTitle || text);
-  const maxLen = Number(cfg.max_filename_length || 100);
-  const summaryShort = sanitizeFilename(summarySrc || "untitled", maxLen);
-  const authorClean = sanitizeFilename(handle ? String(handle).replace(/^@/, "") : author, 20);
-  const fmt = String(cfg.filename_format || "{summary}");
-  const filename = fmt
-    .replace("{date}", dateStr)
-    .replace("{author}", authorClean)
-    .replace("{summary}", summaryShort)
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const filename = markdownFilename(data, cfg);
 
   const titleSrc = articleTitle || text;
   let title = String(titleSrc).split(/\s+/).filter(Boolean).join(" ");
@@ -357,8 +358,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
   });
 
   const lines: string[] = [];
-  const videoMap: Record<string, string> = {};
-  const saveDir = String(cfg.video_save_path || join(homedir(), "Desktop", "X2MD", "Videos"));
+  const videoMap: Record<string, string> = { ...(data.video_render_map || {}) };
   const allVideos = [...videos];
   if (quoteTweet) allVideos.push(...(quoteTweet.videos || []));
   for (const tweet of threadTweets) {
@@ -366,17 +366,9 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
     if (tweet.quote_tweet) allVideos.push(...(tweet.quote_tweet.videos || []));
   }
 
-  let videoIdx = 1;
   for (const vidUrl of allVideos) {
     if (videoMap[vidUrl]) continue;
-    if (downloadVideo) {
-      const vidFilename = `${filename}_video_${videoIdx}.mp4`;
-      downloadVideoAsync(vidUrl, saveDir, vidFilename, appDir);
-      videoMap[vidUrl] = `![[${vidFilename}]]`;
-      videoIdx += 1;
-    } else {
-      videoMap[vidUrl] = `🎞️ [推特媒体：点击播放视频](${vidUrl})`;
-    }
+    videoMap[vidUrl] = `🎞️ [推特媒体：点击播放视频](${vidUrl})`;
   }
 
   const appendUnusedVideos = (linesList: string[], contentText: string) => {
@@ -430,7 +422,7 @@ export function buildMarkdown(input: Record<string, any>, cfg: X2MDConfig | Reco
     }
   };
 
-  if (downloadVideo && videos.length) images = images.filter((img) => !String(img).includes("video_thumb"));
+  if (Object.values(videoMap).some((value) => value.startsWith("![[")) && videos.length) images = images.filter((img) => !String(img).includes("video_thumb"));
 
   if (contentType === "article") {
     let textResult = "";

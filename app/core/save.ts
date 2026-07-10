@@ -1,6 +1,6 @@
 import { resolveSavePathsForRequest, type X2MDConfig } from "./config.ts";
 import { sanitizeFilename } from "./filenames.ts";
-import { buildMarkdown } from "./markdown.ts";
+import { buildMarkdown, markdownFilename } from "./markdown.ts";
 import { sanitizeUnicodeText } from "./unicode.ts";
 import { readJsonStateSync } from "./state-store.ts";
 import { runSaveTransaction } from "./save-transaction.ts";
@@ -8,6 +8,7 @@ import type { CaptureDocumentV1 } from "./contracts.ts";
 import { normalizeCaptureRequest } from "./legacy-capture.ts";
 import { captureKey, readSaveIndex, recordSaveRevision, updateIndexedFiles, withCaptureLock, type DuplicatePolicy } from "./save-index.ts";
 import { localizeImages } from "./image-localizer.ts";
+import { planVideoMedia } from "./media-plan.ts";
 
 export function readSaveHistory(appDir = ""): Array<Record<string, any>> {
   const raw = readJsonStateSync<unknown>(appDir || ".", "history", () => []);
@@ -30,7 +31,8 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
       return { success: true, outcome: "skipped", capture_key: key, saved, files: saved.map((path) => ({ path })), errors: [], warnings: [], media: { completed: 0, failed: 0, pending: 0 } };
     }
     const localized = await localizeImages(data, cfg, savePaths);
-    const preparedData = localized.data;
+    const videoPlan = await planVideoMedia(localized.data, cfg, markdownFilename(localized.data, cfg));
+    const preparedData = videoPlan.data;
     const [filename, content] = buildMarkdown(preparedData, cfg, appDir);
     const safeFilename = sanitizeUnicodeText(sanitizeFilename(filename, Number(cfg.max_filename_length || 100))) || "untitled";
     const imageErrors = Array.isArray(preparedData.image_localization_errors) ? preparedData.image_localization_errors : [];
@@ -42,7 +44,8 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
       await updateIndexedFiles(latest.files, safeContent);
       const transactionId = `update-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       await recordSaveRevision(dir, capture, key, latest.files, transactionId);
-      return { success: true, outcome: localized.failed ? "partial" : "updated", capture_key: key, saved: latest.files, files: latest.files.map((path) => ({ path })), errors: [], warnings: localized.warnings, media: { completed: localized.completed, failed: localized.failed, pending: 0 } };
+      const failedMedia = localized.failed + videoPlan.failed;
+      return { success: true, outcome: failedMedia ? "partial" : "updated", capture_key: key, saved: latest.files, files: latest.files.map((path) => ({ path })), errors: [], warnings: [...localized.warnings, ...videoPlan.warnings], media: { completed: localized.completed + videoPlan.completed, failed: failedMedia, pending: 0 } };
     }
     const history = appDir ? {
       title: String(preparedData.article_title || preparedData.text || preparedData.title || safeFilename).split(/\s+/).join(" ").slice(0, 120),
@@ -53,6 +56,7 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
       saveIndex: { key, capture },
     });
     const outcome = saved.length ? (errors.length ? "partial" : "saved") : "failed";
-    return { success: saved.length > 0, outcome: localized.failed && saved.length ? "partial" : outcome, capture_key: key, saved, files: saved.map((path) => ({ path })), errors, warnings: localized.warnings, media: { completed: localized.completed, failed: localized.failed, pending: 0 } };
+    const failedMedia = localized.failed + videoPlan.failed;
+    return { success: saved.length > 0, outcome: failedMedia && saved.length ? "partial" : outcome, capture_key: key, saved, files: saved.map((path) => ({ path })), errors, warnings: [...localized.warnings, ...videoPlan.warnings], media: { completed: localized.completed + videoPlan.completed, failed: failedMedia, pending: 0 } };
   });
 }

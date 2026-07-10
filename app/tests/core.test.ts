@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,6 +14,8 @@ import { handleProfileCaptureSave } from "../core/profile-capture.ts";
 import { sanitizeUnicodeText } from "../core/unicode.ts";
 import { saveNotificationBody } from "../main/notify.ts";
 import { isValidCredential, issueAppSession, revokeAppSession } from "../core/pairing.ts";
+import { planVideoMedia } from "../core/media-plan.ts";
+import { SafeDownloadError } from "../core/safe-download.ts";
 
 const baseCfg = normalizeConfig({ filename_format: "{summary}_{date}_{author}", max_filename_length: 60, video_save_path: "/tmp/x2md-videos" });
 
@@ -191,23 +193,22 @@ test("Article 正文首行清理误混入的原文 URL，并保留引用推文",
   assert.match(body, /新手小白最好的Codex实践/);
 });
 
-test("视频安全下载失败时记录稳定错误码", async () => {
-  const appDir = mkdtempSync(join(tmpdir(), "x2md-video-log-"));
+test("buildMarkdown 是纯渲染函数，视频失败由媒体计划保留远程链接", async () => {
   const videoDir = mkdtempSync(join(tmpdir(), "x2md-video-dir-"));
-  const oldFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response("video-bytes")) as unknown as typeof fetch;
-  try {
-    buildMarkdown({ text: "video", videos: ["http://127.0.0.1/a.mp4"], download_video: true }, normalizeConfig({ video_save_path: videoDir }), appDir);
-    for (let i = 0; i < 30; i += 1) {
-      if (existsSync(logPath(appDir)) && readFileSync(logPath(appDir), "utf8").includes("视频下载失败")) break;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    const log = readFileSync(logPath(appDir), "utf8");
-    assert.match(log, /视频下载开始：video(?:_.*)?_video_1\.mp4/);
-    assert.match(log, /视频下载失败：video(?:_.*)?_video_1\.mp4 \[UNSUPPORTED_MEDIA_URL\]/);
-  } finally {
-    globalThis.fetch = oldFetch;
-  }
+  const data = { text: "video", videos: ["https://video.example/a.mp4"], download_video: true };
+  const cfg = normalizeConfig({ video_save_path: videoDir });
+  const [, pureContent] = buildMarkdown(data, cfg);
+  assert.deepEqual(readdirSync(videoDir), []);
+  assert.match(pureContent, /https:\/\/video\.example\/a\.mp4/);
+
+  const plan = await planVideoMedia(data, cfg, "video", { download: async () => {
+    throw new SafeDownloadError("UNSUPPORTED_MEDIA_URL", "blocked");
+  } });
+  const [, content] = buildMarkdown(plan.data, cfg);
+  assert.equal(plan.failed, 1);
+  assert.equal(plan.warnings[0].code, "UNSUPPORTED_MEDIA_URL");
+  assert.match(content, /https:\/\/video\.example\/a\.mp4/);
+  assert.doesNotMatch(content, /!\[\[.*\.mp4\]\]/);
 });
 
 test("配置关闭视频下载时服务端只写视频链接", () => {
@@ -219,6 +220,38 @@ test("配置关闭视频下载时服务端只写视频链接", () => {
   assert.doesNotMatch(content, /!\[\[.*\.mp4\]\]/);
 });
 
+test("媒体计划等待视频成功后才生成本地嵌入", async () => {
+  const data = { text: "video", videos: ["https://video.example/a.mp4"], download_video: true };
+  const cfg = normalizeConfig({ video_save_path: mkdtempSync(join(tmpdir(), "x2md-video-ok-")) });
+  let completed = false;
+  const plan = await planVideoMedia(data, cfg, "video", { download: async (_url, destination) => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    completed = true;
+    return { path: destination, finalUrl: _url, bytes: 1, contentType: "video/mp4" };
+  } });
+  assert.equal(completed, true);
+  assert.equal(plan.completed, 1);
+  assert.match(buildMarkdown(plan.data, cfg)[1], /!\[\[video_video_1\.mp4\]\]/);
+});
+
+test("Profile 视频启用失败返回 partial，关闭时保留远程链接", async () => {
+  const makePayload = () => ({
+    mode: "tweets", profile: { handle: "video_user", displayName: "Video User" },
+    items: [{ url: "https://x.com/video_user/status/91", published: "2026-05-29T08:00:00Z", text: "video", videos: ["http://127.0.0.1/a.mp4"] }],
+  });
+  const enabledRoot = mkdtempSync(join(tmpdir(), "x2md-profile-video-enabled-"));
+  const enabled = await handleProfileCaptureSave(makePayload(), normalizeConfig({ save_paths: [enabledRoot], video_save_path: join(enabledRoot, "videos") }), mkdtempSync(join(tmpdir(), "x2md-profile-state-")));
+  assert.equal(enabled.outcome, "partial");
+  assert.equal(enabled.media.failed, 1);
+  assert.match(readFileSync(enabled.saved[0], "utf8"), /http:\/\/127\.0\.0\.1\/a\.mp4/);
+
+  const disabledRoot = mkdtempSync(join(tmpdir(), "x2md-profile-video-disabled-"));
+  const disabled = await handleProfileCaptureSave(makePayload(), normalizeConfig({ save_paths: [disabledRoot], enable_video_download: false }), mkdtempSync(join(tmpdir(), "x2md-profile-state-")));
+  assert.equal(disabled.outcome, "saved");
+  assert.equal(disabled.media.failed, 0);
+  assert.match(readFileSync(disabled.saved[0], "utf8"), /http:\/\/127\.0\.0\.1\/a\.mp4/);
+});
+
 test("非法 Unicode surrogate 会被清理", () => {
   const [, content] = buildMarkdown({ type: "article", article_title: "Bad unicode \ud83d", article_content: "正文\ud83d", url: "https://x.com/a/status/1", handle: "@alice" }, baseCfg);
   const cleaned = sanitizeUnicodeText(content);
@@ -227,7 +260,7 @@ test("非法 Unicode surrogate 会被清理", () => {
   assert.equal(sanitizeUnicodeText("📄 素材库"), "📄 素材库");
 });
 
-test("博主推文按日聚合并跳过重复项", () => {
+test("博主推文按日聚合并跳过重复项", async () => {
   const dir = mkdtempSync(join(tmpdir(), "x2md-profile-"));
   const appDir = mkdtempSync(join(tmpdir(), "x2md-state-"));
   const cfg = normalizeConfig({ save_paths: [dir], profile_capture_save_path: "" });
@@ -241,7 +274,7 @@ test("博主推文按日聚合并跳过重复项", () => {
     ],
   };
 
-  const first = handleProfileCaptureSave(payload, cfg, appDir);
+  const first = await handleProfileCaptureSave(payload, cfg, appDir);
   assert.equal(first.skipped, 0);
   assert.equal(first.saved.length, 1);
   const content = readFileSync(first.saved[0], "utf8");
@@ -249,7 +282,7 @@ test("博主推文按日聚合并跳过重复项", () => {
   assert.match(content, /hello/);
   assert.match(content, /world/);
 
-  const second = handleProfileCaptureSave(payload, cfg, appDir);
+  const second = await handleProfileCaptureSave(payload, cfg, appDir);
   assert.equal(second.skipped, 2);
   assert.deepEqual(second.saved, []);
 });

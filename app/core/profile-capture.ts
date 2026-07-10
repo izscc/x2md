@@ -6,6 +6,7 @@ import { type X2MDConfig, profileStatePath } from "./config.ts";
 import { formatDateTime, nowIsoSeconds, parseTwitterDatetime, profileDateKey, profileTimeLabel } from "./dates.ts";
 import { normalizeArticleUrl, normalizeImageUrl, sanitizeFilename } from "./filenames.ts";
 import { readJsonStateSync, writeJsonStateSync } from "./state-store.ts";
+import { planVideoMedia, type MediaWarning } from "./media-plan.ts";
 
 export function normalizeProfileHandle(handle: unknown): string {
   return String(handle ?? "").replace(/^@/, "").replace(/[^A-Za-z0-9_]/g, "").toLowerCase();
@@ -69,6 +70,10 @@ function appendProfileImage(lines: string[], imgUrl: string, altMap?: Record<str
   }
 }
 
+function renderProfileVideo(item: Record<string, any>, url: string): string {
+  return item.video_render_map?.[url] || `🎞️ [视频](${url})`;
+}
+
 function appendProfileQuote(lines: string[], quote: Record<string, any>): void {
   if (!quote || typeof quote !== "object") return;
   const qText = String(quote.text || "").trim();
@@ -86,7 +91,7 @@ function appendProfileQuote(lines: string[], quote: Record<string, any>): void {
   }
   for (const videoUrl of qVideos) {
     lines.push(">");
-    lines.push(`> 🎞️ [视频](${videoUrl})`);
+    lines.push(`> ${renderProfileVideo(quote, videoUrl)}`);
   }
   if (qUrl) {
     lines.push(">");
@@ -112,7 +117,7 @@ function buildProfileTweetEntry(tweet: Record<string, any>): string {
   const videos: string[] = tweet.videos || [];
   if (videos.length) {
     lines.push("");
-    for (const videoUrl of videos) lines.push(`🎞️ [视频](${videoUrl})`);
+    for (const videoUrl of videos) lines.push(renderProfileVideo(tweet, videoUrl));
   }
 
   appendProfileQuote(lines, tweet.quote_tweet || {});
@@ -128,7 +133,7 @@ function buildProfileTweetEntry(tweet: Record<string, any>): string {
     lines.push("", `### 续推 ${index + 1}`, "");
     if (childText) lines.push(childText);
     for (const imgUrl of childImages) appendProfileImage(lines, imgUrl, child.image_alt_texts || {});
-    for (const videoUrl of childVideos) lines.push(`🎞️ [视频](${videoUrl})`);
+    for (const videoUrl of childVideos) lines.push(renderProfileVideo(child, videoUrl));
     appendProfileQuote(lines, childQuote);
   });
 
@@ -194,7 +199,7 @@ function buildProfileArticleMarkdown(article: Record<string, any>, profile: Reco
   const profileUrl = String(profile.profileUrl || profile.profile_url || "").trim();
   const safeTitle = title.split(/\s+/).join(" ").replace(/"/g, "'").slice(0, 100);
 
-  for (const videoUrl of article.videos || []) content = content.replaceAll(`[MEDIA_VIDEO_URL:${videoUrl}]`, `🎞️ [视频](${videoUrl})`);
+  for (const videoUrl of article.videos || []) content = content.replaceAll(`[MEDIA_VIDEO_URL:${videoUrl}]`, renderProfileVideo(article, videoUrl));
 
   const imageLines: string[] = [];
   for (const imageUrl of article.images || []) {
@@ -228,12 +233,25 @@ ${content}
 `;
 }
 
-export function handleProfileCaptureSave(data: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): Record<string, any> {
+export async function handleProfileCaptureSave(data: Record<string, any>, cfg: X2MDConfig | Record<string, any>, appDir?: string): Promise<Record<string, any>> {
   const mode = String(data.mode || "tweets").trim();
   const profile = data.profile && typeof data.profile === "object" ? data.profile : {};
   const handle = normalizeProfileHandle(profile.handle);
   const forceFull = Boolean(data.force_full);
-  const items: Array<Record<string, any>> = Array.isArray(data.items) ? data.items : [];
+  const sourceItems: Array<Record<string, any>> = Array.isArray(data.items) ? data.items : [];
+  const warnings: MediaWarning[] = [];
+  let mediaCompleted = 0;
+  let mediaFailed = 0;
+  const items: Array<Record<string, any>> = [];
+  for (let index = 0; index < sourceItems.length; index += 1) {
+    const item = sourceItems[index];
+    const identity = extractStatusId(item?.url) || sanitizeFilename(item?.article_title || item?.title || String(index + 1), 50);
+    const plan = await planVideoMedia(item, cfg, `${profileAuthorLabel(data.profile || {})}_${identity}`, { requested: item.download_video ?? data.download_video ?? true });
+    items.push(plan.data);
+    warnings.push(...plan.warnings);
+    mediaCompleted += plan.completed;
+    mediaFailed += plan.failed;
+  }
   const rangeLabel = String(data.range_label || "").trim();
   const targetDir = resolveProfileCaptureDir(cfg, profile);
   mkdirSync(targetDir, { recursive: true });
@@ -266,7 +284,7 @@ export function handleProfileCaptureSave(data: Record<string, any>, cfg: X2MDCon
     }
     articleState.last_captured_at = nowIsoSeconds();
     saveProfileCaptureState(state, appDir);
-    return { success: true, saved: savedFiles, skipped, target_dir: targetDir };
+    return { success: true, outcome: mediaFailed ? "partial" : "saved", saved: savedFiles, skipped, target_dir: targetDir, warnings, media: { completed: mediaCompleted, failed: mediaFailed, pending: 0 } };
   }
 
   const tweetState = bucket.tweets ||= { captured_ids: {}, daily: {} };
@@ -317,5 +335,5 @@ export function handleProfileCaptureSave(data: Record<string, any>, cfg: X2MDCon
 
   tweetState.last_captured_at = nowIsoSeconds();
   saveProfileCaptureState(state, appDir);
-  return { success: true, saved: savedFiles, skipped, target_dir: targetDir };
+  return { success: true, outcome: mediaFailed ? "partial" : "saved", saved: savedFiles, skipped, target_dir: targetDir, warnings, media: { completed: mediaCompleted, failed: mediaFailed, pending: 0 } };
 }

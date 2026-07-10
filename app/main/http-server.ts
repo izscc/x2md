@@ -189,7 +189,7 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       return reply(result, result.success ? 200 : 500);
     }
     if (path === "/profile-capture") {
-      const result = handleProfileCaptureSave(data, loadConfig(appDir), appDir);
+      const result = await handleProfileCaptureSave(data, loadConfig(appDir), appDir);
       log(`批量抓取保存：saved=${(result.saved || []).length} skipped=${result.skipped || 0} dir=${result.target_dir || ""}`, appDir);
       return reply(result);
     }
