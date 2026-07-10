@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { extname, join } from "node:path";
 
 import { resolveSavePathsForRequest, type X2MDConfig } from "./config.ts";
@@ -10,6 +10,7 @@ import { runSaveTransaction } from "./save-transaction.ts";
 import type { CaptureDocumentV1 } from "./contracts.ts";
 import { normalizeCaptureRequest } from "./legacy-capture.ts";
 import { captureKey, readSaveIndex, recordSaveRevision, updateIndexedFiles, withCaptureLock, type DuplicatePolicy } from "./save-index.ts";
+import { safeDownload, SafeDownloadError } from "./safe-download.ts";
 
 export function readSaveHistory(appDir = ""): Array<Record<string, any>> {
   const raw = readJsonStateSync<unknown>(appDir || ".", "history", () => []);
@@ -53,15 +54,13 @@ async function localizeImages(data: Record<string, any>, cfg: Record<string, any
   for (let index = 0; index < images.length; index += 1) {
     const url = String(images[index] || "");
     try {
-      const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      const filename = `image_${index + 1}${imageExtension(url, response.headers.get("content-type") || "")}`;
-      writeFileSync(join(attachDir, filename), buffer);
+      const filename = `image_${index + 1}${imageExtension(url)}`;
+      await safeDownload(url, join(attachDir, filename), { allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"], maxBytes: 25 * 1024 * 1024, timeoutMs: 30_000 });
       const relativePath = `${displayRoot}/${statusId}/${filename}`;
       nextImages.push(cfg.image_embed_style === "obsidian" ? `![[${relativePath}]]` : relativePath);
     } catch (error) {
-      failures.push(`${url} (${error instanceof Error ? error.message : String(error)})`);
+      const code = error instanceof SafeDownloadError ? error.code : "MEDIA_WRITE_FAILED";
+      failures.push(`${url} [${code}] (${error instanceof Error ? error.message : String(error)})`);
       nextImages.push(url);
     }
   }

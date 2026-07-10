@@ -191,20 +191,20 @@ test("Article 正文首行清理误混入的原文 URL，并保留引用推文",
   assert.match(body, /新手小白最好的Codex实践/);
 });
 
-test("视频下载开始和完成写入日志", async () => {
+test("视频安全下载失败时记录稳定错误码", async () => {
   const appDir = mkdtempSync(join(tmpdir(), "x2md-video-log-"));
   const videoDir = mkdtempSync(join(tmpdir(), "x2md-video-dir-"));
   const oldFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response("video-bytes")) as unknown as typeof fetch;
   try {
-    buildMarkdown({ text: "video", videos: ["https://video.example/a.mp4"], download_video: true }, normalizeConfig({ video_save_path: videoDir }), appDir);
+    buildMarkdown({ text: "video", videos: ["http://127.0.0.1/a.mp4"], download_video: true }, normalizeConfig({ video_save_path: videoDir }), appDir);
     for (let i = 0; i < 30; i += 1) {
-      if (existsSync(logPath(appDir)) && readFileSync(logPath(appDir), "utf8").includes("视频下载完成")) break;
+      if (existsSync(logPath(appDir)) && readFileSync(logPath(appDir), "utf8").includes("视频下载失败")) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     const log = readFileSync(logPath(appDir), "utf8");
     assert.match(log, /视频下载开始：video(?:_.*)?_video_1\.mp4/);
-    assert.match(log, /视频下载完成：video(?:_.*)?_video_1\.mp4/);
+    assert.match(log, /视频下载失败：video(?:_.*)?_video_1\.mp4 \[UNSUPPORTED_MEDIA_URL\]/);
   } finally {
     globalThis.fetch = oldFetch;
   }

@@ -1,9 +1,8 @@
-import { appendFileSync, createWriteStream, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 
 import { logPath } from "./config.ts";
+import { safeDownload, SafeDownloadError } from "./safe-download.ts";
 
 function logVideo(appDir: string | undefined, message: string): void {
   if (!appDir) return;
@@ -21,12 +20,11 @@ export function downloadVideoAsync(url: string, savePath: string, filename: stri
     logVideo(appDir, `视频下载开始：${filename}`);
     try {
       mkdirSync(savePath, { recursive: true });
-      const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-      await pipeline(Readable.fromWeb(response.body as any), createWriteStream(join(savePath, filename)));
+      await safeDownload(url, join(savePath, filename), { allowedContentTypes: ["video/", "application/octet-stream"], maxBytes: 1024 * 1024 * 1024, timeoutMs: 10 * 60_000 });
       logVideo(appDir, `视频下载完成：${filename}`);
     } catch (error) {
-      logVideo(appDir, `视频下载失败：${filename} ${error instanceof Error ? error.message : String(error)}`);
+      const code = error instanceof SafeDownloadError ? error.code : "MEDIA_WRITE_FAILED";
+      logVideo(appDir, `视频下载失败：${filename} [${code}] ${error instanceof Error ? error.message : String(error)}`);
       console.error("视频流下载失败:", error);
     }
   })();

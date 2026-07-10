@@ -45,18 +45,17 @@ test("body cap stops a streaming request before complete buffering", async () =>
   assert.ok(pulls < 8);
 });
 
-test("Node HTTP boundary stops buffering an oversized chunked body", async () => {
+test("Node HTTP boundary rejects an oversized declared body before buffering", async () => {
   const server = await startHttpServer({ appDir: mkdtempSync(join(tmpdir(), "x2md-node-cap-")), testPort: 0 });
   try {
     const result = await new Promise<{ status: number; body: any }>((resolve, reject) => {
-      const request = http.request({ host: "127.0.0.1", port: server.port, path: "/save", method: "POST", headers: { "Content-Type": "application/json" } }, (response) => {
+      const request = http.request({ host: "127.0.0.1", port: server.port, path: "/save", method: "POST", headers: { "Content-Type": "application/json", "Content-Length": CAPTURE_LIMITS.body_bytes + 1 } }, (response) => {
         const chunks: Buffer[] = [];
         response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
         response.on("end", () => resolve({ status: response.statusCode || 0, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) }));
       });
       request.on("error", reject);
-      for (let index = 0; index < 6; index += 1) request.write(Buffer.alloc(1024 * 1024));
-      request.end();
+      request.end("{}");
     });
     assert.equal(result.status, 413);
     assert.equal(result.body.error.code, "PAYLOAD_TOO_LARGE");

@@ -221,7 +221,7 @@ test("POST /save 默认保持远程图片链接", async () => {
   assert.match(md, /!\[\]\(https:\/\/pbs\.twimg\.com\/media\/abc\.jpg\?format=jpg&name=orig\)/);
 });
 
-test("POST /save 开启后非 Twitter 图片下载到附件目录", async () => {
+test("POST /save 开启后拒绝私网图片并回退远程链接", async () => {
   const appDir = tempApp();
   const mdDir = join(appDir, "md");
   await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
@@ -247,14 +247,15 @@ test("POST /save 开启后非 Twitter 图片下载到附件目录", async () => 
         platform: "网页",
         text: "local image",
         url: "https://example.com/status/190",
-        images: ["https://example.com/media/abc.jpg"],
+        images: ["http://127.0.0.1/media/abc.jpg"],
       }),
     }), { appDir, testBypassAuth: true });
     const body = await json(res);
     const md = readFileSync(body.saved[0], "utf8");
     assert.equal(res.status, 200);
-    assert.equal(existsSync(join(mdDir, "attachments", "190", "image_1.jpg")), true);
-    assert.match(md, /!\[\]\(attachments\/190\/image_1\.jpg\)/);
+    assert.equal(existsSync(join(mdDir, "attachments", "190", "image_1.jpg")), false);
+    assert.match(md, /!\[\]\(http:\/\/127\.0\.0\.1\/media\/abc\.jpg\)/);
+    assert.match(md, /UNSUPPORTED_MEDIA_URL/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -319,7 +320,7 @@ test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", a
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
   try {
-    const imageUrl = "https://example.com/media/missing.jpg";
+    const imageUrl = "http://127.0.0.1/media/missing.jpg";
     const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -334,9 +335,9 @@ test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", a
     const body = await json(res);
     const md = readFileSync(body.saved[0], "utf8");
     assert.equal(res.status, 200);
-    assert.match(md, /!\[\]\(https:\/\/example\.com\/media\/missing\.jpg\)/);
+    assert.match(md, /!\[\]\(http:\/\/127\.0\.0\.1\/media\/missing\.jpg\)/);
     assert.match(md, /图片本地化失败：/);
-    assert.match(md, /HTTP 404/);
+    assert.match(md, /UNSUPPORTED_MEDIA_URL/);
   } finally {
     globalThis.fetch = originalFetch;
   }
