@@ -53,6 +53,141 @@
         return normalizeSpaces(result).replace(/^[-–—:：|｜\s]+/, "").trim();
     }
 
+    function hasInlineMarkdownLinks(text) {
+        return /\[[^\]]+\]\(https?:\/\/[^)\s]+\)/.test(String(text || ""));
+    }
+
+    function markdownToClipboardPlainText(markdown) {
+        return String(markdown || "")
+            .replace(/!\[([^\]]*)\]\(https?:\/\/[^)\s]+\)/g, "$1")
+            .replace(/\[([^\]]+)\]\(https?:\/\/[^)\s]+\)/g, "$1")
+            .replace(/^#{1,6}\s+/gm, "")
+            .trim();
+    }
+
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function inlineMarkdownToHtml(text) {
+        let html = escapeHtml(text);
+        html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        return html;
+    }
+
+    function plainTextToClipboardHtml(text) {
+        return String(text || "")
+            .split(/\n{2,}/)
+            .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+            .join("\n");
+    }
+
+    function markdownToClipboardHtml(markdown) {
+        const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+        const html = [];
+        let paragraph = [];
+        let list = [];
+        let quote = [];
+        let inCode = false;
+        let codeLines = [];
+
+        const flushParagraph = () => {
+            if (!paragraph.length) return;
+            html.push(`<p>${inlineMarkdownToHtml(paragraph.join("\n")).replace(/\n/g, "<br>")}</p>`);
+            paragraph = [];
+        };
+        const flushList = () => {
+            if (!list.length) return;
+            html.push(`<ul>${list.map((item) => `<li>${inlineMarkdownToHtml(item)}</li>`).join("")}</ul>`);
+            list = [];
+        };
+        const flushQuote = () => {
+            if (!quote.length) return;
+            html.push(`<blockquote>${quote.map((line) => `<p>${inlineMarkdownToHtml(line)}</p>`).join("")}</blockquote>`);
+            quote = [];
+        };
+        const flushCode = () => {
+            if (!codeLines.length) return;
+            html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+            codeLines = [];
+        };
+        const flushAll = () => {
+            flushParagraph();
+            flushList();
+            flushQuote();
+        };
+
+        for (const rawLine of lines) {
+            const line = rawLine.trimEnd();
+            if (line.startsWith("```")) {
+                if (inCode) {
+                    flushCode();
+                    inCode = false;
+                } else {
+                    flushAll();
+                    inCode = true;
+                    codeLines = [];
+                }
+                continue;
+            }
+            if (inCode) {
+                codeLines.push(rawLine);
+                continue;
+            }
+
+            if (!line.trim()) {
+                flushAll();
+                continue;
+            }
+
+            const heading = line.match(/^(#{1,4})\s+(.+)$/);
+            if (heading) {
+                flushAll();
+                const level = Math.min(heading[1].length, 4);
+                html.push(`<h${level}>${inlineMarkdownToHtml(heading[2].trim())}</h${level}>`);
+                continue;
+            }
+
+            const image = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)$/);
+            if (image) {
+                flushAll();
+                html.push(`<p><img src="${escapeHtml(image[2])}" alt="${escapeHtml(image[1])}"></p>`);
+                continue;
+            }
+
+            const listItem = line.match(/^[-*]\s+(.+)$/);
+            if (listItem) {
+                flushParagraph();
+                flushQuote();
+                list.push(listItem[1]);
+                continue;
+            }
+
+            const quoteLine = line.match(/^>\s?(.*)$/);
+            if (quoteLine) {
+                flushParagraph();
+                flushList();
+                quote.push(quoteLine[1]);
+                continue;
+            }
+
+            flushList();
+            flushQuote();
+            paragraph.push(line);
+        }
+
+        if (inCode) flushCode();
+        flushAll();
+        return html.join("\n");
+    }
+
     function clonePlainData(data = {}) {
         try {
             return JSON.parse(JSON.stringify(data || {}));
@@ -84,6 +219,12 @@
 
     const exported = {
         applyTranslationOverrideToData,
+        markdownToClipboardHtml,
+        plainTextToClipboardHtml,
+        inlineMarkdownToHtml,
+        escapeHtml,
+        markdownToClipboardPlainText,
+        hasInlineMarkdownLinks,
         buildArticleTranslationSource,
         cleanupTwitterDisplayUrlLineBreaks,
         isExpandableTweetTextControl,

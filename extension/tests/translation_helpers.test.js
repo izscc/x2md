@@ -103,3 +103,15 @@ test("applyTranslationOverrideToData prefers translated article title and conten
     assert.equal(result.article_title, "译文标题");
     assert.equal(result.article_content, "译文第一段\n\n译文第二段");
 });
+
+test("clipboard formatting helpers remain pure and preserve HTML/plain variants", () => {
+    const {
+        markdownToClipboardHtml,
+        markdownToClipboardPlainText,
+        plainTextToClipboardHtml,
+    } = require("../translation_helpers.js");
+
+    assert.equal(markdownToClipboardPlainText("## Title\n\n[Link](https://example.com)"), "Title\n\nLink");
+    assert.equal(markdownToClipboardHtml("**Bold**"), "<p><strong>Bold</strong></p>");
+    assert.equal(plainTextToClipboardHtml("one\n\ntwo"), "<p>one</p>\n<p>two</p>");
+});

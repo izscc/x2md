@@ -57,6 +57,7 @@
                 "i18n.js",
                 "twitter_graphql.js",
                 "translation_helpers.js",
+                "x-translation-ui.js",
                 "bookmark_semantics.js",
                 "capture_ui.js",
                 "capture_contract.js",
