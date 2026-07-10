@@ -19,6 +19,23 @@ import { SafeDownloadError } from "../core/safe-download.ts";
 
 const baseCfg = normalizeConfig({ filename_format: "{summary}_{date}_{author}", max_filename_length: 60, video_save_path: "/tmp/x2md-videos" });
 
+test("设置页开放去重与图片策略，并只保留全局视频权威配置", () => {
+  const root = join(import.meta.dirname, "..", "ui", "settings");
+  const html = readFileSync(join(root, "index.html"), "utf8");
+  const script = readFileSync(join(root, "settings.ts"), "utf8");
+
+  for (const id of ["duplicatePolicy", "downloadImages", "imageAttachmentPath", "imageEmbedStyle", "imageAttachmentPreview"]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  for (const policy of ["skip", "update", "always_new"]) assert.match(html, new RegExp(`value=["']${policy}["']`));
+  assert.match(script, /duplicate_policy:\s*\(field\("duplicatePolicy"\)/);
+  assert.match(script, /download_images:\s*\$\("downloadImages"\)\.checked/);
+  assert.match(script, /image_attachment_path:\s*\$\("imageAttachmentPath"\)\.value\.trim\(\)/);
+  assert.match(script, /image_embed_style:\s*\(field\("imageEmbedStyle"\)/);
+  assert.equal((html.match(/id="enableVideoDownload"/g) || []).length, 1);
+  assert.doesNotMatch(html, /id="(?:profile|single).*Video/i);
+});
+
 test("自定义保存路径必须来自配置白名单", () => {
   const cfg = { save_paths: ["/vault/default"], custom_save_paths: [{ name: "生图类", path: "/vault/images" }] };
   assert.deepEqual(resolveSavePathsForRequest(cfg, {}), [["/vault/default"], false]);

@@ -29,8 +29,8 @@
           <span>内容放到哪里</span>
         </button>
         <button id="tab-media" class="nav-item" data-panel-button="media" role="tab" aria-selected="false" aria-controls="panel-media" type="button">
-          <strong>视频</strong>
-          <span>下载和提醒</span>
+          <strong>媒体与去重</strong>
+          <span>图片、视频和重复内容</span>
         </button>
         <button id="tab-capture" class="nav-item" data-panel-button="capture" role="tab" aria-selected="false" aria-controls="panel-capture" type="button">
           <strong>网页按钮</strong>
@@ -133,11 +133,66 @@
 
         <section id="panel-media" class="panel" data-panel-section="media" role="tabpanel" aria-labelledby="tab-media" hidden>
           <div class="panel-grid">
+            <article class="card span-5 priority-card">
+              <div class="card-head compact-head">
+                <div>
+                  <h3>重复内容</h3>
+                  <p>再次保存同一来源时如何处理。默认跳过最安全。</p>
+                </div>
+              </div>
+
+              <label class="field">
+                <span>重复时</span>
+                <select id="duplicatePolicy">
+                  <option value="skip">跳过，不改已有文件（推荐）</option>
+                  <option value="update">更新已有文件</option>
+                  <option value="always_new">始终新建一份</option>
+                </select>
+                <small class="field-hint">“始终新建”会持续增加 Markdown 文件并占用更多磁盘空间。</small>
+              </label>
+            </article>
+
+            <article class="card span-7 priority-card">
+              <div class="card-head compact-head">
+                <div>
+                  <h3>图片本地化</h3>
+                  <p>可把 X 和其他支持网页的图片复制到 Markdown 旁，避免远程图片失效。</p>
+                </div>
+              </div>
+
+              <label class="switch">
+                <input id="downloadImages" type="checkbox" />
+                <span>
+                  <strong>下载图片到本机</strong>
+                  <small>开启后更适合长期归档，但所有成功本地化的图片都会增加磁盘占用。</small>
+                </span>
+              </label>
+
+              <div class="media-fields">
+                <label class="field">
+                  <span>附件目录</span>
+                  <input id="imageAttachmentPath" placeholder="X2MD-attachments" />
+                  <small class="field-hint">相对于每个 Markdown 保存目录，不需要填写绝对路径。</small>
+                </label>
+                <label class="field">
+                  <span>嵌入格式</span>
+                  <select id="imageEmbedStyle">
+                    <option value="markdown">Markdown：![](路径)</option>
+                    <option value="obsidian">Obsidian：![[路径]]</option>
+                  </select>
+                </label>
+              </div>
+              <div class="attachment-preview" aria-live="polite">
+                <span>保存示例</span>
+                <code id="imageAttachmentPreview">X2MD-attachments/123/image_1.jpg</code>
+              </div>
+            </article>
+
             <article class="card span-7 priority-card">
               <div class="card-head">
                 <div>
-                  <h3>视频文件</h3>
-                  <p>保存内容时，是否把视频也下载到本机。</p>
+                  <h3>统一视频策略</h3>
+                  <p>此处是单条保存和博主抓取共用的唯一视频设置。</p>
                 </div>
                 <button id="openVideo" class="soft" type="button">打开视频目录</button>
               </div>
@@ -146,7 +201,7 @@
                 <input id="enableVideoDownload" type="checkbox" />
                 <span>
                   <strong>自动下载视频</strong>
-                  <small>关闭后只保存视频链接，不占本机空间。</small>
+                  <small>关闭后所有保存方式都只保留视频链接；开启会明显增加磁盘占用。</small>
                 </span>
               </label>
 

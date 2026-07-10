@@ -44,9 +44,9 @@ const PANEL_META: Record<PanelKey, PanelMeta> = {
     description: "选择一个主目录。其他保存位置只在你需要分类时再打开。",
   },
   media: {
-    label: "视频",
-    title: "视频怎么处理",
-    description: "决定是否下载视频，以及视频文件保存到哪里。",
+    label: "媒体与去重",
+    title: "重复内容和媒体怎么处理",
+    description: "统一设置重复保存、X 图片本地化，以及所有保存方式共用的视频策略。",
   },
   capture: {
     label: "网页按钮",
@@ -85,6 +85,16 @@ const FRONT_MATTER_PREVIEW_VALUES: Record<typeof CUSTOM_FRONT_MATTER_VARIABLES[n
 
 function parseDefaultTags(value: string): string[] {
   return Array.from(new Set(value.split(/[,，\n]/).map((tag) => tag.trim().replace(/^#/, "")).filter(Boolean)));
+}
+
+function updateImageAttachmentPreview(): void {
+  const preview = document.getElementById("imageAttachmentPreview");
+  if (!preview) return;
+  const directory = $("imageAttachmentPath").value.trim().replace(/\/+$/g, "") || "X2MD-attachments";
+  const path = `${directory}/123/image_1.jpg`;
+  preview.textContent = (field("imageEmbedStyle") as HTMLSelectElement).value === "obsidian"
+    ? `![[${path}]]`
+    : `![](${path})`;
 }
 
 function validateTagList(value: unknown, location: string): void {
@@ -427,6 +437,11 @@ async function loadConfig(): Promise<void> {
   renderCustomSavePaths(customPaths);
   $("videoPath").value = cfg.video_save_path || "";
   $("enableVideoDownload").checked = Boolean(cfg.enable_video_download);
+  (field("duplicatePolicy") as HTMLSelectElement).value = cfg.duplicate_policy || "skip";
+  $("downloadImages").checked = Boolean(cfg.download_images);
+  $("imageAttachmentPath").value = cfg.image_attachment_path || "X2MD-attachments";
+  (field("imageEmbedStyle") as HTMLSelectElement).value = cfg.image_embed_style || "markdown";
+  updateImageAttachmentPreview();
   $("enableSaveNotification").checked = Boolean(cfg.enable_save_notification);
   $("videoThreshold").value = cfg.video_duration_threshold || 5;
   setFilenameFormat(cfg.filename_format || DEFAULT_FILENAME_FORMAT);
@@ -469,6 +484,10 @@ async function saveConfig(): Promise<void> {
     custom_save_paths: customSavePaths,
     video_save_path: $("videoPath").value.trim(),
     enable_video_download: $("enableVideoDownload").checked,
+    duplicate_policy: (field("duplicatePolicy") as HTMLSelectElement).value,
+    download_images: $("downloadImages").checked,
+    image_attachment_path: $("imageAttachmentPath").value.trim(),
+    image_embed_style: (field("imageEmbedStyle") as HTMLSelectElement).value,
     enable_save_notification: $("enableSaveNotification").checked,
     video_duration_threshold: Number($("videoThreshold").value || 5),
     filename_format: $("filenameFormat").value.trim() || DEFAULT_FILENAME_FORMAT,
@@ -549,6 +568,8 @@ $("test").addEventListener("click", async () => {
 });
 $("autostart").addEventListener("change", () => void updateAutostart());
 $("customSavePaths").addEventListener("input", () => updateCustomSaveSummary(parseCustomSavePaths()));
+$("imageAttachmentPath").addEventListener("input", updateImageAttachmentPreview);
+(field("imageEmbedStyle") as HTMLSelectElement).addEventListener("change", updateImageAttachmentPreview);
 document.getElementById("addCustomSavePath")?.addEventListener("click", () => addCustomPathRow());
 document.querySelectorAll<HTMLButtonElement>("[data-filename-format]").forEach((button) => {
   button.addEventListener("click", () => setFilenameFormat(button.dataset.filenameFormat || DEFAULT_FILENAME_FORMAT));

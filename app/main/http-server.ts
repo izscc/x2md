@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 
 import { loadConfig, saveConfig, publicConfig, VERSION, MIN_EXTENSION_VERSION, LOCAL_API_PORT, getAppDir, configPath, logPath } from "../core/config.ts";
+import { SECRET_CONFIG_KEYS } from "../core/config-schema.ts";
 import { handleProfileCaptureSave, getProfileStateBucket, loadProfileCaptureState, normalizeProfileHandle } from "../core/profile-capture.ts";
 import { readSaveHistory, savePayload } from "../core/save.ts";
 import { sanitizeUnicodePayload } from "../core/unicode.ts";
@@ -164,7 +165,8 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
   try {
     if (path === "/config") {
       const oldConfig = loadConfig(appDir);
-      const nextConfig = { ...oldConfig, ...data };
+      const publicData = Object.fromEntries(Object.entries(data).filter(([key]) => !SECRET_CONFIG_KEYS.has(key)));
+      const nextConfig = { ...oldConfig, ...publicData };
       delete nextConfig.port;
       if (Array.isArray(data.save_paths) && !data.save_paths.some((item) => String(item || "").trim())) {
         return reply({ success: false, error: "请至少配置一个保存路径" }, 400);

@@ -381,6 +381,32 @@ h4 {
   max-width: 320px;
 }
 
+.media-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr);
+  gap: 12px;
+}
+
+.attachment-preview {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+}
+
+.attachment-preview span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.attachment-preview code {
+  overflow-wrap: anywhere;
+}
+
 input,
 select,
 textarea {
@@ -867,6 +893,10 @@ code {
 }
 
 @media (max-width: 700px) {
+  .media-fields {
+    grid-template-columns: 1fr;
+  }
+
   .shell {
     width: min(100vw - 16px, 1120px);
     padding-top: 12px;

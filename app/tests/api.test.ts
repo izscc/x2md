@@ -116,6 +116,35 @@ test("GET/POST /config 读写配置", async () => {
   assert.deepEqual(cfg.save_paths, [emojiDir]);
 });
 
+test("GET/POST /config 往返媒体与去重策略且不返回密钥", async () => {
+  const appDir = tempApp();
+  const post = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      duplicate_policy: "always_new",
+      download_images: true,
+      image_attachment_path: "media/images",
+      image_embed_style: "obsidian",
+      enable_video_download: false,
+      install_secret: "must-not-change",
+      local_api_token: "must-not-change",
+    }),
+  }), { appDir, testBypassAuth: true });
+  assert.equal(post.status, 200);
+
+  const cfg = await json(await handleApiRequest(new Request("http://127.0.0.1:9527/config"), { appDir, testBypassAuth: true }));
+  assert.equal(cfg.duplicate_policy, "always_new");
+  assert.equal(cfg.download_images, true);
+  assert.equal(cfg.image_attachment_path, "media/images");
+  assert.equal(cfg.image_embed_style, "obsidian");
+  assert.equal(cfg.enable_video_download, false);
+  assert.equal(cfg.install_secret, undefined);
+  assert.equal(cfg.local_api_token, undefined);
+  assert.notEqual(loadConfig(appDir).install_secret, "must-not-change");
+  assert.notEqual(loadConfig(appDir).local_api_token, "must-not-change");
+});
+
 test("扩展保存 save_paths 时自动完成首次设置", async () => {
   const appDir = tempApp();
   const res = await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
