@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { createHmac } from "node:crypto";
+import pkg from "../package.json" with { type: "json" };
 
 const app = process.env.X2MD_SMOKE_APP || "build/stable-macos-arm64/X2MD.app";
 if (!existsSync(`${app}/Contents/MacOS/launcher`)) throw new Error("先运行 npm run build:mac");
@@ -28,6 +29,7 @@ const menuVisibleMode = process.env.X2MD_SMOKE_MENU_VISIBLE === "1";
 const port = 9527;
 const mdDir = join(home, "md");
 const sessionFile = join(appDir, "smoke-session");
+const pairingFile = join(appDir, "smoke-pairing-code");
 writeFileSync(join(appDir, "config.json"), JSON.stringify((firstRunMode || windowVisibleMode)
   ? { port }
   : {
@@ -37,7 +39,7 @@ writeFileSync(join(appDir, "config.json"), JSON.stringify((firstRunMode || windo
     filename_format: "{summary}_{date}_{author}",
     max_filename_length: 60,
     video_save_path: join(home, "videos"),
-    setup_completed: true,
+    setup_completed: false,
   }, null, 2));
 
 const blocker = conflictMode ? createServer() : null;
@@ -48,7 +50,7 @@ if (blocker) {
   });
 }
 
-const child = spawn(launcher, [], {
+const child = spawn(launcher, ["--settings"], {
   env: { ...process.env, HOME: home, X2MD_APP_DIR: appDir, X2MD_OPEN_DRY_RUN: "1", X2MD_SMOKE_SESSION_FILE: sessionFile, ...(loginAutostartMode ? { X2MD_AUTOSTART_SKIP_LAUNCHCTL: "1" } : {}) },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -133,6 +135,8 @@ try {
       const body = await res.json();
       ok = res.ok && body.status === "ok";
       if (ok) {
+        const expectedVersion = process.env.X2MD_EXPECTED_VERSION || pkg.version;
+        if (body.version !== expectedVersion) throw new Error(`packaged /ping version ${body.version} != ${expectedVersion}`);
         pingMs = Date.now() - startedAt;
         break;
       }
@@ -153,6 +157,18 @@ try {
     const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
     throw new Error(`packaged smoke did not receive a real settings session credential\n--- stdout ---\n${output}\n--- log ---\n${log}`);
   }
+  let pairingCode = "";
+  for (let i = 0; i < 40 && !pairingCode; i += 1) {
+    if (existsSync(pairingFile)) pairingCode = readFileSync(pairingFile, "utf8").trim();
+    if (!pairingCode) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!pairingCode) throw new Error("packaged smoke did not receive a pairing code");
+  const pairResponse = await fetch(`http://127.0.0.1:${port}/pair`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: pairingCode }),
+  });
+  const paired = await pairResponse.json().catch(() => ({}));
+  if (!pairResponse.ok || !paired.token) throw new Error(`packaged pairing failed: ${JSON.stringify(paired)}`);
+  session = paired.token;
 
   try {
     const listeners = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
@@ -234,7 +250,7 @@ try {
     const runningApps = execFileSync("ps", ["eww", "-axo", "command="], { encoding: "utf8" });
     let menuText = "";
     if (runningApps.includes("/Applications/X2MD.app/Contents/MacOS/X2MD")) {
-      console.log("menu-visible smoke skipped: installed /Applications/X2MD.app is running");
+      throw new Error("menu-visible smoke cannot isolate packaged artifact while /Applications/X2MD.app is running");
     } else try {
       menuText = execFileSync("osascript", ["-e", `tell application "System Events"
   tell process "X2MD"
@@ -247,10 +263,9 @@ end tell`], { encoding: "utf8" }).trim();
       menuText = String(error?.stderr || error?.message || error);
     }
     if (menuText.includes("不允许辅助访问") || menuText.includes("not allowed assistive access")) {
-      console.log("menu-visible smoke skipped: osascript lacks Accessibility permission");
-    } else if (menuText && !menuText.includes("打开日志") && !menuText.includes("查看日志")) {
-      console.log(`menu-visible smoke skipped: X2MD status menu not isolated (${menuText.slice(0, 160)})`);
+      throw new Error("menu-visible smoke requires Accessibility permission");
     }
+    if (!menuText.includes("打开日志") && !menuText.includes("查看日志")) throw new Error(`X2MD status menu not visible (${menuText.slice(0, 160)})`);
   }
 
   if (windowVisibleMode) {
@@ -270,7 +285,7 @@ end tell`], { encoding: "utf8" }).trim();
     if (!windowNames.includes("X2MD 设置")) {
       const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
       if (windowNames.includes("不允许辅助访问") || windowNames.includes("not allowed assistive access")) {
-        console.log("window-visible smoke skipped: osascript lacks Accessibility permission");
+        throw new Error("window-visible smoke requires Accessibility permission");
       } else {
         throw new Error(`settings window not visible via System Events\n--- windows ---\n${windowNames}\n--- stdout ---\n${output}\n--- log ---\n${log}`);
       }

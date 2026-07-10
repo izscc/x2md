@@ -87,6 +87,7 @@ export async function showSettingsWindow(appDir = getAppDir(), port?: number): P
     const pairingCode = issuePairingCode(String(cfg.install_secret));
     if (process.env.X2MD_OPEN_DRY_RUN === "1") {
       writeFileSync(join(appDir, "smoke-session"), session, { encoding: "utf8", mode: 0o600 });
+      writeFileSync(join(appDir, "smoke-pairing-code"), pairingCode, { encoding: "utf8", mode: 0o600 });
     }
 
     const window = new BrowserWindow({

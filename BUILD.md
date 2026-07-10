@@ -37,10 +37,10 @@ npm run smoke:mac:first-run
 # 首次运行设置窗口可见性冒烟测试
 npm run smoke:mac:window-visible
 
-# 可选：菜单栏可见性；若已安装 X2MD 正在运行会跳过
+# 菜单栏可见性；release runner 缺少辅助功能权限时 fail-closed
 npm run smoke:mac:menu-visible
 
-# 可选：验证 release zip 解压后的 .app
+# 验证最终 release zip 解压后的 .app（不是中间 build 目录）
 npm run smoke:mac:release
 
 # Release SHA 和包体积阈值
@@ -60,6 +60,10 @@ npm run check
 ```bash
 npm run acceptance:mac:auto
 ```
+
+正式 Mac workflow 先生成 `X2MD_Mac.zip`，再解压到隔离目录，对该最终压缩包逐项执行版本、
+pairing、`/ping`、真实 `/save`、first-run、端口冲突、自启、扩展加载、窗口与菜单检查。
+窗口/菜单所需的 Accessibility 能力缺失会令 release job 失败，不再以 skipped 通过。
 
 该命令会先做 TypeScript 类型检查，然后跑：
 

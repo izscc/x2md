@@ -46,21 +46,41 @@ jobs:
       - name: Electrobun 打包
         run: bun run build:mac
 
-      - name: 打包产物冒烟测试
-        run: npm run smoke:mac
-
-      - name: 启动耗时冒烟测试
-        run: npm run smoke:mac:startup-time
-
-      - name: 扩展兼容冒烟测试
-        run: npm run smoke:mac:extension-health
-
       - name: 压缩 Mac .app
         run: |
           APP_PATH="build/stable-macos-arm64/X2MD.app"
           test -n "$APP_PATH"
           test -d "$APP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" X2MD_Mac.zip
+
+      - name: 解压并校验最终 Mac 压缩包
+        run: |
+          rm -rf release-smoke
+          mkdir release-smoke
+          ditto -x -k X2MD_Mac.zip release-smoke
+          node scripts/check-release-artifacts.mjs --mac-zip X2MD_Mac.zip
+
+      - name: 最终 Artifact 全验收
+        env:
+          X2MD_SMOKE_APP: release-smoke/X2MD.app
+          X2MD_SMOKE_EXTENSION_DIR: release-smoke/X2MD.app/Contents/Resources/extension
+          X2MD_RELEASE_REF: ${{ github.ref_name }}
+        run: |
+          X2MD_EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            test "${X2MD_RELEASE_REF#v}" = "$X2MD_EXPECTED_VERSION"
+          fi
+          export X2MD_EXPECTED_VERSION
+          npm run smoke:mac
+          npm run smoke:mac:startup-time
+          npm run smoke:mac:port-conflict
+          npm run smoke:mac:autostart
+          npm run smoke:mac:login-autostart
+          npm run smoke:mac:first-run
+          npm run smoke:mac:extension-health
+          npm run smoke:chrome-extension-load
+          npm run smoke:mac:window-visible
+          npm run smoke:mac:menu-visible
 
       - name: 上传 Mac 构建产物
         uses: actions/upload-artifact@v4
@@ -117,6 +137,13 @@ jobs:
 
       - name: 生成 SHA256 校验文件
         run: sha256sum X2MD_Mac.zip X2MD_Extension.zip > SHA256SUMS.txt
+
+      - name: 校验最终下载产物
+        run: |
+          node scripts/check-release-artifacts.mjs --mac-zip X2MD_Mac.zip
+          unzip -q X2MD_Extension.zip -d /tmp/x2md-extension-final
+          test -f /tmp/x2md-extension-final/manifest.json
+          sha256sum -c SHA256SUMS.txt
 
       - name: 准备 Release Notes
         run: |

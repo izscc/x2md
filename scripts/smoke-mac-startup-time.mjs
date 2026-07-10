@@ -9,7 +9,7 @@ const root = mkdtempSync(join(tmpdir(), "x2md-startup-time-"));
 const app = join(root, basename(sourceApp));
 const home = join(root, "home");
 const appDir = join(home, "Library", "Application Support", "X2MD");
-const port = 18500 + Math.floor(Math.random() * 1000);
+const port = 9527;
 
 mkdirSync(appDir, { recursive: true });
 cpSync(sourceApp, app, { recursive: true });
