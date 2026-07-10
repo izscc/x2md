@@ -3,362 +3,77 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>X2MD 设置</title>
+  <title>X2MD 连接</title>
   <style>
-    :root {
-      color-scheme: light;
-      --bg: #f5f5f7;
-      --surface: rgba(255,255,255,.86);
-      --surface-strong: rgba(255,255,255,.98);
-      --surface-soft: rgba(255,255,255,.62);
-      --border: rgba(60,60,67,.12);
-      --border-strong: rgba(60,60,67,.2);
-      --text: #111114;
-      --muted: rgba(60,60,67,.68);
-      --muted-strong: rgba(60,60,67,.82);
-      --accent: #0a84ff;
-      --accent-soft: rgba(10,132,255,.13);
-      --danger: #ff3b30;
-      --green: #34c759;
-      --shadow: 0 1px 2px rgba(15,23,42,.04), 0 18px 42px rgba(15,23,42,.08);
-      --radius-card: 22px;
-      --radius-control: 14px;
-      --sidebar-width: 236px;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
-    }
-
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17171a; background: #f5f5f7; }
     * { box-sizing: border-box; }
-    html { scrollbar-gutter: stable; }
-    body {
-      margin: 0;
-      min-height: 100dvh;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(10,132,255,.08), transparent 30%),
-        radial-gradient(circle at 100% 0%, rgba(140,140,160,.06), transparent 24%),
-        var(--bg);
-      color: var(--text);
-      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
-    }
-    button, input, select { font: inherit; color: inherit; }
-    button { cursor: pointer; border: 0; }
-    h1,h2,h3,p { margin: 0; }
-
-    .surface, .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(22px) saturate(180%);
-      -webkit-backdrop-filter: blur(22px) saturate(180%);
-    }
-
-    .shell {
-      width: min(1120px, calc(100vw - 28px));
-      min-height: 100dvh;
-      margin: 0 auto;
-      padding: 18px 0 28px;
-      display: grid;
-      grid-template-columns: var(--sidebar-width) minmax(0,1fr);
-      gap: 16px;
-    }
-    .sidebar {
-      position: sticky;
-      top: 14px;
-      align-self: start;
-      border-radius: calc(var(--radius-card) + 6px);
-      padding: 14px;
-      display: grid;
-      gap: 12px;
-    }
-    .brand-card { display: flex; align-items: center; gap: 11px; min-width: 0; }
-    .brand-mark {
-      width: 54px;
-      height: 54px;
-      border-radius: 16px;
-      flex: 0 0 auto;
-      display: block;
-      box-shadow: 0 8px 22px rgba(10,132,255,.18);
-    }
-    .brand-copy { display: grid; gap: 2px; min-width: 0; }
-    h1 { font-size: 22px; line-height: 1.06; letter-spacing: -.04em; }
-    .brand-copy p { color: var(--muted); font-size: 12px; line-height: 1.32; }
-
-    .status-card {
-      display: grid;
-      gap: 4px;
-      padding: 12px;
-      border-radius: 16px;
-      background: var(--surface-soft);
-      border: 1px solid var(--border);
-    }
-    .status {
-      position: relative;
-      padding-left: 14px;
-      font-size: 13px;
-      font-weight: 750;
-    }
-    .status::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: .48em;
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: var(--danger);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
-    }
-    .status.is-online::before { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 18%, transparent); }
-    .service-info { color: var(--muted); font-size: 12px; word-break: break-word; }
-
-    .panel-nav { display: grid; gap: 6px; }
-    .nav-item {
-      width: 100%; min-height: 54px; padding: 10px 12px; border-radius: 15px;
-      background: transparent; border: 1px solid transparent; display: grid; gap: 1px; text-align: left;
-      transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
-    }
-    .nav-item strong { font-size: 14px; line-height: 1.18; }
-    .nav-item span { font-size: 12px; color: var(--muted); }
-    .nav-item:hover { background: var(--surface-soft); border-color: var(--border-strong); }
-    .nav-item.is-active { background: var(--accent-soft); border-color: rgba(10,132,255,.3); box-shadow: inset 0 0 0 1px rgba(10,132,255,.05); }
-    .nav-item:active, button:active { transform: translateY(1px); }
-
-    .sidebar-actions { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
-    .detail { min-width: 0; display: grid; align-content: start; gap: 14px; }
-    .detail-head { display: grid; gap: 5px; padding: 2px 2px 0; }
-    .section-label { color: var(--muted-strong); font-size: 12px; font-weight: 750; }
-    .detail-head h2 { font-size: clamp(34px, 4vw, 50px); line-height: .98; letter-spacing: -.06em; }
-    .lede { color: var(--muted); font-size: 15px; max-width: 58ch; font-weight: 560; }
-
-    .panel-stack { display: grid; gap: 14px; }
-    .panel[hidden] { display: none; }
-    .panel-grid { display: grid; grid-template-columns: repeat(12, minmax(0,1fr)); gap: 14px; }
-    .span-12 { grid-column: span 12; }
-    .span-8 { grid-column: span 8; }
-    .span-7 { grid-column: span 7; }
-    .span-6 { grid-column: span 6; }
-    .span-5 { grid-column: span 5; }
-    .span-4 { grid-column: span 4; }
-    .card { border-radius: var(--radius-card); padding: 18px; min-width: 0; }
-    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
-    .card-title { display: flex; align-items: flex-start; gap: 11px; min-width: 0; }
-    .card-icon {
-      width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; flex: 0 0 auto;
-      background: var(--surface-strong); border: 1px solid var(--border); font-size: 17px; line-height: 1;
-    }
-    .card h3 { font-size: 18px; line-height: 1.16; letter-spacing: -.03em; }
-    .card p { color: var(--muted); font-size: 13px; margin-top: 3px; }
-
-    .field { display: grid; gap: 7px; margin: 0 0 14px; font-weight: 650; }
-    .field:last-child { margin-bottom: 0; }
-    .field span, .form-label { font-size: 13px; font-weight: 700; }
-    .field-hint, .form-hint { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.45; }
-    input, select {
-      width: 100%; min-height: 42px; border-radius: var(--radius-control); border: 1px solid var(--border-strong);
-      background: var(--surface-strong); padding: 10px 12px; font-weight: 560;
-      transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
-    }
-    input::placeholder { color: color-mix(in srgb, var(--muted) 72%, transparent); }
-    input:focus, select:focus, button:focus-visible { outline: none; border-color: rgba(10,132,255,.42); box-shadow: 0 0 0 4px rgba(10,132,255,.14); }
-
-    .path-picker { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; }
-    .path-picker.three { grid-template-columns: minmax(0,1fr) auto auto; }
-    .path-list { display: grid; gap: 10px; }
-    .path-row {
-      display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center;
-      padding: 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface-strong);
-    }
-    .custom-path-row { grid-template-columns: minmax(120px,.55fr) minmax(220px,1.45fr) auto; align-items: end; }
-    .custom-path-row .field { margin: 0; }
-    .custom-path-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-    .empty-state { padding: 18px; border-radius: 15px; border: 1px dashed var(--border-strong); color: var(--muted); font-weight: 650; text-align: center; background: var(--surface-soft); }
-
-    .format-picker { display: flex; flex-wrap: wrap; gap: 8px; }
-    .format-chip {
-      min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border-strong);
-      background: var(--surface-strong); font-weight: 750; transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-    }
-    .format-chip:hover { transform: translateY(-1px); }
-    .format-chip.is-active { color: var(--accent); background: var(--accent-soft); border-color: rgba(10,132,255,.34); box-shadow: inset 0 0 0 1px rgba(10,132,255,.06); }
-
-    .switch { display: flex; align-items: flex-start; gap: 11px; padding: 13px 0; border-top: 1px solid var(--border); }
-    .switch:first-of-type { border-top: 0; padding-top: 0; }
-    .switch input { appearance: none; position: relative; flex: 0 0 auto; width: 46px; height: 28px; min-height: 28px; padding: 0; border-radius: 999px; background: rgba(120,120,128,.22); border: 1px solid var(--border-strong); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
-    .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-strong); box-shadow: 0 1px 2px rgba(15,23,42,.18); transition: transform 160ms ease; }
-    .switch input:checked { background: var(--accent); border-color: rgba(10,132,255,.55); }
-    .switch input:checked::after { transform: translateX(18px); }
-    .switch span { display: grid; gap: 3px; }
-    .switch strong { font-size: 14px; line-height: 1.2; }
-    .switch small { color: var(--muted); font-size: 12px; line-height: 1.35; }
-
-    .form-row { display: grid; gap: 8px; margin-bottom: 14px; }
-    .inline-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .inline-row select { max-width: 170px; }
-    .number-small { max-width: 120px; }
-
-    .primary, .secondary, .soft, .danger {
-      min-height: 40px; padding: 0 14px; border-radius: 13px; font-weight: 700;
-      transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease; white-space: nowrap;
-    }
-    .primary { background: var(--accent); color: #fff; box-shadow: 0 10px 24px rgba(10,132,255,.24); }
-    .secondary, .soft { background: var(--surface-strong); color: var(--text); border: 1px solid var(--border-strong); }
-    .danger { color: var(--danger); background: var(--surface-strong); border: 1px solid var(--border-strong); }
-    .primary:hover, .secondary:hover, .soft:hover, .danger:hover { transform: translateY(-1px); }
-    .btn-remove { min-width: 40px; padding: 0 12px; }
-    .btn-add { width: 100%; justify-content: center; margin-top: 10px; border-style: dashed; color: var(--muted-strong); }
-
-    .section-divider { height: 1px; background: var(--border); margin: 16px 0; }
-    .visually-hidden { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0 0 0 0)!important; white-space:nowrap!important; border:0!important; }
-
-    #toast { position: fixed; right: 24px; bottom: 24px; z-index: 20; padding: 12px 16px; border-radius: 14px; background: rgba(34,197,94,.95); color: #fff; font-weight: 700; box-shadow: 0 18px 42px rgba(15,23,42,.16); opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity 180ms ease, transform 180ms ease; }
-    #toast.show { opacity: 1; transform: translateY(0); }
-    #toast.error { background: rgba(255,59,48,.96); }
-
-    @media (max-width: 900px) {
-      .shell { grid-template-columns: 1fr; }
-      .sidebar { position: static; }
-      .panel-grid { grid-template-columns: 1fr; }
-      .span-12,.span-8,.span-7,.span-6,.span-5,.span-4 { grid-column: span 1; }
-      .path-picker, .path-picker.three, .custom-path-row { grid-template-columns: 1fr; }
-      .custom-path-actions { justify-content: flex-start; }
-    }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 28px; background: radial-gradient(circle at top, #eaf4ff, #f5f5f7 42%); }
+    main { width: min(680px, 100%); display: grid; gap: 16px; }
+    .card { padding: 24px; border: 1px solid rgba(60,60,67,.14); border-radius: 22px; background: rgba(255,255,255,.9); box-shadow: 0 18px 48px rgba(15,23,42,.08); }
+    .brand { display: flex; gap: 14px; align-items: center; }
+    .brand img { width: 58px; height: 58px; border-radius: 17px; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 27px; letter-spacing: -.04em; }
+    h2 { font-size: 18px; margin-bottom: 8px; }
+    .muted, #statusDetail { color: #68686f; }
+    .status-row { display: flex; gap: 12px; align-items: flex-start; }
+    .dot { width: 11px; height: 11px; margin-top: 6px; border-radius: 50%; background: #8e8e93; box-shadow: 0 0 0 4px rgba(142,142,147,.14); flex: none; }
+    .dot.connected { background: #30b856; box-shadow: 0 0 0 4px rgba(48,184,86,.14); }
+    .dot.offline, .dot.incompatible { background: #e7443e; box-shadow: 0 0 0 4px rgba(231,68,62,.14); }
+    .dot.pairing { background: #ef9b24; box-shadow: 0 0 0 4px rgba(239,155,36,.14); }
+    .versions { margin-top: 16px; display: flex; gap: 20px; color: #68686f; font-size: 13px; }
+    .versions strong { color: #17171a; }
+    .pairing { margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(60,60,67,.12); }
+    .pairing[hidden] { display: none; }
+    .input-row, .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    input { flex: 1 1 220px; min-height: 42px; border: 1px solid rgba(60,60,67,.24); border-radius: 12px; padding: 0 13px; font: inherit; letter-spacing: .12em; }
+    button, a.button { min-height: 42px; border: 0; border-radius: 12px; padding: 0 15px; display: inline-flex; align-items: center; justify-content: center; font: 700 14px/1 inherit; cursor: pointer; text-decoration: none; }
+    .primary { background: #0a84ff; color: white; }
+    .secondary { background: #ececf0; color: #17171a; }
+    button:disabled { opacity: .48; cursor: not-allowed; }
+    #feedback { min-height: 20px; margin-top: 10px; color: #68686f; font-size: 13px; }
+    #feedback.error { color: #c9342f; }
+    @media (max-width: 520px) { body { padding: 14px; } .card { padding: 20px; } .actions > * { width: 100%; } }
   </style>
 </head>
 <body>
-  <main class="shell">
-    <aside class="sidebar surface">
-      <section class="brand-card" aria-label="X2MD 设置">
-        <img class="brand-mark" src="icons/icon128.png" alt="X2MD" />
-        <div class="brand-copy">
-          <h1>设置</h1>
-          <p>和桌面 App 保持一致，只改常用项。</p>
-        </div>
-      </section>
+  <main>
+    <section class="card brand">
+      <img src="icons/icon128.png" alt="X2MD" />
+      <div><h1>X2MD 扩展连接</h1><p class="muted">内容规则由桌面 App 统一管理。</p></div>
+    </section>
 
-      <section class="status-card">
-        <p id="statusText" class="status" aria-live="polite">检测本地服务…</p>
-        <p id="statusSub" class="service-info">正在连接 localhost:<span id="portLabel">9527</span></p>
-      </section>
-
-      <nav class="panel-nav" role="tablist" aria-label="设置分类">
-        <button class="nav-item is-active" data-panel-button="save" role="tab" aria-selected="true" type="button"><strong>保存位置</strong><span>内容放到哪里</span></button>
-        <button class="nav-item" data-panel-button="media" role="tab" aria-selected="false" type="button"><strong>视频</strong><span>下载和提醒</span></button>
-        <button class="nav-item" data-panel-button="capture" role="tab" aria-selected="false" type="button"><strong>网页按钮</strong><span>保存和抓取入口</span></button>
-        <button class="nav-item" data-panel-button="system" role="tab" aria-selected="false" type="button"><strong>启动与工具</strong><span>端口、文件名</span></button>
-      </nav>
-
-      <div class="sidebar-actions">
-        <button class="primary" id="btnSave" type="button">保存更改</button>
-        <button class="secondary" id="btnRefresh" type="button">检查服务</button>
+    <section class="card" aria-live="polite">
+      <div class="status-row">
+        <span id="statusDot" class="dot"></span>
+        <div><h2 id="statusTitle">正在检查连接…</h2><p id="statusDetail">正在连接 127.0.0.1:9527</p></div>
       </div>
-    </aside>
+      <div class="versions">
+        <span>扩展版本 <strong id="extensionVersion">-</strong></span>
+        <span>App 版本 <strong id="appVersion">-</strong></span>
+      </div>
 
-    <section class="detail">
-      <header class="detail-head">
-        <p id="panelLabel" class="section-label">保存位置</p>
-        <h2 id="panelTitle">内容保存到哪里</h2>
-        <p id="panelDescription" class="lede">选择一个主目录。额外保存位置只在需要分类时再打开。</p>
-      </header>
+      <div id="pairingPanel" class="pairing" hidden>
+        <h2>与桌面 App 配对</h2>
+        <p class="muted">打开 X2MD App 设置，输入其中显示的一次性配对码。</p>
+        <div class="input-row">
+          <input id="pairingCode" inputmode="numeric" autocomplete="one-time-code" aria-label="配对码" placeholder="输入配对码" />
+          <button id="pairButton" class="primary" type="button">配对</button>
+        </div>
+      </div>
+      <p id="feedback"></p>
+    </section>
 
-      <div class="panel-stack">
-        <section class="panel" data-panel-section="save">
-          <div class="panel-grid">
-            <article class="card span-8">
-              <div class="card-head">
-                <div class="card-title"><div class="card-icon">📁</div><div><h3>主要保存位置</h3><p>保存的 Markdown 文件默认放在这里。</p></div></div>
-              </div>
-              <div class="field">
-                <span>保存到</span>
-                <div class="path-picker">
-                  <input id="primarySavePath" readonly placeholder="还未选择保存文件夹" />
-                  <button id="choosePrimarySavePath" class="soft" type="button">选择文件夹</button>
-                </div>
-                <small class="field-hint">点击“选择文件夹”，不用手动输入完整路径。</small>
-              </div>
-            </article>
-
-            <article class="card span-4">
-              <div class="card-head">
-                <div class="card-title"><div class="card-icon">Aa</div><div><h3>文件名</h3><p>通常不用改，X2MD 会自动用标题命名。</p></div></div>
-              </div>
-              <div class="field">
-                <span>文件名格式</span>
-                <input id="filenameFormat" class="visually-hidden" readonly aria-hidden="true" tabindex="-1" />
-                <div id="filenameFormatChips" class="format-picker" role="group" aria-label="文件名格式">
-                  <button class="format-chip" type="button" data-filename-format="{summary}">标题</button>
-                  <button class="format-chip" type="button" data-filename-format="{summary}_{date}">标题 + 日期</button>
-                  <button class="format-chip" type="button" data-filename-format="{author}_{summary}">作者 + 标题</button>
-                  <button class="format-chip" type="button" data-filename-format="{summary}_{date}_{author}">标题 + 日期 + 作者</button>
-                </div>
-                <small id="filenameFormatPreview" class="field-hint">示例：一篇中文长标题</small>
-              </div>
-              <label class="field">
-                <span>最长标题字数</span>
-                <input id="maxLen" type="number" min="20" max="200" />
-                <small class="field-hint">按中文字符数计算，默认 100 个字。</small>
-              </label>
-            </article>
-
-            <article class="card span-12">
-              <div class="card-head">
-                <div class="card-title"><div class="card-icon">🏷</div><div><h3>额外保存位置</h3><p id="customSaveSummary">没有额外位置。大多数用户不用设置。</p></div></div>
-                <button id="btnAddCustomPath" class="soft" type="button">新增位置</button>
-              </div>
-              <div id="customPathList" class="path-list" aria-label="额外保存位置列表"></div>
-              <small class="field-hint">每个位置需要一个好记的名称和一个本机目录。留空的项目不会保存。</small>
-            </article>
-          </div>
-        </section>
-
-        <section class="panel" data-panel-section="media" hidden>
-          <div class="panel-grid">
-            <article class="card span-7">
-              <div class="card-head"><div class="card-title"><div class="card-icon">🎞</div><div><h3>视频文件</h3><p>保存内容时，是否把视频也下载到本机。</p></div></div></div>
-              <label class="switch"><input id="enableVideoDownload" type="checkbox" /><span><strong>自动下载视频</strong><small>关闭后只保存视频链接，不占本机空间。</small></span></label>
-              <div class="field">
-                <span>视频保存到</span>
-                <div class="path-picker">
-                  <input id="videoSavePath" readonly placeholder="还未选择视频保存文件夹" />
-                  <button id="chooseVideoSavePath" class="soft" type="button">选择文件夹</button>
-                </div>
-              </div>
-            </article>
-            <article class="card span-5">
-              <div class="card-head"><div class="card-title"><div class="card-icon">⏱</div><div><h3>长视频提醒</h3><p>避免误下载超大视频。</p></div></div></div>
-              <label class="field"><span>超过几分钟时提醒</span><input id="videoDurationThreshold" class="number-small" type="number" min="1" max="60" /></label>
-            </article>
-          </div>
-        </section>
-
-        <section class="panel" data-panel-section="capture" hidden>
-          <div class="panel-grid">
-            <article class="card span-6">
-              <div class="card-head"><div class="card-title"><div class="card-icon">📌</div><div><h3>网页上的快捷按钮</h3><p>在支持的网站上显示保存和抓取入口。</p></div></div></div>
-              <label class="switch"><input id="showSiteSaveIcon" type="checkbox" /><span><strong>显示保存按钮</strong><small>在 linux.do、飞书、微信公众号页面显示悬浮保存按钮。</small></span></label>
-              <label class="switch"><input id="showXProfileCaptureButton" type="checkbox" /><span><strong>显示博主抓取按钮</strong><small>在 X 博主主页 / Articles 页面显示批量抓取菜单。</small></span></label>
-            </article>
-            <article class="card span-6">
-              <div class="card-head"><div class="card-title"><div class="card-icon">🐾</div><div><h3>抓取范围</h3><p>默认抓取当天内容，范围越大耗时越久。</p></div></div></div>
-              <div class="field"><span>抓取哪些内容</span><div class="inline-row"><select id="profileCaptureRange"><option value="today">今天</option><option value="month">本月</option><option value="days">最近几天</option><option value="all">全部</option></select><input class="number-small" id="profileCaptureDays" type="number" min="1" max="3650" /></div><small class="field-hint">选择“最近几天”时使用天数。</small></div>
-              <div class="field"><span>批量保存到</span><div class="path-picker three"><input id="profileCaptureSavePath" readonly placeholder="留空则使用主保存路径" /><button id="chooseProfileCaptureSavePath" class="soft" type="button">选择文件夹</button><button id="clearProfileCaptureSavePath" class="soft" type="button">用主目录</button></div><small class="field-hint">最终会自动建立“博主昵称/handle”子目录。</small></div>
-            </article>
-          </div>
-        </section>
-
-        <section class="panel" data-panel-section="system" hidden>
-          <div class="panel-grid">
-            <article class="card span-6">
-              <div class="card-head"><div class="card-title"><div class="card-icon">⚙</div><div><h3>本地服务</h3><p>扩展通过本地 App 保存文件。</p></div></div></div>
-              <label class="switch"><input id="enableAutostart" type="checkbox" /><span><strong>登录后自动启动</strong><small id="autostartHint">正在读取开机自动运行状态…</small></span></label>
-              <label class="field"><span>配对码</span><input id="pairingCode" inputmode="numeric" maxlength="6" placeholder="在 X2MD App 设置页查看" /></label>
-              <button id="pairExtension" class="soft" type="button">配对扩展</button>
-            </article>
-          </div>
-        </section>
+    <section class="card">
+      <h2>连接工具</h2>
+      <p class="muted">业务配置仅在桌面 App 中修改。</p>
+      <div class="actions">
+        <button id="openSettings" class="primary" type="button" disabled>打开桌面设置</button>
+        <button id="refresh" class="secondary" type="button">检查连接</button>
+        <a id="diagnostics" class="button secondary" href="https://github.com/izscc/x2md#常见问题" target="_blank" rel="noreferrer">打开诊断文档</a>
       </div>
     </section>
   </main>
-
-  <div id="toast"></div>
   <script src="local_client.js"></script>
   <script src="options.js"></script>
 </body>
