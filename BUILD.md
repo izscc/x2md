@@ -37,7 +37,7 @@ npm run smoke:mac:first-run
 # 首次运行设置窗口可见性冒烟测试
 npm run smoke:mac:window-visible
 
-# 菜单栏可见性；release runner 缺少辅助功能权限时 fail-closed
+# 菜单栏可见性；要求原生 Tray 返回非零 bounds
 npm run smoke:mac:menu-visible
 
 # 验证最终 release zip 解压后的 .app（不是中间 build 目录）
@@ -63,7 +63,8 @@ npm run acceptance:mac:auto
 
 正式 Mac workflow 先生成 `X2MD_Mac.zip`，再解压到隔离目录，对该最终压缩包逐项执行版本、
 pairing、`/ping`、真实 `/save`、first-run、端口冲突、自启、扩展加载、窗口与菜单检查。
-窗口/菜单所需的 Accessibility 能力缺失会令 release job 失败，不再以 skipped 通过。
+窗口检查要求原生 BrowserWindow 完成 `show/activate` 并记录预期尺寸；菜单检查要求原生 Tray
+创建成功并返回非零 bounds。两项都不再依赖可静默跳过的辅助功能权限。
 
 Tag release 使用受保护的 GitHub Environment `mac-release` 注入 Developer ID 与 Apple
 notary credentials。`scripts/sign-and-notarize-mac.sh` 按顺序执行 hardened-runtime codesign、
@@ -82,13 +83,20 @@ CI 默认产出：
 
 - `X2MD_Mac.zip`：Electrobun `.app`
 - `X2MD_Extension.zip`：Chrome 扩展
+- `X2MD_Windows_Beta.zip`：windows-latest 上 Bun compile 的 TypeScript runtime
+- `update.json`、`SBOM.cdx.json`、`PROVENANCE.sigstore.json`
 - `SHA256SUMS.txt`
 
 发布二进制统一生成到未纳入 Git 的 `artifacts/v<version>/`；也可用
-`node scripts/package-release.mjs --output-dir <临时目录>` 指定 CI 临时目录。若目标目录已存在，
+`node scripts/package-release.mjs --windows-zip <Windows CI 产物> --provenance <Sigstore bundle> --output-dir <临时目录>`
+指定 CI 临时目录。若目标目录已存在，
 打包会直接失败，避免静默覆盖。校验时使用
 `npm run check:release-artifacts -- --dir <产物目录>`。`release/` 只保留人工维护的
 `RELEASE_NOTES.md`。清理既有 Git 历史中的二进制需要人工另行批准，本次不执行历史改写。
+
+正式依赖安装一律使用 `npm ci`/`package-lock.json`；CI 同时执行 npm audit、固定版
+`pip-audit`、fixture privacy 与 coverage 门槛。所有第三方 Actions 固定到完整 commit SHA。
+checksum 覆盖三个压缩包、update metadata、CycloneDX SBOM 和 Sigstore provenance bundle。
 
 ## Python legacy（冻结兼容实现）
 

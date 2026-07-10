@@ -10,9 +10,9 @@
 
 | 能力 | Beta 状态 | 恢复 Stable 的 artifact gate |
 | --- | --- | --- |
-| TypeScript 本地 API | Beta artifact smoke 验证 `/ping` | 保持 windows-latest artifact gate |
-| 配置与固定 endpoint | Beta artifact smoke 验证 pairing/config 与 `127.0.0.1:9527` | 保持固定 endpoint contract |
-| Markdown 保存 | Beta artifact 真实执行 `/save` | 扩展跨平台 fixture 与恢复测试 |
+| TypeScript 本地 API | windows-latest beta artifact gate 已实现，首次远端 run 待验收 | 远端验证 `/ping` 后保留 run URL |
+| 配置与固定 endpoint | pairing/config smoke 已实现，首次远端 run 待验收 | 保持固定 `127.0.0.1:9527` contract |
+| Markdown 保存 | 真实 `/save` smoke 已实现，首次 windows-latest run 待验收 | 校验 artifact 写出的 Markdown 后再提升支持级别 |
 | 设置与桌面入口 | 不支持 | 实现原生 Windows 设置与 tray 后另行验收 |
 | Chrome 扩展联通 | 支持配对协议；未做真实 Chrome UI smoke | 增加 Windows Chrome 扩展加载 gate |
 | 启动、退出与升级 | 支持 CLI 启动和认证 `/shutdown`；无 autostart/updater | 补齐 Windows 原生集成后再评估 Stable |

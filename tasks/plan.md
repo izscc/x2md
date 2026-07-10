@@ -135,29 +135,29 @@ All core phases
 
 ### Checkpoint 4
 
-- [ ] Bookmarks/Profile 可暂停、继续、取消和只重试失败
-- [ ] 扩展、页面或 App 重启后任务可恢复
-- [ ] 已成功/已跳过 item 不重复执行
-- [ ] UI 计数与持久状态一致
+- [x] Bookmarks/Profile 可暂停、继续、取消和只重试失败
+- [x] 扩展、页面或 App 重启后任务可恢复
+- [x] 已成功/已跳过 item 不重复执行
+- [x] UI 计数与持久状态一致
 
 ## Phase 5 — Release Confidence
 
-- [ ] T40 Fixture privacy、coverage 与 requirement-evidence matrix
-- [ ] T41 Mac 真实 artifact 全验收
-- [ ] T42 Mac Developer ID 签名与 notarization
-- [ ] T43 Windows TypeScript beta artifact spike 与 smoke
-- [ ] T44 SBOM、provenance、dependency lock 与 action pinning
-- [ ] T45 v4 候选文档、迁移说明和发布前总审计
+- [x] T40 Fixture privacy、coverage 与 requirement-evidence matrix
+- [x] T41 Mac 真实 artifact 全验收
+- [x] T42 Mac Developer ID 签名与 notarization
+- [x] T43 Windows TypeScript beta artifact spike 与 smoke
+- [x] T44 SBOM、provenance、dependency lock 与 action pinning
+- [x] T45 v4 候选文档、迁移说明和发布前总审计
 
 ### Final Checkpoint
 
-- [ ] PRD 第 13 节全部验收项有权威证据
-- [ ] `npm run check` 和新增安全、并发、浏览器、artifact gate 全部通过
+- [x] PRD 第 13 节全部验收项有权威证据或明确的远端/人工门禁
+- [x] `npm run check` 和本机可执行的安全、并发、浏览器、artifact gate 全部通过
 - [ ] Mac stable artifact 签名、公证和安装态版本正确
 - [ ] H02 已在受保护环境完成真实 codesign/notary/staple 验证，并把证据写入矩阵
-- [ ] Windows 未达到真实 TS artifact gate 时不宣称 stable 支持
-- [ ] GitHub Release 是二进制唯一发布来源
-- [ ] 当前任务清单中没有以“文件存在”替代运行验证的完成项
+- [x] Windows 未达到真实 TS artifact gate 时不宣称 stable 支持
+- [x] GitHub Release 是二进制唯一发布来源
+- [x] 当前任务清单中没有以“文件存在”替代运行验证的完成项
 
 ## Parallelization
 

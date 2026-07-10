@@ -31,10 +31,10 @@
 - Remove from index only: `config.json`, `x2md.log`, `x2md.pid`, tracked `.DS_Store`
 
 **Acceptance:**
-- [ ] 本地原文件仍存在，但 `git ls-files` 不再命中禁止文件。
-- [ ] example config 不含真实用户名、绝对个人路径或 token。
-- [ ] 检查脚本会拒绝 config/log/pid/DS_Store 和常见 secret 文件。
-- [ ] 文档明确历史净化需要人工另行批准。
+- [x] 本地原文件仍存在，但 `git ls-files` 不再命中禁止文件。
+- [x] example config 不含真实用户名、绝对个人路径或 token。
+- [x] 检查脚本会拒绝 config/log/pid/DS_Store 和常见 secret 文件。
+- [x] 文档明确历史净化需要人工另行批准。
 
 **Verify:**
 ```bash
@@ -59,10 +59,10 @@ npm run check
 - Remove from index: `release/**/*.{zip,dmg,zst,json,txt}` 中的生成产物
 
 **Acceptance:**
-- [ ] `release/` 只保留 release notes 或人工维护文本。
-- [ ] 本地打包默认输出到 `artifacts/` 或显式临时目录。
-- [ ] artifact 校验接受显式目录参数，不依赖 Git tracked binary。
-- [ ] 同版本已存在输出时脚本拒绝静默覆盖。
+- [x] `release/` 只保留 release notes 或人工维护文本。
+- [x] 本地打包默认输出到 `artifacts/` 或显式临时目录。
+- [x] artifact 校验接受显式目录参数，不依赖 Git tracked binary。
+- [x] 同版本已存在输出时脚本拒绝静默覆盖。
 
 **Verify:**
 ```bash
@@ -88,10 +88,10 @@ npm run check
 - Test: `scripts/version-consistency.test.mjs`
 
 **Acceptance:**
-- [ ] `npm run check:version` 只检查，不修改工作树。
-- [ ] `npm run sync:extension-version` 显式执行时才修改派生文件。
-- [ ] README 最新下载不包含 `v3.0.0` 等硬编码版本。
-- [ ] 构建前先同步/检查版本，不再先 build 后改源文件。
+- [x] `npm run check:version` 只检查，不修改工作树。
+- [x] `npm run sync:extension-version` 显式执行时才修改派生文件。
+- [x] README 最新下载不包含 `v3.0.0` 等硬编码版本。
+- [x] 构建前先同步/检查版本，不再先 build 后改源文件。
 
 **Verify:**
 ```bash
@@ -116,10 +116,10 @@ npm run check
 - Create: `scripts/check-clean-release.mjs`
 
 **Acceptance:**
-- [ ] pull_request 和 main push 都触发 CI。
-- [ ] tag release 不重复定义基础测试逻辑。
-- [ ] release 检查源码 clean、版本一致和 forbidden files。
-- [ ] 依赖安全检查失败会阻止合并或 release。
+- [x] pull_request 和 main push 都触发 CI。
+- [x] tag release 不重复定义基础测试逻辑。
+- [x] release 检查源码 clean、版本一致和 forbidden files。
+- [x] 依赖安全检查失败会阻止合并或 release。
 
 **Verify:**
 ```bash
@@ -149,12 +149,12 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] 两套 UI 均不再显示端口输入框。
-- [ ] 旧 config 中 `port` 被 migration 忽略或归一为 9527。
-- [ ] `--port` 不再改变正式服务端口；测试临时端口只通过测试专用注入使用。
-- [ ] background 与 manifest 都明确使用 9527。
-- [ ] 端口占用仍返回明确错误。
-- [ ] 测试证明设置端口不会产生伪配置。
+- [x] 两套 UI 均不再显示端口输入框。
+- [x] 旧 config 中 `port` 被 migration 忽略或归一为 9527。
+- [x] `--port` 不再改变正式服务端口；测试临时端口只通过测试专用注入使用。
+- [x] background 与 manifest 都明确使用 9527。
+- [x] 端口占用仍返回明确错误。
+- [x] 测试证明设置端口不会产生伪配置。
 
 **Verify:**
 ```bash
@@ -183,13 +183,13 @@ npm run check
 - Create: `extension/tests/pairing.test.js`
 
 **Acceptance:**
-- [ ] 新安装生成并持久化 secret，不会每次读取变化。
-- [ ] pairing code 单次使用、短时有效、使用后失效。
-- [ ] App session credential 短时有效，只在设置窗口运行时注入，不写入持久配置。
-- [ ] 所有 config/save/history/log/open/autostart/profile 路由统一鉴权。
-- [ ] `/config` 响应不含 `local_api_token` 或 install secret。
-- [ ] 扩展配对后可正常保存。
-- [ ] 设置页在全路由鉴权开启后仍可读写配置、日志和桌面动作。
+- [x] 新安装生成并持久化 secret，不会每次读取变化。
+- [x] pairing code 单次使用、短时有效、使用后失效。
+- [x] App session credential 短时有效，只在设置窗口运行时注入，不写入持久配置。
+- [x] 所有 config/save/history/log/open/autostart/profile 路由统一鉴权。
+- [x] `/config` 响应不含 `local_api_token` 或 install secret。
+- [x] 扩展配对后可正常保存。
+- [x] 设置页在全路由鉴权开启后仍可读写配置、日志和桌面动作。
 
 **Verify:**
 ```bash
@@ -212,10 +212,10 @@ npm run check
 - Modify: `app/tests/api.test.ts`
 
 **Acceptance:**
-- [ ] 普通网页只能访问公开 `/ping`。
-- [ ] `Origin: null` 和无凭据请求不能访问敏感 API。
-- [ ] 任意 chrome extension 没有有效 token 时被拒绝。
-- [ ] 合法扩展请求有精确 CORS 响应，不使用 wildcard。
+- [x] 普通网页只能访问公开 `/ping`。
+- [x] `Origin: null` 和无凭据请求不能访问敏感 API。
+- [x] 任意 chrome extension 没有有效 token 时被拒绝。
+- [x] 合法扩展请求有精确 CORS 响应，不使用 wildcard。
 
 **Verify:**
 ```bash
@@ -240,10 +240,10 @@ npm run check
 - Modify: `server.py`
 
 **Acceptance:**
-- [ ] stable release 不再上传 `X2MD_Windows.zip` Python legacy。
-- [ ] 文档不再要求不存在或不一致的 `X2MD.exe`/Lite 包。
-- [ ] Python 文件顶部明确 frozen/EOL 范围。
-- [ ] Windows 恢复 stable 的条件是 TS artifact 的真实 smoke，而不是 zip 存在。
+- [x] stable release 不再上传 `X2MD_Windows.zip` Python legacy。
+- [x] 文档不再要求不存在或不一致的 `X2MD.exe`/Lite 包。
+- [x] Python 文件顶部明确 frozen/EOL 范围。
+- [x] Windows 恢复 stable 的条件是 TS artifact 的真实 smoke，而不是 zip 存在。
 
 **Verify:**
 ```bash
@@ -271,10 +271,10 @@ npm run check
 - Create: `app/tests/fixtures/capture-document-v1.json`
 
 **Acceptance:**
-- [ ] `schema_version: 1` 是必填字段。
-- [ ] canonical URL、source ID、content、media、relations、preferences 定义明确。
-- [ ] SaveResult 包含 outcome、files、media、warnings 和稳定 error。
-- [ ] fixture 不含 cookie/token/个人路径。
+- [x] `schema_version: 1` 是必填字段。
+- [x] canonical URL、source ID、content、media、relations、preferences 定义明确。
+- [x] SaveResult 包含 outcome、files、media、warnings 和稳定 error。
+- [x] fixture 不含 cookie/token/个人路径。
 
 **Verify:**
 ```bash
@@ -297,10 +297,10 @@ npm run check
 - Create: `app/tests/capture-boundary.test.ts`
 
 **Acceptance:**
-- [ ] 当前扩展 payload 的 golden 输出不变。
-- [ ] 超大请求在完整缓冲前终止。
-- [ ] 媒体数量、字符串长度和嵌套深度有限制。
-- [ ] 无效请求不创建目录、文件或历史记录。
+- [x] 当前扩展 payload 的 golden 输出不变。
+- [x] 超大请求在完整缓冲前终止。
+- [x] 媒体数量、字符串长度和嵌套深度有限制。
+- [x] 无效请求不创建目录、文件或历史记录。
 
 **Verify:**
 ```bash
@@ -324,10 +324,10 @@ npm run check
 - Modify: `app/core/profile-capture.ts`
 
 **Acceptance:**
-- [ ] 同 namespace 并发更新不会丢数据。
-- [ ] 正式状态文件不会出现半写 JSON。
-- [ ] 损坏文件被保留为备份，不被静默覆盖。
-- [ ] config/history/profile 现有行为保持兼容。
+- [x] 同 namespace 并发更新不会丢数据。
+- [x] 正式状态文件不会出现半写 JSON。
+- [x] 损坏文件被保留为备份，不被静默覆盖。
+- [x] config/history/profile 现有行为保持兼容。
 
 **Verify:**
 ```bash
@@ -352,12 +352,12 @@ npm run check
 - Modify: `app/tests/api.test.ts`
 
 **Acceptance:**
-- [ ] no-clobber commit 在 macOS、Linux 和 Windows 语义下都不覆盖已存在目标；实现不得依赖覆盖空占位的 rename。
-- [ ] 20 个不同 capture key、相同标题并发保存产生 20 个不同文件。
-- [ ] 任一文件内容都完整且不是空占位。
-- [ ] 写入失败不残留 `.part` 或空正式文件。
-- [ ] 返回文件顺序与 save paths 顺序一致。
-- [ ] 在每个 journal stage 注入中断后，reconciliation 可完成 state commit 或清理未提交文件，不留下孤立索引。
+- [x] no-clobber commit 在 macOS、Linux 和 Windows 语义下都不覆盖已存在目标；实现不得依赖覆盖空占位的 rename。
+- [x] 20 个不同 capture key、相同标题并发保存产生 20 个不同文件。
+- [x] 任一文件内容都完整且不是空占位。
+- [x] 写入失败不残留 `.part` 或空正式文件。
+- [x] 返回文件顺序与 save paths 顺序一致。
+- [x] 在每个 journal stage 注入中断后，reconciliation 可完成 state commit 或清理未提交文件，不留下孤立索引。
 
 **Verify:**
 ```bash
@@ -381,11 +381,11 @@ npm run check
 - Modify: `app/tests/api.test.ts`
 
 **Acceptance:**
-- [ ] 同一 status URL 二次保存默认返回 `outcome: skipped`。
-- [ ] 20 个相同 capture key 并发进入时，去重临界区只允许 1 个 saved，其余 19 个 skipped。
-- [ ] update 更新原索引文件，不根据标题猜测。
-- [ ] always_new 生成唯一新文件并更新最新记录。
-- [ ] 写盘失败不产生索引记录。
+- [x] 同一 status URL 二次保存默认返回 `outcome: skipped`。
+- [x] 20 个相同 capture key 并发进入时，去重临界区只允许 1 个 saved，其余 19 个 skipped。
+- [x] update 更新原索引文件，不根据标题猜测。
+- [x] always_new 生成唯一新文件并更新最新记录。
+- [x] 写盘失败不产生索引记录。
 
 **Verify:**
 ```bash
@@ -408,11 +408,11 @@ npm run check
 - Modify: `app/core/save.ts`
 
 **Acceptance:**
-- [ ] 私网和危险 redirect 被拒绝。
-- [ ] DNS 校验与实际连接绑定，每次 redirect 重新验证目标。
-- [ ] 超时、超限和错误类型不会留下正式文件。
-- [ ] 成功下载只在完整写入后出现最终文件。
-- [ ] 调用方得到稳定 error/warning code。
+- [x] 私网和危险 redirect 被拒绝。
+- [x] DNS 校验与实际连接绑定，每次 redirect 重新验证目标。
+- [x] 超时、超限和错误类型不会留下正式文件。
+- [x] 成功下载只在完整写入后出现最终文件。
+- [x] 调用方得到稳定 error/warning code。
 
 **Verify:**
 ```bash
@@ -436,10 +436,10 @@ npm run check
 - Modify: `app/tests/api.test.ts`
 
 **Acceptance:**
-- [ ] 4 个受控延迟图片的总耗时接近一批而非串行总和。
-- [ ] 图片顺序不变，单图失败不阻止保存。
-- [ ] X 和非 X 均遵守用户图片策略。
-- [ ] 两个 save paths 中的相对附件引用都有效。
+- [x] 4 个受控延迟图片的总耗时接近一批而非串行总和。
+- [x] 图片顺序不变，单图失败不阻止保存。
+- [x] X 和非 X 均遵守用户图片策略。
+- [x] 两个 save paths 中的相对附件引用都有效。
 
 **Verify:**
 ```bash
@@ -463,10 +463,10 @@ npm run check
 - Modify: `app/tests/core.test.ts`
 
 **Acceptance:**
-- [ ] 调用 `buildMarkdown()` 不产生文件或网络副作用。
-- [ ] 视频完成后才写入本地嵌入；失败保留远程链接和 warning。
-- [ ] Profile 与单条保存的 enable/disable 行为一致。
-- [ ] HTTP 不再把后续必然失败的视频报告为完整成功。
+- [x] 调用 `buildMarkdown()` 不产生文件或网络副作用。
+- [x] 视频完成后才写入本地嵌入；失败保留远程链接和 warning。
+- [x] Profile 与单条保存的 enable/disable 行为一致。
+- [x] HTTP 不再把后续必然失败的视频报告为完整成功。
 
 **Verify:**
 ```bash
@@ -489,10 +489,10 @@ npm run check
 - Create: `app/tests/save-metrics.test.ts`
 
 **Acceptance:**
-- [ ] 每次保存有一条结构化、脱敏的阶段摘要。
-- [ ] 日志不含请求正文和鉴权数据。
-- [ ] 指标开关默认适合普通用户，不增加大量噪声。
-- [ ] 测试覆盖敏感字段过滤。
+- [x] 每次保存有一条结构化、脱敏的阶段摘要。
+- [x] 日志不含请求正文和鉴权数据。
+- [x] 指标开关默认适合普通用户，不增加大量噪声。
+- [x] 测试覆盖敏感字段过滤。
 
 **Verify:**
 ```bash
@@ -521,11 +521,11 @@ npm run check
 - Modify: `extension/options.js`
 
 **Acceptance:**
-- [ ] 只有 Local Client 包含 `127.0.0.1:9527`。
-- [ ] token 从 `chrome.storage.local` 读取并发送。
-- [ ] timeout/offline/auth/error codes 映射一致。
-- [ ] background、popup 和 options 不再直接调用本地 fetch。
-- [ ] manifest 加载顺序正确。
+- [x] 只有 Local Client 包含 `127.0.0.1:9527`。
+- [x] token 从 `chrome.storage.local` 读取并发送。
+- [x] timeout/offline/auth/error codes 映射一致。
+- [x] background、popup 和 options 不再直接调用本地 fetch。
+- [x] manifest 加载顺序正确。
 
 **Verify:**
 ```bash
@@ -549,10 +549,10 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] 新增书签触发一次保存。
-- [ ] 取消书签触发零次保存。
-- [ ] 重复 DOM bind 不产生多次消息。
-- [ ] 自定义保存菜单仍正常。
+- [x] 新增书签触发一次保存。
+- [x] 取消书签触发零次保存。
+- [x] 重复 DOM bind 不产生多次消息。
+- [x] 自定义保存菜单仍正常。
 
 **Verify:**
 ```bash
@@ -576,12 +576,12 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] `rg 'window\.confirm|confirm\(' extension` 不命中主流程。
-- [ ] modal 可通过键盘完成或关闭。
-- [ ] SaveResult 的 saved/skipped/partial/failed 显示不同状态。
-- [ ] 成功结果可触发复制路径、显示文件或 Obsidian action 消息。
-- [ ] retryable 失败在当前页面可重试，非 retryable 失败不显示无效动作。
-- [ ] 内存重试不会把 CaptureDocument 正文写入 storage、history 或日志。
+- [x] `rg 'window\.confirm|confirm\(' extension` 不命中主流程。
+- [x] modal 可通过键盘完成或关闭。
+- [x] SaveResult 的 saved/skipped/partial/failed 显示不同状态。
+- [x] 成功结果可触发复制路径、显示文件或 Obsidian action 消息。
+- [x] retryable 失败在当前页面可重试，非 retryable 失败不显示无效动作。
+- [x] 内存重试不会把 CaptureDocument 正文写入 storage、history 或日志。
 
 **Verify:**
 ```bash
@@ -606,10 +606,10 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] Adapter interface 只有 capture/normalize 所需入口。
-- [ ] DOM 提取不依赖 background 或 Local Client。
-- [ ] 当前单条保存 payload 经 normalizer 后保持兼容。
-- [ ] content.js 删除被迁移实现，不保留复制分支。
+- [x] Adapter interface 只有 capture/normalize 所需入口。
+- [x] DOM 提取不依赖 background 或 Local Client。
+- [x] 当前单条保存 payload 经 normalizer 后保持兼容。
+- [x] content.js 删除被迁移实现，不保留复制分支。
 
 **Verify:**
 ```bash
@@ -634,10 +634,10 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] background 不再包含大段 X 结果拼装逻辑。
-- [ ] GraphQL/oEmbed/DOM fallback 顺序有契约测试。
-- [ ] 稳定错误码贯穿 SaveResult/UI。
-- [ ] Poll/Notes/card/quote 现有测试保持通过。
+- [x] background 不再包含大段 X 结果拼装逻辑。
+- [x] GraphQL/oEmbed/DOM fallback 顺序有契约测试。
+- [x] 稳定错误码贯穿 SaveResult/UI。
+- [x] Poll/Notes/card/quote 现有测试保持通过。
 
 **Verify:**
 ```bash
@@ -662,10 +662,10 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] content 入口不再包含具体翻译 DOM 算法。
-- [ ] Tweet/Article/Quote 的译文切换和复制行为不变。
-- [ ] translation override 仍能进入 CaptureDocument。
-- [ ] 迁移代码被删除而非双份保留。
+- [x] content 入口不再包含具体翻译 DOM 算法。
+- [x] Tweet/Article/Quote 的译文切换和复制行为不变。
+- [x] translation override 仍能进入 CaptureDocument。
+- [x] 迁移代码被删除而非双份保留。
 
 **Verify:**
 ```bash
@@ -690,10 +690,10 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] Bookmarks/Profile UI 和范围收集行为不变。
-- [ ] content 入口不再包含批量工具条和 Profile 菜单实现。
-- [ ] 暂停/取消/重试现有内存行为保持。
-- [ ] 纯收集函数有测试。
+- [x] Bookmarks/Profile UI 和范围收集行为不变。
+- [x] content 入口不再包含批量工具条和 Profile 菜单实现。
+- [x] 暂停/取消/重试现有内存行为保持。
+- [x] 纯收集函数有测试。
 
 **Verify:**
 ```bash
@@ -719,10 +719,10 @@ npm run check
 - Create: `extension/tests/web-capture.test.js`
 
 **Acceptance:**
-- [ ] 三站点都输出 schema_version 1。
-- [ ] 现有 URL 清理、正文、代码块和图片规则不变。
-- [ ] 站点特有逻辑仍局限在各自文件。
-- [ ] app golden Markdown 输出不变。
+- [x] 三站点都输出 schema_version 1。
+- [x] 现有 URL 清理、正文、代码块和图片规则不变。
+- [x] 站点特有逻辑仍局限在各自文件。
+- [x] app golden Markdown 输出不变。
 
 **Verify:**
 ```bash
@@ -747,10 +747,10 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] 两个入口不再承载可独立测试的业务实现。
-- [ ] 单条保存、翻译、复制、配置和批量消息均有 dispatcher 测试。
-- [ ] 未知消息返回稳定错误而非静默挂起。
-- [ ] Chrome service worker 加载 smoke 通过。
+- [x] 两个入口不再承载可独立测试的业务实现。
+- [x] 单条保存、翻译、复制、配置和批量消息均有 dispatcher 测试。
+- [x] 未知消息返回稳定错误而非静默挂起。
+- [x] Chrome service worker 加载 smoke 通过。
 
 **Verify:**
 ```bash
@@ -778,10 +778,10 @@ npm run check
 - Create: `app/tests/config-migrations.test.ts`
 
 **Acceptance:**
-- [ ] 当前历史配置 fixture 可无损迁移核心字段。
-- [ ] 废弃键被明确移除。
-- [ ] secret 字段不会由公共 config response 返回。
-- [ ] 无效字段返回默认值并产生 migration warning。
+- [x] 当前历史配置 fixture 可无损迁移核心字段。
+- [x] 废弃键被明确移除。
+- [x] secret 字段不会由公共 config response 返回。
+- [x] 无效字段返回默认值并产生 migration warning。
 
 **Verify:**
 ```bash
@@ -804,10 +804,10 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] options 不再编辑保存路径、媒体、Profile 或文件名配置。
-- [ ] 未配对时有明确 pairing 流程。
-- [ ] 已配对时可打开桌面设置。
-- [ ] 版本不兼容有升级提示。
+- [x] options 不再编辑保存路径、媒体、Profile 或文件名配置。
+- [x] 未配对时有明确 pairing 流程。
+- [x] 已配对时可打开桌面设置。
+- [x] 版本不兼容有升级提示。
 
 **Verify:**
 ```bash
@@ -831,10 +831,10 @@ npm run check
 - Modify: `app/tests/core.test.ts`
 
 **Acceptance:**
-- [ ] 所有后端已有 tags/FM 字段可在 UI 读取和保存。
-- [ ] custom template 显示允许变量和预览。
-- [ ] 无效规则不能保存并有明确提示。
-- [ ] 设置重开后字段保持一致。
+- [x] 所有后端已有 tags/FM 字段可在 UI 读取和保存。
+- [x] custom template 显示允许变量和预览。
+- [x] 无效规则不能保存并有明确提示。
+- [x] 设置重开后字段保持一致。
 
 **Verify:**
 ```bash
@@ -857,10 +857,10 @@ npm run check
 - Modify: `app/tests/core.test.ts`
 
 **Acceptance:**
-- [ ] skip/update/always_new 可配置，默认 skip。
-- [ ] X 图片本地化可配置并有附件预览。
-- [ ] Profile 与单条视频策略只显示一个权威配置。
-- [ ] 设置保存后 `/config` 返回正确非敏感字段。
+- [x] skip/update/always_new 可配置，默认 skip。
+- [x] X 图片本地化可配置并有附件预览。
+- [x] Profile 与单条视频策略只显示一个权威配置。
+- [x] 设置保存后 `/config` 返回正确非敏感字段。
 
 **Verify:**
 ```bash
@@ -884,11 +884,11 @@ npm run check
 - Test: `app/tests/api.test.ts`
 
 **Acceptance:**
-- [ ] history 不记录正文或 secret。
-- [ ] open/show 动作只接受服务端已知 history ID。
-- [ ] deleted/moved file 返回明确错误。
-- [ ] popup 和 Capture UI 可使用返回动作。
-- [ ] history 不宣称能够重放没有持久 payload 的普通失败。
+- [x] history 不记录正文或 secret。
+- [x] open/show 动作只接受服务端已知 history ID。
+- [x] deleted/moved file 返回明确错误。
+- [x] popup 和 Capture UI 可使用返回动作。
+- [x] history 不宣称能够重放没有持久 payload 的普通失败。
 
 **Verify:**
 ```bash
@@ -913,11 +913,11 @@ npm run check
 - Modify: `scripts/smoke-packaged-mac.mjs`
 
 **Acceptance:**
-- [ ] 新 config 默认进入 Setup Doctor。
-- [ ] 样例保存使用真实 Save Engine，但不需要外网。
-- [ ] 成功后可显示文件或在 Obsidian 打开。
-- [ ] 任一步失败不会清除已完成步骤。
-- [ ] packaged first-run smoke 真实覆盖 session credential、样例保存和打开结果 dry-run。
+- [x] 新 config 默认进入 Setup Doctor。
+- [x] 样例保存使用真实 Save Engine，但不需要外网。
+- [x] 成功后可显示文件或在 Obsidian 打开。
+- [x] 任一步失败不会清除已完成步骤。
+- [x] packaged first-run smoke 真实覆盖 session credential、样例保存和打开结果 dry-run。
 
 **Verify:**
 ```bash
@@ -943,10 +943,10 @@ npm run check
 - Modify: `app/ui/settings/index.html`
 
 **Acceptance:**
-- [ ] 诊断包内容有 allowlist，不是删除式黑名单。
-- [ ] 测试注入 token/正文/路径后导出不泄露。
-- [ ] 包含 repo/App/extension/live version 和连接状态。
-- [ ] 用户能打开导出文件所在位置。
+- [x] 诊断包内容有 allowlist，不是删除式黑名单。
+- [x] 测试注入 token/正文/路径后导出不泄露。
+- [x] 包含 repo/App/extension/live version 和连接状态。
+- [x] 用户能打开导出文件所在位置。
 
 **Verify:**
 ```bash
@@ -973,12 +973,12 @@ npm run check
 - Modify: `app/core/contracts.ts`
 
 **Acceptance:**
-- [ ] 所有状态转换有测试。
-- [ ] 每个 item 状态独立持久化。
-- [ ] 重启读取后可继续 pending item。
-- [ ] completed/skipped item 不会再次 claim。
-- [ ] 过期 lease 可回收，旧 worker 的迟到 complete 不会覆盖新 attempt。
-- [ ] complete/fail 使用 idempotency key，重复提交结果一致。
+- [x] 所有状态转换有测试。
+- [x] 每个 item 状态独立持久化。
+- [x] 重启读取后可继续 pending item。
+- [x] completed/skipped item 不会再次 claim。
+- [x] 过期 lease 可回收，旧 worker 的迟到 complete 不会覆盖新 attempt。
+- [x] complete/fail 使用 idempotency key，重复提交结果一致。
 
 **Verify:**
 ```bash
@@ -1001,12 +1001,12 @@ npm run check
 - Modify: `app/core/contracts.ts`
 
 **Acceptance:**
-- [ ] 所有路由需要配对凭据。
-- [ ] 非法状态转换返回 409 和稳定错误码。
-- [ ] 列表不返回 item 正文或敏感 payload。
-- [ ] 重试只重置 failed item。
-- [ ] worker endpoint 验证 lease owner、attempt 和 idempotency key。
-- [ ] lease 过期后旧 worker 无法提交覆盖新结果。
+- [x] 所有路由需要配对凭据。
+- [x] 非法状态转换返回 409 和稳定错误码。
+- [x] 列表不返回 item 正文或敏感 payload。
+- [x] 重试只重置 failed item。
+- [x] worker endpoint 验证 lease owner、attempt 和 idempotency key。
+- [x] lease 过期后旧 worker 无法提交覆盖新结果。
 
 **Verify:**
 ```bash
@@ -1030,11 +1030,11 @@ npm run check
 - Modify: `extension/manifest.json`
 
 **Acceptance:**
-- [ ] 创建任务后页面关闭不丢 job 状态。
-- [ ] manifest 声明 alarms 权限，background 注册可重复安全的唤醒处理。
-- [ ] 默认单并发并带抖动。
-- [ ] rate limit 自动暂停并显示原因。
-- [ ] 已保存/已跳过 item 不重复执行。
+- [x] 创建任务后页面关闭不丢 job 状态。
+- [x] manifest 声明 alarms 权限，background 注册可重复安全的唤醒处理。
+- [x] 默认单并发并带抖动。
+- [x] rate limit 自动暂停并显示原因。
+- [x] 已保存/已跳过 item 不重复执行。
 
 **Verify:**
 ```bash
@@ -1059,10 +1059,10 @@ npm run check
 - Modify: `app/tests/fixtures.test.ts`
 
 **Acceptance:**
-- [ ] Posts/Articles 任务均可恢复。
-- [ ] 视频和去重策略与单条保存一致。
-- [ ] 旧 profile state 可迁移或只读导入。
-- [ ] 日聚合 Markdown golden 保持兼容。
+- [x] Posts/Articles 任务均可恢复。
+- [x] 视频和去重策略与单条保存一致。
+- [x] 旧 profile state 可迁移或只读导入。
+- [x] 日聚合 Markdown golden 保持兼容。
 
 **Verify:**
 ```bash
@@ -1086,10 +1086,10 @@ npm run check
 - Modify: `app/tests/core.test.ts`
 
 **Acceptance:**
-- [ ] UI 计数与 Job API item 状态一致。
-- [ ] 用户可复制失败摘要和错误码。
-- [ ] 完成任务可打开生成文件或目录。
-- [ ] 扩展页面关闭后桌面仍可查看任务。
+- [x] UI 计数与 Job API item 状态一致。
+- [x] 用户可复制失败摘要和错误码。
+- [x] 完成任务可打开生成文件或目录。
+- [x] 扩展页面关闭后桌面仍可查看任务。
 
 **Verify:**
 ```bash
@@ -1112,12 +1112,12 @@ npm run check
 - Modify: `extension/job_client.js`
 
 **Acceptance:**
-- [ ] 重启后从最后 checkpoint 继续。
-- [ ] completed/skipped 项不会重复。
-- [ ] 过期 lease 被新 worker 回收，旧 attempt 的迟到提交被拒绝或幂等忽略。
-- [ ] alarm 唤醒后 worker 从持久 job 继续，而不是依赖页面内存。
-- [ ] rate limit 进入 paused 而不是 failed。
-- [ ] cancel 后无新 item 开始。
+- [x] 重启后从最后 checkpoint 继续。
+- [x] completed/skipped 项不会重复。
+- [x] 过期 lease 被新 worker 回收，旧 attempt 的迟到提交被拒绝或幂等忽略。
+- [x] alarm 唤醒后 worker 从持久 job 继续，而不是依赖页面内存。
+- [x] rate limit 进入 paused 而不是 failed。
+- [x] cancel 后无新 item 开始。
 
 **Verify:**
 ```bash
@@ -1145,10 +1145,10 @@ npm run check
 - Modify: `.github/workflows/ci.yml`
 
 **Acceptance:**
-- [ ] 故意加入敏感 fixture 时 CI 失败。
-- [ ] coverage 报告在 CI 可查看并有门槛。
-- [ ] PRD 每个 acceptance criterion 指向测试、smoke 或人工 gate。
-- [ ] 未验证项明确为未完成，不自动勾选。
+- [x] 故意加入敏感 fixture 时 CI 失败。
+- [x] coverage 报告在 CI 可查看并有门槛。
+- [x] PRD 每个 acceptance criterion 指向测试、smoke 或人工 gate。
+- [x] 未验证项明确为未完成，不自动勾选。
 
 **Verify:**
 ```bash
@@ -1174,10 +1174,10 @@ npm run check
 - Modify: `BUILD.md`
 
 **Acceptance:**
-- [ ] smoke 对最终 release zip 而不是中间 build 目录运行。
-- [ ] `/ping` 版本与 tag 一致。
-- [ ] pairing 后真实 `/save` 成功。
-- [ ] 关键 gate 无权限/环境不满足时明确失败或标记非 release job，不能静默 pass。
+- [x] smoke 对最终 release zip 而不是中间 build 目录运行。
+- [x] `/ping` 版本与 tag 一致。
+- [x] pairing 后真实 `/save` 成功。
+- [x] 关键 gate 无权限/环境不满足时明确失败或标记非 release job，不能静默 pass。
 
 **Verify:**
 ```bash
@@ -1202,10 +1202,10 @@ npm run check:release-artifacts
 - Modify: `BUILD.md`
 
 **Acceptance:**
-- [ ] workflow 明确执行 `codesign --verify --deep --strict`、notarytool submit/wait 和 `stapler validate`。
-- [ ] 缺少任一正式 credential 时 stable release job 失败，而不是降级为 unsigned。
-- [ ] shell 支持 dry-run，并可用 fake command runner 验证调用顺序和错误传播。
-- [ ] unsigned artifact 不能进入 stable GitHub Release job。
+- [x] workflow 明确执行 `codesign --verify --deep --strict`、notarytool submit/wait 和 `stapler validate`。
+- [x] 缺少任一正式 credential 时 stable release job 失败，而不是降级为 unsigned。
+- [x] shell 支持 dry-run，并可用 fake command runner 验证调用顺序和错误传播。
+- [x] unsigned artifact 不能进入 stable GitHub Release job。
 
 **Verify:**
 ```bash
@@ -1234,7 +1234,7 @@ npm run check
 - [ ] artifact 不要求系统已安装 Node/Python。
 - [ ] 使用同一 `app/core` 和相同版本常量。
 - [ ] windows-latest 解压后真实保存 Markdown。
-- [ ] 不支持的 tray/settings/autostart 能力在矩阵中明确，而非虚假宣称。
+- [x] 不支持的 tray/settings/autostart 能力在矩阵中明确，而非虚假宣称。
 
 **Verify:**
 ```bash
@@ -1260,10 +1260,10 @@ npm run check
 - Modify: `scripts/check-release-artifacts.mjs`
 
 **Acceptance:**
-- [ ] CI 使用 frozen lock，依赖漂移会失败。
-- [ ] npm/Python audit 在 PR 和 release 执行。
+- [x] CI 使用 frozen lock，依赖漂移会失败。
+- [x] npm/Python audit 在 PR 和 release 执行。
 - [ ] release 包含 SBOM/provenance。
-- [ ] Actions 不再只 pin major tag。
+- [x] Actions 不再只 pin major tag。
 
 **Verify:**
 ```bash
@@ -1290,12 +1290,12 @@ npm run check
 - Modify: `docs/acceptance/v4-evidence-matrix.md`
 
 **Acceptance:**
-- [ ] 用户安装和设置步骤与真实 artifact 一致。
-- [ ] Windows/Mac 支持边界准确。
-- [ ] 安全配对、重复策略、任务恢复和历史动作有用户说明。
-- [ ] PRD 所有 AC 都有测试、artifact 或明确人工验收证据。
-- [ ] 没有旧版本硬编码下载链接或未经证明的“已完成”。
-- [ ] evidence matrix 明确标记 H02 未完成时 stable 仍被阻塞。
+- [x] 用户安装和设置步骤与真实 artifact 一致。
+- [x] Windows/Mac 支持边界准确。
+- [x] 安全配对、重复策略、任务恢复和历史动作有用户说明。
+- [x] PRD 所有 AC 都有测试、artifact 或明确人工验收证据。
+- [x] 没有旧版本硬编码下载链接或未经证明的“已完成”。
+- [x] evidence matrix 明确标记 H02 未完成时 stable 仍被阻塞。
 
 **Verify:**
 ```bash
