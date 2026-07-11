@@ -41,3 +41,6 @@ assets/icon.iconset/
 .idea/
 .vscode/
 *.swp
+
+# Superpowers visual brainstorming workspace
+.superpowers/
