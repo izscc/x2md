@@ -133,8 +133,11 @@ export function normalizeConfigWithWarnings(raw: Record<string, unknown> = {}, i
   cfg.profile_capture_save_path = String(cfg.profile_capture_save_path || "").trim();
   cfg.custom_save_paths = normalizeCustomSavePaths(cfg);
   cfg.max_filename_length = numberValue(cfg.max_filename_length, DEFAULT_CONFIG.max_filename_length, 20, 180);
-  cfg.video_duration_threshold = numberValue(cfg.video_duration_threshold, DEFAULT_CONFIG.video_duration_threshold, 0);
+  cfg.video_duration_threshold = numberValue(cfg.video_duration_threshold, DEFAULT_CONFIG.video_duration_threshold, 1, 1440);
   cfg.profile_capture_custom_days = numberValue(cfg.profile_capture_custom_days, DEFAULT_CONFIG.profile_capture_custom_days);
+  cfg.profile_capture_range = ["today", "month", "days", "all"].includes(String(cfg.profile_capture_range))
+    ? String(cfg.profile_capture_range)
+    : DEFAULT_CONFIG.profile_capture_range;
   cfg.setup_completed = cfg.save_paths.length > 0 && (oldConfigHasSavePath || boolValue(cfg.setup_completed, DEFAULT_CONFIG.setup_completed));
   cfg.enable_video_download = boolValue(cfg.enable_video_download, DEFAULT_CONFIG.enable_video_download);
   cfg.enable_save_notification = boolValue(cfg.enable_save_notification, DEFAULT_CONFIG.enable_save_notification);
@@ -160,7 +163,8 @@ export function normalizeConfigWithWarnings(raw: Record<string, unknown> = {}, i
     ["save_paths", clean.save_paths !== undefined && !Array.isArray(clean.save_paths)],
     ["custom_save_paths", clean.custom_save_paths !== undefined && !Array.isArray(clean.custom_save_paths)],
     ["max_filename_length", clean.max_filename_length !== undefined && (!Number.isFinite(Number(clean.max_filename_length)) || Number(clean.max_filename_length) < 20)],
-    ["video_duration_threshold", clean.video_duration_threshold !== undefined && (!Number.isFinite(Number(clean.video_duration_threshold)) || Number(clean.video_duration_threshold) < 0)],
+    ["video_duration_threshold", clean.video_duration_threshold !== undefined && (!Number.isFinite(Number(clean.video_duration_threshold)) || Number(clean.video_duration_threshold) < 1 || Number(clean.video_duration_threshold) > 1440)],
+    ["profile_capture_range", clean.profile_capture_range !== undefined && !["today", "month", "days", "all"].includes(String(clean.profile_capture_range))],
     ["image_embed_style", clean.image_embed_style !== undefined && !["markdown", "obsidian"].includes(String(clean.image_embed_style))],
     ["duplicate_policy", clean.duplicate_policy !== undefined && !["skip", "update", "always_new"].includes(String(clean.duplicate_policy))],
   ];
@@ -229,12 +233,16 @@ export function saveConfig(cfg: Record<string, unknown>, appDir = getAppDir()): 
 export function normalizeCustomSavePaths(cfg: Record<string, unknown>): Array<{ name: string; path: string }> {
   const entries = Array.isArray(cfg.custom_save_paths) ? cfg.custom_save_paths : [];
   const normalized: Array<{ name: string; path: string }> = [];
+  const names = new Set<string>();
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
     const item = entry as Record<string, unknown>;
     const name = String(item.name ?? "").trim();
     const path = String(item.path ?? "").trim();
-    if (name && path) normalized.push({ name, path });
+    if (name && path && !names.has(name)) {
+      names.add(name);
+      normalized.push({ name, path });
+    }
   }
   return normalized;
 }

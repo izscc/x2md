@@ -6,6 +6,30 @@ const apiFetch = (input: string, init: RequestInit = {}) => fetch(input, {
   ...init,
   headers: { ...init.headers, Authorization: `Bearer ${session}` },
 });
+function apiError(body: any, fallback: string): string {
+  if (typeof body?.error === "string") return body.error;
+  if (typeof body?.error?.message === "string") return body.error.message;
+  return fallback;
+}
+
+async function requestJson<T = any>(input: string, init: RequestInit = {}, fallback = "请求失败"): Promise<T> {
+  let response: Response;
+  try {
+    response = await apiFetch(input, init);
+  } catch {
+    throw new Error("无法连接 X2MD 本机服务，请重新打开设置窗口后重试");
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = response.status === 401 ? "设置会话已失效，请关闭并重新打开设置窗口" : apiError(body, fallback);
+    throw new Error(message);
+  }
+  return body as T;
+}
+
+function runUiAction(action: () => Promise<void>): void {
+  void action().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+}
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 const field = (id: string) => $(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const pairingCode = String((globalThis as typeof globalThis & { X2MD_PAIRING_CODE?: string }).X2MD_PAIRING_CODE || "");
@@ -246,13 +270,11 @@ function setFilenameFormat(format: string): void {
 }
 
 async function chooseFolder(currentPath: string): Promise<string> {
-  const response = await apiFetch(`${api}/choose-folder`, {
+  const result = await requestJson<any>(`${api}/choose-folder`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ currentPath }),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "文件夹选择失败");
+  }, "文件夹选择失败");
   return String(result.path || "").trim();
 }
 
@@ -392,6 +414,13 @@ function collectCustomSavePaths(strict: boolean): CustomSavePath[] {
     if (strict && (!name || !path)) throw new Error("额外保存位置需要同时填写名称和目录");
     if (name && path) paths.push({ name, path });
   }
+  if (strict) {
+    const names = new Set<string>();
+    for (const item of paths) {
+      if (names.has(item.name)) throw new Error(`额外保存位置名称不能重复：${item.name}`);
+      names.add(item.name);
+    }
+  }
   return paths;
 }
 
@@ -445,8 +474,7 @@ function showPanel(panel: PanelKey): void {
 }
 
 async function loadConfig(): Promise<void> {
-  const response = await apiFetch(`${api}/config`);
-  const cfg = await response.json();
+  const cfg = await requestJson<any>(`${api}/config`, {}, "无法读取配置");
   $("savePath").value = cfg.save_paths?.[0] || "";
   const customPaths = Array.isArray(cfg.custom_save_paths) ? cfg.custom_save_paths : [];
   renderCustomSavePaths(customPaths);
@@ -472,12 +500,11 @@ async function loadConfig(): Promise<void> {
   (field("frontMatterTemplate") as HTMLSelectElement).value = cfg.front_matter_template || "default";
   (field("customFrontMatterTemplate") as HTMLTextAreaElement).value = cfg.custom_front_matter_template || "";
   updateFrontMatterEditor();
-  const status = await apiFetch(`${api}/status`).then((res) => res.json()).catch(() => ({}));
+  const status = await requestJson<any>(`${api}/status`, {}, "无法读取服务状态");
   setServiceInfo(status);
-  const ping = status.version ? status : await apiFetch(`${api}/ping`).then((res) => res.json()).catch(() => ({}));
-  const autostart = await apiFetch(`${api}/autostart`).then((res) => res.json()).catch(() => ({}));
+  const autostart = await requestJson<any>(`${api}/autostart`, {}, "无法读取自动启动状态");
   $("autostart").checked = Boolean(autostart.enabled);
-  setStatus(ping.version ? "已连接，保存功能可用" : "已连接");
+  setStatus(status.version ? "已连接，保存功能可用" : "已连接");
   await refreshSetup();
 }
 
@@ -502,9 +529,7 @@ function renderSetup(state: SetupState): void {
 }
 
 async function refreshSetup(): Promise<void> {
-  const response = await apiFetch(`${api}/setup`);
-  const state = await response.json().catch(() => ({}));
-  if (response.ok) renderSetup(state);
+  renderSetup(await requestJson<SetupState>(`${api}/setup`, {}, "无法读取首次激活状态"));
 }
 
 async function runSetupStep(step: string): Promise<void> {
@@ -520,16 +545,13 @@ async function runSetupStep(step: string): Promise<void> {
       setStatus("请先选择主要保存位置");
       return;
     }
-    const configResponse = await apiFetch(`${api}/config`, {
+    await requestJson(`${api}/config`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ save_paths: [path] }),
-    });
-    if (!configResponse.ok) throw new Error("保存目录配置失败");
+    }, "保存目录配置失败");
   }
-  const response = await apiFetch(`${api}/setup`, {
+  const state = await requestJson<SetupState>(`${api}/setup`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step }),
-  });
-  const state = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(state.error || "检查失败");
+  }, "检查失败");
   renderSetup(state);
   setStatus(step === "sample" ? "首次激活完成，样例已保存" : "检查通过，请继续下一步");
 }
@@ -537,11 +559,9 @@ async function runSetupStep(step: string): Promise<void> {
 async function openSetupSample(action: string): Promise<void> {
   const id = currentSetup?.sample_history_id;
   if (!id) throw new Error("样例记录不存在");
-  const response = await apiFetch(`${api}/history/action`, {
+  await requestJson(`${api}/history/action`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action }),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "打开样例失败");
+  }, "打开样例失败");
   setStatus(action === "show_file" ? "已在 Finder 显示样例" : "已在 Obsidian 打开样例");
 }
 
@@ -554,6 +574,13 @@ async function saveConfig(): Promise<void> {
     if ((field("frontMatterTemplate") as HTMLSelectElement).value === "custom") {
       validateCustomFrontMatterTemplate((field("customFrontMatterTemplate") as HTMLTextAreaElement).value);
     }
+    if (!$("savePath").value.trim()) throw new Error("请先选择主要保存位置");
+    const maxFilenameLength = Number($("maxFilenameLength").value);
+    if (!Number.isInteger(maxFilenameLength) || maxFilenameLength < 20 || maxFilenameLength > 180) throw new Error("文件名最大长度必须是 20–180 的整数");
+    const videoThreshold = Number($("videoThreshold").value);
+    if (!Number.isFinite(videoThreshold) || videoThreshold < 1 || videoThreshold > 1440) throw new Error("视频时长阈值必须在 1–1440 分钟之间");
+    const profileCustomDays = Number($("profileCustomDays").value);
+    if (!Number.isInteger(profileCustomDays) || profileCustomDays < 1 || profileCustomDays > 3650) throw new Error("自定义抓取天数必须是 1–3650 的整数");
   } catch (error) {
     setStatus(error instanceof Error ? error.message : String(error));
     return;
@@ -583,23 +610,22 @@ async function saveConfig(): Promise<void> {
     front_matter_template: (field("frontMatterTemplate") as HTMLSelectElement).value,
     custom_front_matter_template: (field("customFrontMatterTemplate") as HTMLTextAreaElement).value,
   };
-  const response = await apiFetch(`${api}/config`, {
+  const result = await requestJson<any>(`${api}/config`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-  });
-  const result = await response.json().catch(() => ({}));
-  updateCustomSaveSummary(customSavePaths);
-  setStatus(response.ok ? "已保存" : "保存失败");
+  }, "保存失败");
+  updateCustomSaveSummary(Array.isArray(result.config?.custom_save_paths) ? result.config.custom_save_paths : customSavePaths);
+  setStatus("已保存");
 }
 
 async function openTarget(target: string): Promise<void> {
-  const response = await apiFetch(`${api}/open`, {
+  await requestJson(`${api}/open`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target }),
-  });
-  setStatus(response.ok ? "已打开" : "打开失败");
+  }, "打开失败");
+  setStatus("已打开");
 }
 
 type JobView = {
@@ -610,13 +636,12 @@ type JobView = {
 const jobLabels: Record<string, string> = { bookmarks: "书签", "profile-posts": "博主推文", "profile-articles": "博主文章" };
 
 async function jobControl(id: string, action: string): Promise<void> {
-  const response = await apiFetch(`${api}/jobs/${encodeURIComponent(id)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-  if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error?.message || "任务操作失败");
+  await requestJson(`${api}/jobs/${encodeURIComponent(id)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }, "任务操作失败");
   await loadJobs();
 }
 
 async function copyJobFailures(job: JobView): Promise<void> {
-  const detail = await apiFetch(`${api}/jobs/${encodeURIComponent(job.id)}`).then((response) => response.json());
+  const detail = await requestJson<any>(`${api}/jobs/${encodeURIComponent(job.id)}`, {}, "无法读取任务详情");
   const lines = (detail.job?.items || []).filter((item: any) => item.error).map((item: any) => `${item.id}\t${item.error.code}\t${item.error.message}`);
   await navigator.clipboard.writeText(lines.join("\n") || "没有失败项");
   setStatus("失败摘要已复制");
@@ -633,7 +658,7 @@ function renderJobs(jobs: JobView[]): void {
   const summary = document.getElementById("jobSummary");
   if (!list || !summary) return;
   list.textContent = "";
-  const states = ["queued", "running", "paused", "completed", "failed"];
+  const states = ["queued", "running", "paused", "completed", "failed", "cancelled"];
   summary.textContent = states.map((status) => `${status} ${jobs.filter((job) => job.status === status).length}`).join(" · ");
   if (!jobs.length) { const empty = document.createElement("p"); empty.className = "field-hint"; empty.textContent = "还没有批量任务。"; list.append(empty); return; }
   for (const job of jobs) {
@@ -649,47 +674,49 @@ function renderJobs(jobs: JobView[]): void {
     if (["queued", "running", "paused", "failed"].includes(job.status)) actions.append(jobButton("取消", () => void jobControl(job.id, "cancel").catch((error) => setStatus(error.message))));
     if (job.status === "failed" && job.counts.failed) actions.append(jobButton("重试失败", () => void jobControl(job.id, "retry").catch((error) => setStatus(error.message))));
     if (job.counts.failed) actions.append(jobButton("复制失败摘要", () => void copyJobFailures(job).catch((error) => setStatus(error.message))));
-    if (job.status === "completed") actions.append(jobButton("打开结果目录", () => void openTarget("save")));
+    if (job.status === "completed") actions.append(jobButton("打开主要保存目录", () => runUiAction(() => openTarget("save"))));
     row.append(copy, actions); list.append(row);
   }
 }
 
+let jobsLoading = false;
 async function loadJobs(): Promise<void> {
-  const response = await apiFetch(`${api}/jobs`);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message || "无法读取任务");
-  renderJobs(data.jobs || []);
+  if (jobsLoading) return;
+  jobsLoading = true;
+  try {
+    const data = await requestJson<any>(`${api}/jobs`, {}, "无法读取任务");
+    renderJobs(data.jobs || []);
+  } finally {
+    jobsLoading = false;
+  }
 }
 
 async function updateAutostart(): Promise<void> {
-  const response = await apiFetch(`${api}/autostart`, {
+  const result = await requestJson<any>(`${api}/autostart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled: $("autostart").checked }),
-  });
-  const result = await response.json().catch(() => ({}));
+  }, "自动启动设置失败");
   $("autostart").checked = Boolean(result.enabled);
-  setStatus(response.ok ? (result.enabled ? "已开启登录后自动启动" : "已关闭登录后自动启动") : "自动启动设置失败");
+  setStatus(result.enabled ? "已开启登录后自动启动" : "已关闭登录后自动启动");
 }
 
 async function showLog(): Promise<void> {
   showPanel("system");
   const view = document.getElementById("logView") as HTMLPreElement | null;
   if (!view) return;
-  const response = await apiFetch(`${api}/log`);
-  const result = await response.json().catch(() => ({}));
+  const result = await requestJson<any>(`${api}/log`, {}, "日志读取失败");
   view.hidden = false;
   view.textContent = result.log || "暂无日志";
-  setStatus(response.ok ? "已刷新日志" : "日志读取失败");
+  setStatus("已刷新日志");
 }
 
 async function retryConnection(): Promise<void> {
   const detail = document.getElementById("diagnosticsConnection");
   setStatus("正在重试本机连接…");
   try {
-    const response = await apiFetch(`${api}/status`);
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.status !== "ok") throw new Error(result.error || "本机服务未响应");
+    const result = await requestJson<any>(`${api}/status`, {}, "本机服务未响应");
+    if (result.status !== "ok") throw new Error("本机服务未响应");
     if (detail) detail.textContent = `连接正常：App ${result.version}，端口 ${result.port}。`;
     setServiceInfo(result);
     setStatus("连接已恢复，保存功能可用");
@@ -701,11 +728,9 @@ async function retryConnection(): Promise<void> {
 
 async function exportDiagnostics(): Promise<void> {
   setStatus("正在生成脱敏诊断包…");
-  const response = await apiFetch(`${api}/diagnostics/export`, {
+  const result = await requestJson<any>(`${api}/diagnostics/export`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "诊断包生成失败");
+  }, "诊断包生成失败");
   const location = document.getElementById("diagnosticsLocation");
   if (location) {
     location.hidden = false;
@@ -731,13 +756,13 @@ panelButtons.forEach((button) => {
   });
 });
 
-$("save").addEventListener("click", () => void saveConfig());
-$("test").addEventListener("click", async () => {
-  const response = await apiFetch(`${api}/ping`);
-  await response.json().catch(() => ({}));
-  setStatus(response.ok ? "服务正常，可以保存内容" : "服务不可用");
-});
-$("autostart").addEventListener("change", () => void updateAutostart());
+$("save").addEventListener("click", () => runUiAction(saveConfig));
+$("test").addEventListener("click", () => runUiAction(async () => {
+  const status = await requestJson<any>(`${api}/status`, {}, "服务不可用");
+  if (status.status !== "ok") throw new Error("服务不可用");
+  setStatus("服务正常，可以保存内容");
+}));
+$("autostart").addEventListener("change", () => runUiAction(updateAutostart));
 $("customSavePaths").addEventListener("input", () => updateCustomSaveSummary(parseCustomSavePaths()));
 $("imageAttachmentPath").addEventListener("input", updateImageAttachmentPreview);
 (field("imageEmbedStyle") as HTMLSelectElement).addEventListener("change", updateImageAttachmentPreview);
@@ -762,20 +787,20 @@ document.getElementById("clearProfilePath")?.addEventListener("click", () => {
   $("profileSavePath").value = "";
   setStatus("博主内容将使用主要保存位置");
 });
-$("openSave").addEventListener("click", () => void openTarget("save"));
-$("openVideo").addEventListener("click", () => void openTarget("video"));
+$("openSave").addEventListener("click", () => runUiAction(() => openTarget("save")));
+$("openVideo").addEventListener("click", () => runUiAction(() => openTarget("video")));
 $("openLog").addEventListener("click", () => {
   showPanel("system");
-  void openTarget("log");
+  runUiAction(() => openTarget("log"));
 });
-$("showLog").addEventListener("click", () => void showLog());
-document.getElementById("retryConnection")?.addEventListener("click", () => void retryConnection());
-document.getElementById("exportDiagnostics")?.addEventListener("click", () => void exportDiagnostics().catch((error) => setStatus(error.message)));
-document.getElementById("openDiagnostics")?.addEventListener("click", () => void openTarget("diagnostics"));
-document.getElementById("refreshJobs")?.addEventListener("click", () => void loadJobs().catch((error) => setStatus(error.message)));
+$("showLog").addEventListener("click", () => runUiAction(showLog));
+document.getElementById("retryConnection")?.addEventListener("click", () => runUiAction(retryConnection));
+document.getElementById("exportDiagnostics")?.addEventListener("click", () => runUiAction(exportDiagnostics));
+document.getElementById("openDiagnostics")?.addEventListener("click", () => runUiAction(() => openTarget("diagnostics")));
+document.getElementById("refreshJobs")?.addEventListener("click", () => runUiAction(loadJobs));
 $("openExtension").addEventListener("click", () => {
   toggleExtensionHelp();
-  void openTarget("extension");
+  runUiAction(() => openTarget("extension"));
 });
 
 const pairingCodeElement = document.getElementById("pairingCode");
@@ -788,8 +813,8 @@ document.querySelectorAll<HTMLButtonElement>("[data-setup-action]").forEach((but
 document.querySelectorAll<HTMLButtonElement>("[data-sample-action]").forEach((button) => {
   button.addEventListener("click", () => void openSetupSample(button.dataset.sampleAction || "").catch((error) => setStatus(error.message)));
 });
-setInterval(() => { if (currentSetup && !currentSetup.setup_completed) void refreshSetup(); }, 2000);
-setInterval(() => { if (!document.getElementById("panel-jobs")?.hidden) void loadJobs().catch(() => {}); }, 2000);
+setInterval(() => { if (currentSetup && !currentSetup.setup_completed) runUiAction(refreshSetup); }, 2000);
+setInterval(() => { if (!document.getElementById("panel-jobs")?.hidden) runUiAction(loadJobs); }, 2000);
 showPanel(safeGetPanel());
-void loadJobs().catch(() => {});
-loadConfig().catch((error) => setStatus(`连接失败：${error.message}`));
+runUiAction(loadJobs);
+runUiAction(loadConfig);

@@ -47,7 +47,8 @@ test("任务中心展示持久任务计数与安全控制", () => {
   const script = readFileSync(join(root, "settings.ts"), "utf8");
   assert.match(html, /id="panel-jobs"/);
   assert.match(script, /\/jobs\/\$\{encodeURIComponent\(id\)\}/);
-  for (const label of ["暂停", "继续", "取消", "重试失败", "复制失败摘要", "打开结果目录"]) assert.match(script, new RegExp(label));
+  for (const label of ["暂停", "继续", "取消", "重试失败", "复制失败摘要", "打开主要保存目录"]) assert.match(script, new RegExp(label));
+  assert.match(script, /"cancelled"/);
   assert.match(script, /item\.error\.code/);
   assert.match(script, /job\.counts\.saved/);
 });
@@ -379,12 +380,22 @@ test("旧配置端口会被移除", () => {
 test("无效数值配置回到默认值", () => {
   const cfg = normalizeConfig({
     max_filename_length: "bad",
-    video_duration_threshold: -1,
+    video_duration_threshold: 0,
     profile_capture_custom_days: 0,
+    profile_capture_range: "tomorrow",
   });
   assert.equal(cfg.max_filename_length, 100);
   assert.equal(cfg.video_duration_threshold, 5);
   assert.equal(cfg.profile_capture_custom_days, 7);
+  assert.equal(cfg.profile_capture_range, "today");
+});
+
+test("同名额外保存位置只保留第一个，避免名称路由到错误目录", () => {
+  const cfg = normalizeConfig({ custom_save_paths: [
+    { name: "素材", path: "/vault/first" },
+    { name: "素材", path: "/vault/second" },
+  ] });
+  assert.deepEqual(cfg.custom_save_paths, [{ name: "素材", path: "/vault/first" }]);
 });
 
 test("文件名长度按中文可见字符截断", () => {
@@ -515,7 +526,8 @@ test("设置页字段和脚本选择器保持一致", () => {
   assert.match(html, /加载已解压的扩展程序/);
   assert.match(script, /openTarget\("extension"\)/);
   assert.match(script, /http:\/\/127\.0\.0\.1:9527/);
-  assert.match(script, /apiFetch\(`\$\{api\}\/ping`\)/);
+  assert.match(script, /requestJson<any>\(`\$\{api\}\/status`/);
+  assert.doesNotMatch(script, /apiFetch\(`\$\{api\}\/ping`\)/);
   assert.match(html, /data-panel-button="organize"/);
   assert.match(script, /validateTagRules/);
   for (const key of ["auto_tags_enabled", "default_tags", "tag_rules", "front_matter_template", "custom_front_matter_template"]) {

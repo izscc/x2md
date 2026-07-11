@@ -9,6 +9,7 @@ import { issueAppSession, issuePairingCode, revokeAppSession } from "../core/pai
 import { diagnosticsDirectory } from "../core/diagnostics.ts";
 
 let settingsWindow: any;
+let settingsSession = "";
 
 export function settingsUrl(_appDir = getAppDir()): string {
   return `views://settings/index.html#port=${LOCAL_API_PORT}`;
@@ -72,11 +73,22 @@ export async function showSettingsWindow(appDir = getAppDir(), port?: number): P
     const configuredPort = port || LOCAL_API_PORT;
     if (settingsWindow) {
       try {
+        if (settingsSession) revokeAppSession(settingsSession);
+        const cfg = loadConfig(appDir);
+        settingsSession = issueAppSession();
+        const pairingCode = issuePairingCode(String(cfg.install_secret));
+        if (process.env.X2MD_OPEN_DRY_RUN === "1") {
+          writeFileSync(join(appDir, "smoke-session"), settingsSession, { encoding: "utf8", mode: 0o600 });
+          writeFileSync(join(appDir, "smoke-pairing-code"), pairingCode, { encoding: "utf8", mode: 0o600 });
+        }
+        settingsWindow.webview.loadHTML(settingsHtml(configuredPort, process.execPath, settingsSession, pairingCode));
         settingsWindow.show?.();
         settingsWindow.activate?.();
-        log("设置页已打开：复用现有窗口", appDir);
+        log("设置页已打开：刷新凭据并复用现有窗口", appDir);
         return;
       } catch (error) {
+        if (settingsSession) revokeAppSession(settingsSession);
+        settingsSession = "";
         settingsWindow = null;
         log(`设置页旧窗口已关闭，重新创建：${error instanceof Error ? error.message : String(error)}`, appDir);
       }
@@ -84,6 +96,7 @@ export async function showSettingsWindow(appDir = getAppDir(), port?: number): P
 
     const cfg = loadConfig(appDir);
     const session = issueAppSession();
+    settingsSession = session;
     const pairingCode = issuePairingCode(String(cfg.install_secret));
     if (process.env.X2MD_OPEN_DRY_RUN === "1") {
       writeFileSync(join(appDir, "smoke-session"), session, { encoding: "utf8", mode: 0o600 });
@@ -99,12 +112,17 @@ export async function showSettingsWindow(appDir = getAppDir(), port?: number): P
     window.activate?.();
     settingsWindow = window;
     settingsWindow.on?.("close", () => {
-      revokeAppSession(session);
-      if (settingsWindow === window) settingsWindow = null;
+      if (settingsWindow === window) {
+        if (settingsSession) revokeAppSession(settingsSession);
+        settingsSession = "";
+        settingsWindow = null;
+      }
     });
     log(`设置页已打开：inline viewsRoot=${settingsViewsRootForExecutable()}`, appDir);
     log("设置窗口已显示：980x720", appDir);
   } catch (error) {
+    if (settingsSession) revokeAppSession(settingsSession);
+    settingsSession = "";
     log(`设置页打开失败：${error instanceof Error ? error.message : String(error)}`, appDir);
     console.log("设置页需要在 Electrobun 运行时打开：http://127.0.0.1:9527/config");
   }

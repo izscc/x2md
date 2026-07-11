@@ -27,6 +27,7 @@ const extensionHealthMode = process.env.X2MD_SMOKE_EXTENSION_HEALTH === "1";
 const windowVisibleMode = process.env.X2MD_SMOKE_WINDOW_VISIBLE === "1";
 const menuVisibleMode = process.env.X2MD_SMOKE_MENU_VISIBLE === "1";
 const port = 9527;
+const extensionOrigin = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
 const mdDir = join(home, "md");
 const sessionFile = join(appDir, "smoke-session");
 const pairingFile = join(appDir, "smoke-pairing-code");
@@ -157,6 +158,56 @@ try {
     const log = existsSync(join(appDir, "x2md.log")) ? readFileSync(join(appDir, "x2md.log"), "utf8") : "";
     throw new Error(`packaged smoke did not receive a real settings session credential\n--- stdout ---\n${output}\n--- log ---\n${log}`);
   }
+
+  const opaquePreflight = await fetch(`http://127.0.0.1:${port}/config`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "null",
+      "Access-Control-Request-Method": "GET",
+      "Access-Control-Request-Headers": "authorization",
+    },
+  });
+  if (opaquePreflight.status !== 204 || opaquePreflight.headers.get("Access-Control-Allow-Origin") !== "null") {
+    throw new Error(`packaged opaque settings preflight failed: status=${opaquePreflight.status} origin=${opaquePreflight.headers.get("Access-Control-Allow-Origin")}`);
+  }
+
+  const opaqueConfig = await smokeFetch(`http://127.0.0.1:${port}/config`, { headers: { Origin: "null" } });
+  const opaqueConfigBody = await opaqueConfig.json().catch(() => ({}));
+  if (!opaqueConfig.ok || opaqueConfig.headers.get("Access-Control-Allow-Origin") !== "null" || !Array.isArray(opaqueConfigBody.save_paths)) {
+    throw new Error(`packaged opaque settings config failed\n--- response ---\n${JSON.stringify(opaqueConfigBody)}`);
+  }
+
+  const opaqueChooseFolder = await smokeFetch(`http://127.0.0.1:${port}/choose-folder`, {
+    method: "POST",
+    headers: { Origin: "null", "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPath: appDir }),
+  });
+  const opaqueChooseFolderBody = await opaqueChooseFolder.json().catch(() => ({}));
+  if (!opaqueChooseFolder.ok || opaqueChooseFolder.headers.get("Access-Control-Allow-Origin") !== "null" || opaqueChooseFolderBody.path !== appDir) {
+    throw new Error(`packaged opaque settings choose-folder failed\n--- response ---\n${JSON.stringify(opaqueChooseFolderBody)}`);
+  }
+
+  const originalSession = session;
+  const reopenSettings = await smokeFetch(`http://127.0.0.1:${port}/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!reopenSettings.ok) throw new Error(`packaged settings reopen failed: ${reopenSettings.status}`);
+  for (let i = 0; i < 40 && session === originalSession; i += 1) {
+    if (existsSync(sessionFile)) session = readFileSync(sessionFile, "utf8").trim();
+    if (session === originalSession) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!session || session === originalSession) throw new Error("packaged settings reopen did not rotate the app session");
+  const staleSession = await fetch(`http://127.0.0.1:${port}/config`, {
+    headers: { Origin: "null", Authorization: `Bearer ${originalSession}` },
+  });
+  if (staleSession.status !== 403) throw new Error(`packaged stale settings session remained valid: ${staleSession.status}`);
+  const refreshedSession = await smokeFetch(`http://127.0.0.1:${port}/config`, { headers: { Origin: "null" } });
+  if (!refreshedSession.ok || refreshedSession.headers.get("Access-Control-Allow-Origin") !== "null") {
+    throw new Error(`packaged refreshed settings session failed: ${refreshedSession.status}`);
+  }
+
   let pairingCode = "";
   for (let i = 0; i < 40 && !pairingCode; i += 1) {
     if (existsSync(pairingFile)) pairingCode = readFileSync(pairingFile, "utf8").trim();
@@ -239,10 +290,10 @@ try {
     if (!JSON.stringify(manifest.host_permissions || []).includes("http://127.0.0.1:9527/*")) {
       throw new Error("extension manifest missing http://127.0.0.1:9527/* host permission");
     }
-    const res = await smokeFetch(`http://127.0.0.1:${port}/ping`, { headers: { Origin: "chrome-extension://x2md-smoke" } });
+    const res = await smokeFetch(`http://127.0.0.1:${port}/status`, { headers: { Origin: extensionOrigin } });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok || body.status !== "ok" || !body.version) {
-      throw new Error(`extension health ping failed\n--- response ---\n${JSON.stringify(body)}`);
+    if (!res.ok || res.headers.get("Access-Control-Allow-Origin") !== extensionOrigin || body.status !== "ok" || !body.version) {
+      throw new Error(`extension health status failed\n--- response ---\n${JSON.stringify(body)}`);
     }
   }
 

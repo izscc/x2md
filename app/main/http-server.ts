@@ -19,10 +19,10 @@ import { assertPreviousSteps, probeDirectory, SETUP_STEP_ORDER, setupState, vali
 import { buildDiagnostics, exportDiagnostics } from "../core/diagnostics.ts";
 import { handleJobRoute, isJobRoute } from "./job-routes.ts";
 
-function json(request: Request, payload: Record<string, unknown>, status = 200): Response {
+function json(request: Request, payload: Record<string, unknown>, status = 200, allowOpaqueOrigin = false): Response {
   return new Response(JSON.stringify(sanitizeUnicodePayload(payload)), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders(request) },
+    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders(request, { allowOpaqueOrigin }) },
   });
 }
 
@@ -92,16 +92,22 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
   const appDir = opts.appDir || getAppDir();
   const url = new URL(request.url);
   const path = url.pathname;
-  const reply = (payload: Record<string, unknown>, status = 200) => json(request, payload, status);
+  let allowOpaqueOrigin = false;
+  const reply = (payload: Record<string, unknown>, status = 200) => json(request, payload, status, allowOpaqueOrigin);
 
   if (request.method === "OPTIONS") return preflightResponse(request);
 
   if (request.method === "GET" && path === "/ping") return reply({ status: "ok", version: VERSION, min_extension_version: MIN_EXTENSION_VERSION });
-  if (!isAllowedApiOrigin(request)) return reply({ success: false, error: "Forbidden" }, 403);
+  const credential = requestCredential(request);
+  let authConfig: ReturnType<typeof loadConfig> | undefined;
+  if (request.headers.get("origin") === "null") {
+    allowOpaqueOrigin = credentialKind(credential, "") === "app";
+  }
+  if (!isAllowedApiOrigin(request, { allowOpaqueOrigin })) return reply({ success: false, error: "Forbidden" }, 403);
   if (request.method === "POST" && path === "/pair") {
     const data: Record<string, any> = await readJson(request).catch(() => ({}));
-    const cfg = loadConfig(appDir);
-    const token = consumePairingCode(String(data.code || ""), String(cfg.install_secret || ""));
+    authConfig ||= loadConfig(appDir);
+    const token = consumePairingCode(String(data.code || ""), String(authConfig.install_secret || ""));
     return token ? reply({ success: true, token }) : reply({ success: false, error: "Invalid or expired pairing code" }, 401);
   }
   let captureData: Record<string, any> | undefined;
@@ -118,8 +124,8 @@ export async function handleApiRequest(request: Request, opts: { appDir?: string
       return reply({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
   }
-  const authConfig = loadConfig(appDir);
-  if (!opts.testBypassAuth && !isValidCredential(requestCredential(request), String(authConfig.install_secret || ""))) {
+  authConfig ||= loadConfig(appDir);
+  if (!opts.testBypassAuth && !isValidCredential(credential, String(authConfig.install_secret || ""))) {
     return reply({ success: false, error: "Authentication required" }, 401);
   }
   if (isJobRoute(path)) {

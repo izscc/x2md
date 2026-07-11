@@ -20,7 +20,7 @@ export function consumePairingCode(code: string, installSecret: string): string 
   return extensionToken(installSecret);
 }
 
-export function issueAppSession(ttlMs = 30 * 60_000): string {
+export function issueAppSession(ttlMs = Number.POSITIVE_INFINITY): string {
   const token = randomBytes(24).toString("base64url");
   appSessions.set(token, Date.now() + ttlMs);
   return token;

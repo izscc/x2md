@@ -1,10 +1,12 @@
 const allowedMethods = new Set(["GET", "POST", "OPTIONS"]);
 const allowedHeaders = new Set(["authorization", "content-type", "x-x2md-token"]);
 
-export function isAllowedApiOrigin(request: Request): boolean {
+type OriginPolicyOptions = { allowOpaqueOrigin?: boolean };
+
+export function isAllowedApiOrigin(request: Request, opts: OriginPolicyOptions = {}): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return true;
-  if (origin === "null") return false;
+  if (origin === "null") return opts.allowOpaqueOrigin === true;
   if (/^views:\/\/[a-z0-9._~-]+$/i.test(origin)) return true;
   if (/^chrome-extension:\/\/[a-p]{32}$/.test(origin)) return true;
   return [
@@ -14,10 +16,10 @@ export function isAllowedApiOrigin(request: Request): boolean {
   ].includes(origin);
 }
 
-export function corsHeaders(request: Request): Record<string, string> {
+export function corsHeaders(request: Request, opts: OriginPolicyOptions = {}): Record<string, string> {
   const headers: Record<string, string> = { Vary: "Origin" };
   const origin = request.headers.get("origin");
-  if (origin && isAllowedApiOrigin(request)) headers["Access-Control-Allow-Origin"] = origin;
+  if (origin && isAllowedApiOrigin(request, opts)) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
 
@@ -28,13 +30,14 @@ export function preflightResponse(request: Request): Response {
     .split(",")
     .map((header) => header.trim().toLowerCase())
     .filter(Boolean);
-  if (!origin || !isAllowedApiOrigin(request) || !allowedMethods.has(method.toUpperCase()) || requestedHeaders.some((header) => !allowedHeaders.has(header))) {
+  const allowOpaqueOrigin = origin === "null";
+  if (!origin || !isAllowedApiOrigin(request, { allowOpaqueOrigin }) || !allowedMethods.has(method.toUpperCase()) || requestedHeaders.some((header) => !allowedHeaders.has(header))) {
     return new Response("", { status: 403, headers: { Vary: "Origin" } });
   }
   return new Response(null, {
     status: 204,
     headers: {
-      ...corsHeaders(request),
+      ...corsHeaders(request, { allowOpaqueOrigin }),
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Authorization, Content-Type, X-X2MD-Token",
     },
