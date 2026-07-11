@@ -4,12 +4,19 @@ const assert = require("node:assert/strict");
 // The module's runtime-only Chrome dependencies are referenced lazily by enrich modes.
 global.mergeTweetImagesWithDomFallback = (api = [], dom = []) => Array.from(new Set([...api, ...dom]));
 require("../x-enrichment.js");
-const { orchestrateTweetFallback, enrich, formatExpandedUrlMarkdown } = global.X2MDXEnrichment;
+const { orchestrateTweetFallback, enrich, formatExpandedUrlMarkdown, applyMentionEntities } = global.X2MDXEnrichment;
 
 test("expanded tweet links use the full URL as label while hiding the protocol", () => {
     assert.equal(
         formatExpandedUrlMarkdown("https://github.com/ai-zixun/humanizer-zh"),
         "[github.com/ai-zixun/humanizer-zh](https://github.com/ai-zixun/humanizer-zh)",
+    );
+});
+
+test("tweet mentions keep their X profile links in Markdown", () => {
+    assert.equal(
+        applyMentionEntities("灵感来源 @ianneo_ai 的小黑！", [{ screen_name: "ianneo_ai" }]),
+        "灵感来源 [@ianneo_ai](https://x.com/ianneo_ai) 的小黑！",
     );
 });
 

@@ -16,6 +16,23 @@ function formatExpandedUrlMarkdown(value) {
     return `[${url.replace(/^https?:\/\//i, "")}](${url})`;
 }
 
+function applyMentionEntities(value, mentions = []) {
+    let text = String(value || "");
+    const screenNames = Array.from(new Set(
+        (Array.isArray(mentions) ? mentions : [])
+            .map((mention) => String(mention?.screen_name || mention?.screenName || "").replace(/^@/, "").trim())
+            .filter(Boolean),
+    ));
+    for (const screenName of screenNames) {
+        const escaped = screenName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        text = text.replace(
+            new RegExp(`@${escaped}(?![A-Za-z0-9_])`, "gi"),
+            `[@${screenName}](https://x.com/${screenName})`,
+        );
+    }
+    return text;
+}
+
 function noteGraphQLError(options, code) {
     if (options?.errorSink && code && !options.errorSink.code) {
         options.errorSink.code = code;
@@ -588,6 +605,12 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
         text = cleanLeadingReplyMentions(text);
     }
 
+    const mentionEntities = [
+        ...(legacy.entities?.user_mentions || []),
+        ...(noteTweetResult?.entity_set?.user_mentions || []),
+    ];
+    text = applyMentionEntities(text, mentionEntities);
+
     // 提取图片与视频
     const images = [];
     const imageAltTexts = {};
@@ -1092,7 +1115,7 @@ async function enrichCaptureData(input) {
         }
     }
 
-    const api = { enrich, orchestrateTweetFallback, formatExpandedUrlMarkdown };
+    const api = { enrich, orchestrateTweetFallback, formatExpandedUrlMarkdown, applyMentionEntities };
     root.X2MDXEnrichment = api;
     if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : self);
