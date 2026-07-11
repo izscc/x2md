@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">X2MD，把网页好内容一键存进 Obsidian</title>
+  <desc id="desc">网页内容通过 X2MD 转换为包含正文、链接和图片的本地 Markdown 笔记。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7FAFF"/>
+      <stop offset="1" stop-color="#EAF2FF"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2F80FF"/>
+      <stop offset="1" stop-color="#165DDA"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#2556A8" flood-opacity=".14"/>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#2556A8" flood-opacity=".09"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="480" rx="32" fill="url(#bg)"/>
+  <circle cx="1080" cy="52" r="160" fill="#DCEAFF" opacity=".58"/>
+  <circle cx="30" cy="470" r="145" fill="#D9E8FF" opacity=".45"/>
+
+  <g transform="translate(72 70)">
+    <rect width="68" height="68" rx="20" fill="url(#brand)" filter="url(#soft)"/>
+    <path d="M20 22h9l6 9 6-9h9L40 36l11 16h-9l-7-10-7 10h-9l11-16z" fill="#fff"/>
+    <text x="82" y="28" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#2F80FF" letter-spacing="1.2">X2MD · 本地知识收件箱</text>
+    <text x="82" y="58" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="800" fill="#17233B">LOCAL FIRST</text>
+
+    <text x="0" y="142" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="46" font-weight="800" fill="#16213A" letter-spacing="-1.5">看到好内容，</text>
+    <text x="0" y="202" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="46" font-weight="800" fill="#1769E0" letter-spacing="-1.5">一键存进 Obsidian</text>
+    <text x="0" y="249" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="19" fill="#54627A">完整保存正文、链接、图片与视频，变成真正属于你的 Markdown。</text>
+
+    <g transform="translate(0 282)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" font-weight="700">
+      <rect width="98" height="38" rx="19" fill="#fff" filter="url(#soft)"/><text x="49" y="24" text-anchor="middle" fill="#35415A">X / Twitter</text>
+      <rect x="110" width="96" height="38" rx="19" fill="#fff" filter="url(#soft)"/><text x="158" y="24" text-anchor="middle" fill="#35415A">LINUX DO</text>
+      <rect x="218" width="72" height="38" rx="19" fill="#fff" filter="url(#soft)"/><text x="254" y="24" text-anchor="middle" fill="#35415A">飞书</text>
+      <rect x="302" width="92" height="38" rx="19" fill="#fff" filter="url(#soft)"/><text x="348" y="24" text-anchor="middle" fill="#35415A">公众号</text>
+    </g>
+  </g>
+
+  <g transform="translate(706 64)" filter="url(#shadow)">
+    <rect width="410" height="352" rx="26" fill="#fff"/>
+    <rect width="410" height="52" rx="26" fill="#F6F8FC"/>
+    <rect y="26" width="410" height="26" fill="#F6F8FC"/>
+    <circle cx="28" cy="26" r="5" fill="#FF6B6B"/><circle cx="46" cy="26" r="5" fill="#FFD166"/><circle cx="64" cy="26" r="5" fill="#62D394"/>
+    <text x="92" y="32" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="700" fill="#76839A">我的素材库 / 一篇值得收藏的推文.md</text>
+
+    <g transform="translate(30 80)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
+      <rect width="64" height="24" rx="12" fill="#E8F1FF"/><text x="32" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="#1769E0">已保存</text>
+      <text y="66" font-size="25" font-weight="800" fill="#17233B">如何把灵感变成长期资产</text>
+      <text y="100" font-size="13" fill="#7A869B">作者、时间、原文链接都已自动保留</text>
+      <rect y="124" width="350" height="1" fill="#E8ECF3"/>
+      <text y="158" font-size="14" fill="#39465C">这是一段完整、可编辑的正文内容。它不再只是</text>
+      <text y="184" font-size="14" fill="#39465C">收藏夹中的一个链接，而是你的本地知识笔记。</text>
+      <rect y="209" width="350" height="72" rx="14" fill="#EAF2FF"/>
+      <rect x="14" y="223" width="72" height="44" rx="8" fill="#BBD6FF"/>
+      <path d="M28 255l15-15 10 10 8-8 13 13z" fill="#fff"/>
+      <text x="101" y="239" font-size="12" font-weight="700" fill="#1769E0">图片与链接完整保留</text>
+      <text x="101" y="259" font-size="12" fill="#5B6B84">随时搜索、摘录、改写或继续创作</text>
+    </g>
+  </g>
+
+  <path d="M625 238h46" stroke="#7FAEFF" stroke-width="4" stroke-linecap="round"/>
+  <path d="M661 226l12 12-12 12" fill="none" stroke="#7FAEFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

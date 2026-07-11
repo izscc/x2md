@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
+  <title id="title">网页收藏链接与完整本地 Markdown 笔记对比</title>
+  <desc id="desc">左侧的收藏夹只有容易遗忘的网页链接，右侧的 X2MD 笔记完整保留正文、来源和图片。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F9FBFE"/><stop offset="1" stop-color="#EEF4FC"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#274D86" flood-opacity=".12"/></filter>
+  </defs>
+  <rect width="1200" height="500" rx="28" fill="url(#bg)"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
+    <text x="600" y="52" text-anchor="middle" font-size="27" font-weight="800" fill="#17233B">不只是收藏链接，而是留下完整内容</text>
+    <text x="600" y="82" text-anchor="middle" font-size="15" fill="#69778E">网页会变化，收藏夹会堆积；本地 Markdown 才能长期整理和使用</text>
+
+    <g transform="translate(62 116)" filter="url(#shadow)">
+      <rect width="432" height="322" rx="24" fill="#fff"/>
+      <rect width="432" height="54" rx="24" fill="#F5F6F8"/><rect y="28" width="432" height="26" fill="#F5F6F8"/>
+      <circle cx="27" cy="27" r="5" fill="#FF7C7C"/><circle cx="45" cy="27" r="5" fill="#FFD36C"/><circle cx="63" cy="27" r="5" fill="#72D99C"/>
+      <text x="216" y="35" text-anchor="middle" font-size="14" font-weight="700" fill="#7A8595">浏览器收藏夹</text>
+      <g transform="translate(24 79)">
+        <rect width="384" height="56" rx="12" fill="#F7F8FA"/><circle cx="28" cy="28" r="14" fill="#E6E9EE"/><text x="52" y="24" font-size="13" font-weight="700" fill="#485468">这篇以后一定要看...</text><text x="52" y="42" font-size="11" fill="#9AA3B1">x.com/.../status/2075...</text>
+        <rect y="69" width="384" height="56" rx="12" fill="#F7F8FA"/><circle cx="28" cy="97" r="14" fill="#E6E9EE"/><text x="52" y="93" font-size="13" font-weight="700" fill="#485468">一个很有用的长文</text><text x="52" y="111" font-size="11" fill="#9AA3B1">mp.weixin.qq.com/s/...</text>
+        <rect y="138" width="384" height="56" rx="12" fill="#F7F8FA"/><circle cx="28" cy="166" r="14" fill="#E6E9EE"/><text x="52" y="162" font-size="13" font-weight="700" fill="#485468">工作资料，稍后整理</text><text x="52" y="180" font-size="11" fill="#9AA3B1">example.feishu.cn/wiki/...</text>
+      </g>
+      <text x="216" y="300" text-anchor="middle" font-size="13" fill="#A06868">只有链接 · 容易遗忘 · 可能失效</text>
+    </g>
+
+    <g transform="translate(526 239)">
+      <circle cx="74" cy="0" r="45" fill="#1769E0"/>
+      <path d="M55-17h8l6 9 6-9h8L74-4l10 15h-8L69 1l-7 10h-8L64-4z" fill="#fff"/>
+      <path d="M12 70h124" stroke="#8EB8F5" stroke-width="4" stroke-linecap="round"/>
+      <path d="M124 58l13 12-13 12" fill="none" stroke="#8EB8F5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="74" y="113" text-anchor="middle" font-size="13" font-weight="700" fill="#1769E0">一次点击，自动整理</text>
+    </g>
+
+    <g transform="translate(706 116)" filter="url(#shadow)">
+      <rect width="432" height="322" rx="24" fill="#fff"/>
+      <rect width="432" height="54" rx="24" fill="#F2F7FF"/><rect y="28" width="432" height="26" fill="#F2F7FF"/>
+      <circle cx="27" cy="27" r="5" fill="#FF7C7C"/><circle cx="45" cy="27" r="5" fill="#FFD36C"/><circle cx="63" cy="27" r="5" fill="#72D99C"/>
+      <text x="216" y="35" text-anchor="middle" font-size="14" font-weight="700" fill="#1769E0">Obsidian / 素材库 / 好文章.md</text>
+      <g transform="translate(28 76)">
+        <rect width="66" height="22" rx="11" fill="#E6F0FF"/><text x="33" y="15" text-anchor="middle" font-size="10" font-weight="700" fill="#1769E0">X2MD</text>
+        <text y="57" font-size="22" font-weight="800" fill="#17233B">一篇真正留下来的好内容</text>
+        <text y="83" font-size="11" fill="#8792A4">作者 · 发布时间 · 原始链接 · 标签</text>
+        <line y1="100" x2="376" y2="100" stroke="#E8ECF2"/>
+        <text y="129" font-size="13" fill="#455268">完整正文已经保存到本地，可以搜索、编辑、</text>
+        <text y="151" font-size="13" fill="#455268">摘录，也可以成为下一次创作的素材。</text>
+        <rect y="171" width="376" height="50" rx="12" fill="#EAF2FF"/>
+        <rect x="12" y="183" width="58" height="36" rx="7" fill="#BBD6FF"/>
+        <path d="M22 211l12-12 8 8 7-7 11 11z" fill="#fff"/>
+        <text x="84" y="195" font-size="11" font-weight="700" fill="#1769E0">图片和媒体也能一起保留</text>
+        <text x="84" y="214" font-size="11" fill="#60718A">文件就在你的电脑里</text>
+      </g>
+      <text x="216" y="316" text-anchor="middle" font-size="12" fill="#16895B">完整内容 · 本地保存 · 随时使用</text>
+    </g>
+  </g>
+</svg>

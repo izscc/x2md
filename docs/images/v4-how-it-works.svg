@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="title desc">
+  <title id="title">X2MD 四步保存流程</title>
+  <desc id="desc">发现内容、点击保存、自动整理、获得本地 Markdown 笔记。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F8FAFE"/><stop offset="1" stop-color="#F0F5FD"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#274D86" flood-opacity=".1"/></filter>
+  </defs>
+  <rect width="1200" height="390" rx="28" fill="url(#bg)"/>
+  <text x="600" y="57" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="27" font-weight="800" fill="#17233B">从网页收藏到本地笔记，只需一次点击</text>
+  <text x="600" y="86" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="15" fill="#69778E">不用复制粘贴，也不用手动整理格式</text>
+
+  <path d="M290 220h55M580 220h55M870 220h55" stroke="#A9C9F8" stroke-width="4" stroke-linecap="round" stroke-dasharray="4 10"/>
+  <path d="M335 212l10 8-10 8M625 212l10 8-10 8M915 212l10 8-10 8" fill="none" stroke="#79A8EF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
+    <g transform="translate(55 125)" filter="url(#shadow)">
+      <rect width="235" height="190" rx="22" fill="#fff"/>
+      <circle cx="34" cy="34" r="18" fill="#E7F0FF"/><text x="34" y="40" text-anchor="middle" font-size="15" font-weight="800" fill="#1769E0">1</text>
+      <g transform="translate(88 34)" fill="none" stroke="#1769E0" stroke-width="4" stroke-linecap="round"><circle cx="29" cy="29" r="22"/><path d="M45 45l18 18"/></g>
+      <text x="117.5" y="121" text-anchor="middle" font-size="20" font-weight="800" fill="#17233B">发现好内容</text>
+      <text x="117.5" y="150" text-anchor="middle" font-size="13" fill="#6B7890">推文、长文、论坛帖子</text>
+      <text x="117.5" y="172" text-anchor="middle" font-size="13" fill="#6B7890">飞书文档或公众号文章</text>
+    </g>
+    <g transform="translate(345 125)" filter="url(#shadow)">
+      <rect width="235" height="190" rx="22" fill="#fff"/>
+      <circle cx="34" cy="34" r="18" fill="#E7F0FF"/><text x="34" y="40" text-anchor="middle" font-size="15" font-weight="800" fill="#1769E0">2</text>
+      <g transform="translate(90 34)"><path d="M16 10h38v56L35 54 16 66z" fill="#E7F0FF" stroke="#1769E0" stroke-width="4" stroke-linejoin="round"/><circle cx="55" cy="14" r="12" fill="#1769E0"/><path d="M50 14h10M55 9v10" stroke="#fff" stroke-width="3" stroke-linecap="round"/></g>
+      <text x="117.5" y="121" text-anchor="middle" font-size="20" font-weight="800" fill="#17233B">点击保存</text>
+      <text x="117.5" y="150" text-anchor="middle" font-size="13" fill="#6B7890">使用网页上的书签按钮</text>
+      <text x="117.5" y="172" text-anchor="middle" font-size="13" fill="#6B7890">或 X2MD 悬浮按钮</text>
+    </g>
+    <g transform="translate(635 125)" filter="url(#shadow)">
+      <rect width="235" height="190" rx="22" fill="#fff"/>
+      <circle cx="34" cy="34" r="18" fill="#E7F0FF"/><text x="34" y="40" text-anchor="middle" font-size="15" font-weight="800" fill="#1769E0">3</text>
+      <g transform="translate(88 31)"><rect x="5" y="5" width="58" height="58" rx="17" fill="#1769E0"/><path d="M20 21h8l6 9 6-9h8L39 34l10 15h-8l-7-10-7 10h-8l10-15z" fill="#fff"/></g>
+      <text x="117.5" y="121" text-anchor="middle" font-size="20" font-weight="800" fill="#17233B">自动整理</text>
+      <text x="117.5" y="150" text-anchor="middle" font-size="13" fill="#6B7890">保留正文、作者、链接</text>
+      <text x="117.5" y="172" text-anchor="middle" font-size="13" fill="#6B7890">以及图片和视频</text>
+    </g>
+    <g transform="translate(925 125)" filter="url(#shadow)">
+      <rect width="235" height="190" rx="22" fill="#fff"/>
+      <circle cx="34" cy="34" r="18" fill="#DDF8EB"/><text x="34" y="40" text-anchor="middle" font-size="15" font-weight="800" fill="#16895B">4</text>
+      <g transform="translate(88 31)"><path d="M12 4h38l15 15v48H12z" fill="#E6F8F0" stroke="#16895B" stroke-width="4" stroke-linejoin="round"/><path d="M50 4v15h15M22 34h34M22 45h34M22 56h22" fill="none" stroke="#16895B" stroke-width="3" stroke-linecap="round"/></g>
+      <text x="117.5" y="121" text-anchor="middle" font-size="20" font-weight="800" fill="#17233B">得到本地笔记</text>
+      <text x="117.5" y="150" text-anchor="middle" font-size="13" fill="#6B7890">直接进入 Obsidian</text>
+      <text x="117.5" y="172" text-anchor="middle" font-size="13" fill="#6B7890">可搜索、编辑和创作</text>
+    </g>
+  </g>
+</svg>
