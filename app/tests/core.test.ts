@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { resolveSavePathsForRequest, normalizeConfig, cliArg, saveConfig, logPath } from "../core/config.ts";
 import { autostartSupport, buildLaunchAgentPlist, LABEL, LEGACY_LABEL, plistPath, programArgumentsForExecutable, setAutostartEnabled } from "../main/autostart.ts";
 import { bundledExtensionDirForExecutable, inlineSettingsHtml, settingsUrl, settingsViewsRootForExecutable, settingsWindowOptions } from "../main/desktop.ts";
-import { handleTrayAction, trayMenuItems } from "../main/tray.ts";
+import { handleTrayAction, trayIconOptions, trayMenuItems } from "../main/tray.ts";
 import { buildMarkdown, CUSTOM_FRONT_MATTER_VARIABLES, renderCustomFrontMatter } from "../core/markdown.ts";
 import { sanitizeFilename } from "../core/filenames.ts";
 import { handleProfileCaptureSave } from "../core/profile-capture.ts";
@@ -489,6 +489,10 @@ test("托盘菜单覆盖桌面入口", () => {
   assert.equal(items.find((item) => item.action === "autostart")?.checked, true);
   assert.equal(items[0].label, "服务：运行中");
   assert.equal(trayMenuItems(false, false)[0].label, "服务：未运行");
+});
+
+test("菜单栏状态只显示图标，不显示 X2MD 文字", () => {
+  assert.equal(trayIconOptions().title, "");
 });
 
 test("托盘 action 分发到桌面能力", async () => {

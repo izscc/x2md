@@ -39,10 +39,14 @@ export async function handleTrayAction(action: string, actions: TrayActions): Pr
   if (action === "quit") actions.quit();
 }
 
+export function trayIconOptions(): Record<string, string | boolean | number> {
+  return { title: "", image: "views://assets/tray-icon.png", template: false, width: 18, height: 18 };
+}
+
 export async function createTray(actions: TrayActions): Promise<any> {
   try {
     const { Tray } = await import("electrobun/bun");
-    const tray = new Tray({ title: "X2MD", image: "views://assets/tray-icon.png", template: false, width: 18, height: 18 });
+    const tray = new Tray(trayIconOptions());
     const updateMenu = () => tray.setMenu(trayMenuItems(isAutostartEnabled(), actions.serviceRunning?.() ?? true));
     updateMenu();
     tray.on("tray-clicked", async (event: any) => {

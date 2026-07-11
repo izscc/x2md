@@ -201,6 +201,7 @@
                     event.preventDefault();
                     event.stopPropagation();
                     menu.style.display = "none";
+                    const captureTarget = btn.closest?.("article, [role='article']") || null;
                     if (!isBookmarkButtonAlreadySaved(btn)) {
                         btn.__x2md_skip_next_default_bookmark_save = true;
                         btn.click();
@@ -212,6 +213,7 @@
                     }
                     setTimeout(() => {
                         captureAndSend(btn, {
+                            captureTarget,
                             customSavePath: {
                                 index: entry.index,
                                 name: entry.name,
@@ -251,7 +253,7 @@
             btn.__x2md_bound = true;
             btn.addEventListener("mouseenter", () => showCustomSaveMenu(btn), true);
             btn.addEventListener("mouseleave", scheduleHideCustomSaveMenu, true);
-            bindBookmarkSaveListener(btn, () => captureAndSend(btn), {
+            bindBookmarkSaveListener(btn, (_button, context) => captureAndSend(btn, context), {
                 shouldSkip: () => {
                     if (!btn.__x2md_skip_next_default_bookmark_save) return false;
                     btn.__x2md_skip_next_default_bookmark_save = false;
@@ -271,7 +273,7 @@
             const performCapture = () => {
                 let captureDocument;
                 try {
-                    captureDocument = xCaptureAdapter.capture({ document, location, trigger: btn });
+                    captureDocument = xCaptureAdapter.capture({ document, location, trigger: options.captureTarget || btn });
                 } catch (error) {
                     console.error("[x2md] X DOM 提取异常：", error);
                 }
@@ -280,15 +282,21 @@
                     captureUi.setButtonState(btn, "failed", "X2MD：提取失败");
                     return;
                 }
-                if (options.customSavePath?.name) {
-                    captureDocument.preferences = { ...captureDocument.preferences, custom_save_path_name: options.customSavePath.name };
+                try {
+                    if (options.customSavePath?.name) {
+                        captureDocument.preferences = { ...captureDocument.preferences, custom_save_path_name: options.customSavePath.name };
+                    }
+                    let payload = xCaptureAdapter.normalize(captureDocument);
+                    if (options.customSavePath) payload.x2md_custom_save_path = { ...options.customSavePath };
+                    const scope = options.captureTarget || btn?.closest?.("article, [role='article']") || document;
+                    payload = X2MDXTranslationUI.applyVisibleTranslationOverride(payload, scope);
+                    showToast(captureDocument.content.type === "article" ? "已识别为 X Article，正在保存…" : "正在保存 X 内容…", "loading", null);
+                    sendCapture(payload);
+                } catch (error) {
+                    console.error("[x2md] X 内容处理异常：", error);
+                    showToast("推文内容处理失败，请刷新页面后重试", "error", 4000);
+                    captureUi.setButtonState(btn, "failed", "X2MD：处理失败");
                 }
-                let payload = xCaptureAdapter.normalize(captureDocument);
-                if (options.customSavePath) payload.x2md_custom_save_path = { ...options.customSavePath };
-                const scope = btn?.closest?.("article, [role='article']") || document;
-                payload = X2MDXTranslationUI.applyVisibleTranslationOverride(payload, scope);
-                showToast(captureDocument.content.type === "article" ? "已识别为 X Article，正在保存…" : "正在保存 X 内容…", "loading", null);
-                sendCapture(payload);
             };
 
             if (!isNotePageUrl()) {

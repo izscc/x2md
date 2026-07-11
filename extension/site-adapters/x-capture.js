@@ -146,6 +146,21 @@ function findTweetUrl(btn) {
         depth++;
     }
 
+    // X may replace the clicked bookmark button before the delayed capture runs.
+    // On a status detail page, recover the matching article instead of falling
+    // back to the first status link in the document (often the thread root).
+    if (!articleEl && activeLocation.pathname.includes("/status/")) {
+        const currentPath = activeLocation.pathname.match(/^(\/[^/]+\/status\/\d+)/)?.[1] || "";
+        if (currentPath) {
+            articleEl = [...activeDocument.querySelectorAll("article, [role='article']")].find((article) =>
+                [...article.querySelectorAll('a[href*="/status/"]')].some((link) => {
+                    const href = link.getAttribute("href") || "";
+                    return href === currentPath || href.startsWith(`${currentPath}/`) || href.startsWith(`${currentPath}?`);
+                })
+            ) || null;
+        }
+    }
+
     const ctx = articleEl || activeDocument;
 
     // 从 article 内找 status URL
@@ -233,8 +248,7 @@ function findFirstStatusUrl(container) {
 function buildQuoteTweetPayload(quote) {
     if (!quote) return null;
 
-    const cardTarget = getTwitterArticleCardTranslationTarget(quote);
-    const text = (quote.querySelector?.('[data-testid="tweetText"]')?.innerText?.trim() || cardTarget?.text || "").trim();
+    const text = (quote.querySelector?.('[data-testid="tweetText"]')?.innerText?.trim() || "").trim();
     const images = [];
     const image_alt_texts = {};
     quote.querySelectorAll?.('[data-testid="tweetPhoto"] img, img').forEach((img) => {
@@ -250,13 +264,16 @@ function buildQuoteTweetPayload(quote) {
         collectImageAltText(image_alt_texts, src, img);
     });
 
-    const url = findFirstStatusUrl(quote) || cardTarget?.url || "";
+    const url = findFirstStatusUrl(quote);
     if (!text && images.length === 0 && !url) return null;
     return { text, images, image_alt_texts, videos: [], url };
 }
 
 function extractRelatedTweetAfterArticleBasic(sourceUrl = "") {
-    const body = getTwitterArticleBodyContainer(activeDocument);
+    const body = activeDocument.querySelector(
+        '[data-testid="twitterArticleRichTextView"], [data-testid="longformRichTextComponent"], ' +
+        '[data-testid="twitterArticleReadView"], [data-testid="article-content"]'
+    );
     const articles = [...activeDocument.querySelectorAll('article, [role="article"]')];
     const sourceId = sourceUrl.match(/\/status\/(\d+)/)?.[1] || "";
     const startIndex = Math.max(0, articles.findIndex((item) => item.contains(body)));

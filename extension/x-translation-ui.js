@@ -50,6 +50,16 @@
     const xAutoTranslateQueue = [];
     let xAutoTranslateActiveCount = 0;
 
+    function findFirstStatusUrl(container) {
+        const links = container?.querySelectorAll?.('a[href*="/status/"]') || [];
+        for (const link of links) {
+            const href = link.getAttribute?.("href") || "";
+            const match = href.match(/^(\/[^/]+\/status\/\d+)/);
+            if (match) return new URL(match[1], globalScope.location?.origin || "https://x.com").href;
+        }
+        return "";
+    }
+
     function getLocalArticleTextForCopy(article) {
         if (isNotePageUrl()) {
             const source = getTwitterArticleTranslationSource(document);

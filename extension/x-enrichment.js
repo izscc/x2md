@@ -10,6 +10,12 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 }
 
+function formatExpandedUrlMarkdown(value) {
+    const url = String(value || "").trim();
+    if (!/^https?:\/\//i.test(url)) return url;
+    return `[${url.replace(/^https?:\/\//i, "")}](${url})`;
+}
+
 function noteGraphQLError(options, code) {
     if (options?.errorSink && code && !options.errorSink.code) {
         options.errorSink.code = code;
@@ -571,9 +577,8 @@ function parseLegacyTweet(result, userLegacy, options = {}) {
 
     for (const u of urlEntities) {
         if (u.url && u.expanded_url) {
-            const display = u.display_url || u.expanded_url;
             // 使用 split join 处理全部匹配项以防多处重复
-            text = text.split(u.url).join(`[${display}](${u.expanded_url})`);
+            text = text.split(u.url).join(formatExpandedUrlMarkdown(u.expanded_url));
         }
     }
 
@@ -1087,7 +1092,7 @@ async function enrichCaptureData(input) {
         }
     }
 
-    const api = { enrich, orchestrateTweetFallback };
+    const api = { enrich, orchestrateTweetFallback, formatExpandedUrlMarkdown };
     root.X2MDXEnrichment = api;
     if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : self);

@@ -19,7 +19,7 @@ function node({ text = "", attrs = {}, selectors = {} } = {}) {
 }
 
 test("capture returns a CaptureDocumentV1 for a visible tweet", () => {
-    global.getTwitterArticleCardTranslationTarget = () => null;
+    delete global.getTwitterArticleCardTranslationTarget;
     const status = node({ attrs: { href: "/alice/status/123", tagName: "A" } });
     const name = node({ selectors: { span: [node({ text: "Alice" }), node({ text: "@alice" })] } });
     const tweetText = node({ text: "hello from the DOM" });
@@ -91,6 +91,74 @@ test("capture returns a CaptureDocumentV1 for a visible tweet", () => {
         thread: [{ text: "thread continuation", images: [] }],
     });
     assert.deepEqual(result.diagnostics.graphql_operation_ids, { TweetDetail: "operation-id" });
+});
+
+test("capture recovers the current status article after X replaces the clicked bookmark button", () => {
+    global.getTwitterArticleCardTranslationTarget = () => null;
+    const rootStatus = node({ attrs: { href: "/alice/status/100", tagName: "A" } });
+    const currentStatus = node({ attrs: { href: "/alice/status/200", tagName: "A" } });
+    const rootArticle = node({ attrs: { tagName: "ARTICLE" }, selectors: {
+        'a[href*="/status/"]': [rootStatus],
+        '[data-testid="tweetText"]': [node({ text: "earlier thread text" })],
+        '[data-testid="User-Name"]': [], 'div[lang]': [], 'div[dir="auto"]': [], time: [],
+        '[data-testid="tweetPhoto"] img': [],
+        '[data-testid="videoComponent"] video, [data-testid="videoPlayer"] video': [],
+        '[data-testid*="card"] img, [data-testid*="Card"] img': [], img: [],
+        '[data-testid="simpleTweet"]': [], 'a[href*="/article/"]': [], a: [],
+    } });
+    const currentArticle = node({ attrs: { tagName: "ARTICLE" }, selectors: {
+        'a[href*="/status/"]': [currentStatus],
+        '[data-testid="tweetText"]': [node({ text: "the requested status text" })],
+        '[data-testid="User-Name"]': [], 'div[lang]': [], 'div[dir="auto"]': [], time: [],
+        '[data-testid="tweetPhoto"] img': [],
+        '[data-testid="videoComponent"] video, [data-testid="videoPlayer"] video': [],
+        '[data-testid*="card"] img, [data-testid*="Card"] img': [], img: [],
+        '[data-testid="simpleTweet"]': [], 'a[href*="/article/"]': [], a: [],
+    } });
+    const document = node({ selectors: {
+        'article, [role="article"]': [rootArticle, currentArticle],
+        "article, [role='article']": [rootArticle, currentArticle],
+        '[role="dialog"], [aria-modal="true"], div': [],
+    } });
+    document.documentElement = { innerHTML: "" };
+    const replacedButton = node();
+
+    const result = capture({
+        document,
+        location: { origin: "https://x.com", href: "https://x.com/alice/status/200", pathname: "/alice/status/200" },
+        trigger: replacedButton,
+        capturedAt: "2026-07-11T00:00:00.000Z",
+        graphqlOperationIds: {},
+    });
+
+    assert.equal(result.source.url, "https://x.com/alice/status/200");
+    assert.equal(result.content.text, "the requested status text");
+});
+
+test("article capture does not depend on private translation UI helpers", () => {
+    delete global.getTwitterArticleBodyContainer;
+    global.extractArticleMarkdown = () => "article body";
+    global.extractGraphQLOperationIdsFromUrls = () => ({});
+    const body = node({ selectors: { img: [] } });
+    const document = node({ selectors: {
+        '[data-testid="twitterArticleReadView"]': [body],
+        '[data-testid="twitterArticleRichTextView"]': [body],
+        '[data-testid="twitter-article-title"]': [node({ text: "Article title" })],
+        '[data-testid="User-Name"]': [], time: [], img: [],
+        'article, [role="article"]': [],
+        '[role="dialog"], [aria-modal="true"], div': [],
+    } });
+    document.documentElement = { innerHTML: "" };
+
+    const result = capture({
+        document,
+        location: { origin: "https://x.com", href: "https://x.com/alice/article/123", pathname: "/alice/article/123" },
+        capturedAt: "2026-07-11T00:00:00.000Z",
+        graphqlOperationIds: {},
+    });
+
+    assert.equal(result.content.type, "article");
+    assert.equal(result.content.title, "Article title");
 });
 
 test("normalize keeps the background legacy payload golden shape", () => {

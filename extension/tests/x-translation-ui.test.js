@@ -65,3 +65,8 @@ test("translation UI uses extension messages rather than direct fetch or storage
     assert.doesNotMatch(source, /chrome\.storage|localStorage|sessionStorage/);
     assert.match(source, /chrome\.runtime\.sendMessage/);
 });
+
+test("article-card save owns its status URL lookup instead of relying on capture globals", () => {
+    const source = fs.readFileSync(path.join(__dirname, "..", "x-translation-ui.js"), "utf8");
+    assert.match(source, /function findFirstStatusUrl\s*\(/);
+});

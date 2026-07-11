@@ -52,7 +52,7 @@ function testGraphqlLinkEntityIsRenderedInline() {
                                 type: "unstyled",
                                 text: "可以用 Devilstore/Glados-Railgun-checkin 里面的自动签到。",
                                 entityRanges: [{ key: 0, offset: 4, length: 33 }],
-                                inlineStyleRanges: [],
+                                inlineStyleRanges: [{ style: "BOLD", offset: 4, length: 33 }],
                                 data: {},
                             },
                         ],
@@ -76,9 +76,10 @@ function testGraphqlLinkEntityIsRenderedInline() {
 
     assert(article, "article should be parsed");
     assert(
-        article.content.includes("[Devilstore/Glados-Railgun-checkin](https://github.com/Devilstore/Glados-Railgun-checkin)"),
+        article.content.includes("**[github.com/Devilstore/Glados-Railgun-checkin](https://github.com/Devilstore/Glados-Railgun-checkin)**"),
         article.content,
     );
+    assert(!article.content.includes("http**"), article.content);
 }
 
 testMarkdownAtomicEntityIsPreserved();

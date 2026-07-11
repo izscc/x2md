@@ -139,10 +139,19 @@
         return new Map();
     }
 
-    function applyArticleInlineStyles(text, inlineStyleRanges) {
+    function rangesOverlap(left, right) {
+        const leftStart = Number(left?.offset || 0);
+        const leftEnd = leftStart + Number(left?.length || 0);
+        const rightStart = Number(right?.offset || 0);
+        const rightEnd = rightStart + Number(right?.length || 0);
+        return leftStart < rightEnd && rightStart < leftEnd;
+    }
+
+    function applyArticleInlineStyles(text, inlineStyleRanges, excludedRanges = []) {
         let result = String(text || "");
         const ranges = Array.isArray(inlineStyleRanges) ? inlineStyleRanges : [];
         for (const range of [...ranges].sort((left, right) => (right.offset || 0) - (left.offset || 0))) {
+            if (excludedRanges.some((excluded) => rangesOverlap(range, excluded))) continue;
             const offset = Number(range?.offset || 0);
             const length = Number(range?.length || 0);
             if (!Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) continue;
@@ -175,7 +184,7 @@
         return url.replace(/[\s)]+$/g, "");
     }
 
-    function applyArticleInlineEntities(text, entityRanges, entities) {
+    function applyArticleInlineEntities(text, entityRanges, entities, inlineStyleRanges = []) {
         let result = String(text || "");
         const ranges = Array.isArray(entityRanges) ? entityRanges : [];
         for (const range of [...ranges].sort((left, right) => (right.offset || 0) - (left.offset || 0))) {
@@ -188,7 +197,10 @@
             if (!url) continue;
             const label = result.slice(offset, offset + length);
             if (!label.trim() || label.includes("](") || label.includes("![](")) continue;
-            result = `${result.slice(0, offset)}[${label}](${url})${result.slice(offset + length)}`;
+            const fullLabel = url.replace(/^https?:\/\//i, "");
+            const isBold = inlineStyleRanges.some((style) => String(style?.style || "").toUpperCase().startsWith("BOLD") && rangesOverlap(range, style));
+            const link = `[${fullLabel}](${url})`;
+            result = `${result.slice(0, offset)}${isBold ? `**${link}**` : link}${result.slice(offset + length)}`;
         }
         return result;
     }
@@ -322,8 +334,8 @@
             if (rendered) entityParts.push(rendered);
         }
 
-        const inlineText = applyArticleInlineEntities(block?.text || "", block?.entityRanges, entities);
-        const text = applyArticleInlineStyles(inlineText, block?.inlineStyleRanges).trim();
+        const inlineText = applyArticleInlineEntities(block?.text || "", block?.entityRanges, entities, block?.inlineStyleRanges);
+        const text = applyArticleInlineStyles(inlineText, block?.inlineStyleRanges, block?.entityRanges).trim();
         if (isArticleCodeBlock(block)) {
             return formatArticleCodeFence(block?.text || "", readArticleCodeLanguage(block?.data || {}));
         }

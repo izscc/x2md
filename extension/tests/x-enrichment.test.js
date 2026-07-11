@@ -4,7 +4,14 @@ const assert = require("node:assert/strict");
 // The module's runtime-only Chrome dependencies are referenced lazily by enrich modes.
 global.mergeTweetImagesWithDomFallback = (api = [], dom = []) => Array.from(new Set([...api, ...dom]));
 require("../x-enrichment.js");
-const { orchestrateTweetFallback, enrich } = global.X2MDXEnrichment;
+const { orchestrateTweetFallback, enrich, formatExpandedUrlMarkdown } = global.X2MDXEnrichment;
+
+test("expanded tweet links use the full URL as label while hiding the protocol", () => {
+    assert.equal(
+        formatExpandedUrlMarkdown("https://github.com/ai-zixun/humanizer-zh"),
+        "[github.com/ai-zixun/humanizer-zh](https://github.com/ai-zixun/humanizer-zh)",
+    );
+});
 
 test("tweet enrichment uses GraphQL before every fallback", async () => {
     const calls = [];

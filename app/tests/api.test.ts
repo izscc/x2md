@@ -337,7 +337,7 @@ test("POST /save 开启后拒绝私网图片并回退远程链接", async () => 
     assert.equal(res.status, 200);
     assert.equal(existsSync(join(mdDir, "attachments", "190", "image_1.jpg")), false);
     assert.match(md, /!\[\]\(http:\/\/127\.0\.0\.1\/media\/abc\.jpg\)/);
-    assert.match(md, /UNSUPPORTED_MEDIA_URL/);
+    assert.doesNotMatch(md, /图片本地化失败|UNSUPPORTED_MEDIA_URL/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -386,7 +386,7 @@ test("POST /save 开启图片下载时 Twitter 仍保持远程原图链接", asy
   }
 });
 
-test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", async () => {
+test("POST /save 图片下载失败时回退远程 URL 且不污染笔记正文", async () => {
   const appDir = tempApp();
   const mdDir = join(appDir, "md");
   await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
@@ -418,8 +418,7 @@ test("POST /save 图片下载失败时回退远程 URL 并记录失败列表", a
     const md = readFileSync(body.saved[0], "utf8");
     assert.equal(res.status, 200);
     assert.match(md, /!\[\]\(http:\/\/127\.0\.0\.1\/media\/missing\.jpg\)/);
-    assert.match(md, /图片本地化失败：/);
-    assert.match(md, /UNSUPPORTED_MEDIA_URL/);
+    assert.doesNotMatch(md, /图片本地化失败|UNSUPPORTED_MEDIA_URL/);
   } finally {
     globalThis.fetch = originalFetch;
   }

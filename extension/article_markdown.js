@@ -24,6 +24,10 @@
         return {};
     }
 
+    function fullUrlLabel(url) {
+        return String(url || "").replace(/^https?:\/\//i, "");
+    }
+
     function isBoldElement(element, options = {}) {
         const tag = getTagName(element);
         if (tag === "b" || tag === "strong") return true;
@@ -354,7 +358,10 @@
             if (text.includes("![](") || text.includes("[MEDIA_VIDEO_URL:") || text.includes("[[VIDEO_HOLDER_")) {
                 return markdown;
             }
-            return `[${text}](${href})`;
+            const label = /^https?:\/\//i.test(href) && /(?:\.\.\.|…)/.test(text)
+                ? fullUrlLabel(href)
+                : text;
+            return `[${label}](${href})`;
         }
 
         if (isBoldElement(element, options) && markdown.trim()) {

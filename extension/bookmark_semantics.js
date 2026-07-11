@@ -24,7 +24,8 @@
             // X updates bookmark -> removeBookmark after the click. Classify now,
             // before scheduling capture, so a newly-added bookmark is not lost.
             if (!shouldSaveBookmarkClick(button)) return;
-            schedule(() => onSave(button), delay);
+            const captureTarget = button.closest?.("article, [role='article']") || null;
+            schedule(() => onSave(button, { captureTarget }), delay);
         }, true);
         return true;
     }

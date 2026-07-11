@@ -117,11 +117,7 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
     const { safeFilename, safeContent } = await timeSaveStage(metrics, "render", () => {
       const [filename, content] = buildMarkdown(preparedData, cfg, appDir);
       const safeFilename = sanitizeUnicodeText(sanitizeFilename(filename, Number(cfg.max_filename_length || 100))) || "untitled";
-      const imageErrors = Array.isArray(preparedData.image_localization_errors) ? preparedData.image_localization_errors : [];
-      const contentWithImageErrors = imageErrors.length
-        ? `${content}\n\n---\n\n图片本地化失败：\n${imageErrors.map((item) => `- ${item}`).join("\n")}\n`
-        : content;
-      return { safeFilename, safeContent: sanitizeUnicodeText(contentWithImageErrors) };
+      return { safeFilename, safeContent: sanitizeUnicodeText(content) };
     });
     if (existing && policy === "update" && latest?.files.length) {
       await timeSaveStage(metrics, "write", async () => {

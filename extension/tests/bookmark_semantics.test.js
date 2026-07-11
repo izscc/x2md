@@ -21,6 +21,9 @@ function button(attributes = {}) {
             current.push(listener);
             listeners.set(type, current);
         },
+        closest() {
+            return attributes.article || null;
+        },
         click() {
             for (const listener of listeners.get("click") || []) listener({ type: "click" });
         },
@@ -98,6 +101,22 @@ test("classification happens before X changes the button state", () => {
     target.setAttribute("data-testid", "removeBookmark");
     pending.shift()();
     assert.equal(saves, 1);
+});
+
+test("delayed save keeps the tweet article captured before X replaces the button", () => {
+    const pending = [];
+    const article = { id: "tweet-article" };
+    const target = button({ "data-testid": "bookmark", article });
+    let captureTarget = null;
+    bindBookmarkSaveListener(target, (_button, context) => {
+        captureTarget = context.captureTarget;
+    }, { schedule: (callback) => pending.push(callback) });
+
+    target.click();
+    target.closest = () => null;
+    pending.shift()();
+
+    assert.equal(captureTarget, article);
 });
 
 test("custom-menu programmatic bookmark click can skip the default save once", () => {

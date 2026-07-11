@@ -152,6 +152,18 @@ test("extractArticleMarkdown preserves inline mention layout", () => {
     );
 });
 
+test("extractArticleMarkdown expands truncated URL labels and hides the protocol", () => {
+    const tree = elementNode("a", {
+        attrs: { href: "https://github.com/ai-zixun/humanizer-zh" },
+        children: [textNode("github.com/ai-zixun/human...")],
+    });
+
+    assert.equal(
+        extractArticleMarkdown(tree, { getComputedStyle }),
+        "[github.com/ai-zixun/humanizer-zh](https://github.com/ai-zixun/humanizer-zh)",
+    );
+});
+
 test("extractArticleMarkdown folds a standalone language label into the following code fence", () => {
     const tree = elementNode("div", {
         children: [
