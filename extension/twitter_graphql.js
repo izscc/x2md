@@ -213,11 +213,17 @@
 
     function extractLinkCardFromTweetResult(result) {
         const tweet = result?.tweet || result;
+        const legacy = tweet?.legacy || result?.legacy || {};
         const card = tweet?.card || tweet?.legacy?.card || result?.card || result?.legacy?.card;
         const map = readCardBindingMap(card);
         const title = firstCardValue(map, ["title", "card_title", "summary_title", "vanity_url"]);
         const description = firstCardValue(map, ["description", "card_description", "summary_description"]);
-        const url = firstCardValue(map, ["card_url", "url", "player_url", "site_url", "expanded_url"]);
+        const cardUrl = firstCardValue(map, ["card_url", "url", "player_url", "site_url", "expanded_url"]);
+        const urlEntity = [
+            ...(legacy.entities?.urls || []),
+            ...(tweet?.note_tweet?.note_tweet_results?.result?.entity_set?.urls || []),
+        ].find((entity) => entity?.url === cardUrl);
+        const url = firstCardValue(urlEntity || {}, ["unwound_url", "expanded_url"]) || cardUrl;
         const image = firstCardValue(map, ["thumbnail_image_original", "thumbnail_image", "summary_photo_image", "photo_image_full_size_original"]);
         const domain = firstCardValue(map, ["domain", "site", "vanity_url"]) || domainFromUrl(url);
         const normalizedUrl = url && /^https?:\/\//i.test(url) ? url : "";

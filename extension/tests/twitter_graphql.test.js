@@ -273,6 +273,34 @@ test("extractLinkCardFromTweetResult reads card metadata", () => {
 });
 
 
+test("extractLinkCardFromTweetResult restores a t.co card URL from tweet entities", () => {
+    const card = extractLinkCardFromTweetResult({
+        legacy: {
+            entities: {
+                urls: [
+                    {
+                        url: "https://t.co/9hAeKzwKN8",
+                        expanded_url: "https://designnotes.cn/",
+                    },
+                ],
+            },
+        },
+        card: {
+            legacy: {
+                binding_values: [
+                    { key: "title", value: { string_value: "设计笔记,Design Notes,全球优质免费资源" } },
+                    { key: "card_url", value: { string_value: "https://t.co/9hAeKzwKN8" } },
+                    { key: "vanity_url", value: { string_value: "designnotes.cn" } },
+                ],
+            },
+        },
+    });
+
+    assert.equal(card.url, "https://designnotes.cn/");
+    assert.equal(card.domain, "designnotes.cn");
+});
+
+
 test("getTweetContentState maps unavailable and restricted results", () => {
     assert.deepEqual(getTweetContentState({ __typename: "TweetTombstone", reason: "deleted" }), {
         state: "unavailable",
