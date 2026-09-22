@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { isPublicIp, safeDownload, SafeDownloadError } from "../core/safe-download.ts";
+import { createPinnedLookup, isPublicIp, safeDownload, SafeDownloadError } from "../core/safe-download.ts";
 
 const dir = () => mkdtempSync(join(tmpdir(), "x2md-download-"));
 const resolver = async () => [{ address: "93.184.216.34", family: 4 }];
@@ -15,6 +15,44 @@ test("private, loopback, link-local and reserved addresses are rejected", () => 
   for (const ip of ["0.0.0.0", "10.0.0.1", "127.0.0.1", "169.254.1.1", "172.16.0.1", "192.168.1.1", "100.64.0.1", "192.0.2.1", "198.51.100.1", "203.0.113.1", "::", "::1", "fc00::1", "fe80::1", "ff00::1", "2001:db8::1", "::ffff:127.0.0.1", "::ffff:7f00:1"]) assert.equal(isPublicIp(ip), false, ip);
   assert.equal(isPublicIp("93.184.216.34"), true);
   assert.equal(isPublicIp("2606:4700:4700::1111"), true);
+});
+
+test("trusted platform media hosts may use proxy fake IPs without weakening arbitrary hosts", async () => {
+  const root = dir();
+  const opened: string[] = [];
+  const fakeIpResolver = async () => [{ address: "198.18.0.52", family: 4 }];
+  const openResponse = async (url: URL, pinned: { address: string }) => {
+    opened.push(`${url.hostname}=${pinned.address}`);
+    return response(chunks("image"));
+  };
+
+  await safeDownload("https://pbs.twimg.com/media/example.jpg", join(root, "trusted.jpg"), {
+    allowedContentTypes: ["image/"], resolver: fakeIpResolver, openResponse,
+  });
+  await assert.rejects(() => safeDownload("https://attacker.example/image.jpg", join(root, "blocked.jpg"), {
+    allowedContentTypes: ["image/"], resolver: fakeIpResolver, openResponse,
+  }), (error: any) => error?.code === "UNSUPPORTED_MEDIA_URL");
+  await assert.rejects(() => safeDownload("https://pbs.twimg.com/media/private.jpg", join(root, "private.jpg"), {
+    allowedContentTypes: ["image/"], resolver: async () => [{ address: "127.0.0.1", family: 4 }], openResponse,
+  }), (error: any) => error?.code === "UNSUPPORTED_MEDIA_URL");
+
+  assert.deepEqual(opened, ["pbs.twimg.com=198.18.0.52"]);
+  assert.equal(existsSync(join(root, "trusted.jpg")), true);
+  assert.equal(existsSync(join(root, "blocked.jpg")), false);
+  assert.equal(existsSync(join(root, "private.jpg")), false);
+});
+
+test("pinned lookup supports single-address and all-address callback contracts", async () => {
+  const lookup = createPinnedLookup({ address: "198.18.0.52", family: 4 });
+  const single = await new Promise<{ address: string; family: number }>((resolve, reject) => {
+    lookup("pbs.twimg.com", {}, (error: Error | null, address: string, family: number) => error ? reject(error) : resolve({ address, family }));
+  });
+  const all = await new Promise<Array<{ address: string; family: number }>>((resolve, reject) => {
+    lookup("pbs.twimg.com", { all: true }, (error: Error | null, addresses: Array<{ address: string; family: number }>) => error ? reject(error) : resolve(addresses));
+  });
+
+  assert.deepEqual(single, { address: "198.18.0.52", family: 4 });
+  assert.deepEqual(all, [{ address: "198.18.0.52", family: 4 }]);
 });
 
 test("pins validated DNS and validates every redirect", async () => {

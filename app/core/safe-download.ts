@@ -3,7 +3,7 @@ import { lookup } from "node:dns/promises";
 import { open, mkdir, link, rm } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
-import { isIP } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import { basename, dirname, join } from "node:path";
 
 export type SafeDownloadCode = "UNSUPPORTED_MEDIA_URL" | "MEDIA_TIMEOUT" | "MEDIA_TOO_LARGE" | "MEDIA_TYPE_REJECTED" | "MEDIA_HTTP_ERROR" | "MEDIA_WRITE_FAILED";
@@ -51,6 +51,16 @@ function inV6(value: bigint, base: string, bits: number): boolean {
   return (value >> shift) === (b >> shift);
 }
 
+const PROXY_FAKE_IP_MEDIA_HOSTS = new Set([
+  "pbs.twimg.com",
+  "video.twimg.com",
+]);
+
+function isProxyFakeIp(address: string): boolean {
+  if (isIP(address) !== 4) return false;
+  return inV4(ipv4Number(address)!, "198.18.0.0", 15);
+}
+
 export function isPublicIp(address: string): boolean {
   if (address.toLowerCase().startsWith("::ffff:")) {
     const mapped = address.slice(7);
@@ -80,8 +90,21 @@ async function resolvePublic(hostname: string, resolver: NonNullable<Options["re
     return { address: hostname, family: isIP(hostname) };
   }
   const addresses = await resolver(hostname);
-  if (!addresses.length || addresses.some((item) => !isPublicIp(item.address))) throw new SafeDownloadError("UNSUPPORTED_MEDIA_URL", `media hostname is not public: ${hostname}`);
+  const nonPublicAddresses = addresses.filter((item) => !isPublicIp(item.address));
+  const proxyFakeIpsAllowed = PROXY_FAKE_IP_MEDIA_HOSTS.has(hostname.toLowerCase())
+    && nonPublicAddresses.length > 0
+    && nonPublicAddresses.every((item) => isProxyFakeIp(item.address));
+  if (!addresses.length || (nonPublicAddresses.length > 0 && !proxyFakeIpsAllowed)) {
+    throw new SafeDownloadError("UNSUPPORTED_MEDIA_URL", `media hostname is not public: ${hostname}`);
+  }
   return addresses[0];
+}
+
+export function createPinnedLookup(pinned: Address): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (options.all) callback(null, [pinned]);
+    else callback(null, pinned.address, pinned.family);
+  };
 }
 
 function productionOpen(url: URL, pinned: Address, signal: AbortSignal): Promise<DownloadResponse> {
@@ -90,7 +113,7 @@ function productionOpen(url: URL, pinned: Address, signal: AbortSignal): Promise
     const request = client.request(url, {
       method: "GET", headers: { "User-Agent": "Mozilla/5.0", Host: url.host }, agent: false,
       ...(url.protocol === "https:" ? { servername: url.hostname } : {}),
-      lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family),
+      lookup: createPinnedLookup(pinned),
     }, (response) => resolve({ status: response.statusCode || 0, headers: response.headers as any, body: response }));
     const abort = () => request.destroy(new SafeDownloadError("MEDIA_TIMEOUT", "media download timed out", true));
     signal.addEventListener("abort", abort, { once: true });
