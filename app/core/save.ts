@@ -103,13 +103,16 @@ export async function savePayload(data: Record<string, any>, cfg: X2MDConfig | R
   return withCaptureLock(dir, key, async () => {
     const existing = await timeSaveStage(metrics, "dedupe", async () => (await readSaveIndex(dir)).entries[key]);
     const latest = existing?.revisions.find((item) => item.revision === existing.latest_revision);
-    if (existing && policy === "skip" && latest?.files.length && latest.files.every(existsSync)) {
-      const saved = latest?.files || [];
+    const currentSaveDirectories = new Set(savePaths.map((savePath) => resolve(savePath)));
+    const intactFiles = existing && policy === "skip"
+      ? (latest?.files || []).filter((file) => existsSync(file) && currentSaveDirectories.has(resolve(dirname(file))))
+      : [];
+    const intactDirectories = new Set(intactFiles.map((file) => resolve(dirname(file))));
+    if (existing && policy === "skip" && savePaths.every((savePath) => intactDirectories.has(resolve(savePath)))) {
+      const saved = intactFiles;
       const historyId = readSaveHistory(dir).find((item) => saved.includes(item.path))?.id;
       return finish({ success: true, outcome: "skipped", capture_key: key, saved, files: saved.map((path, index) => ({ path, ...(historyId && index === 0 ? { history_id: historyId } : {}) })), errors: [], warnings: [], media: { completed: 0, failed: 0, pending: 0 } });
     }
-    const intactFiles = existing && policy === "skip" ? (latest?.files || []).filter(existsSync) : [];
-    const intactDirectories = new Set(intactFiles.map((file) => resolve(dirname(file))));
     const transactionSavePaths = policy === "skip"
       ? savePaths.filter((savePath) => !intactDirectories.has(resolve(savePath)))
       : savePaths;

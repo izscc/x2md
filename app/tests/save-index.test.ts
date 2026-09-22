@@ -67,6 +67,25 @@ test("skip restores only a missing target without duplicating intact targets", a
   assert.deepEqual(new Set(entry.revisions.at(-1)?.files), new Set(first.saved));
 });
 
+test("skip saves an existing capture into a newly configured directory", async () => {
+  const appDir = mkdtempSync(join(tmpdir(), "x2md-index-moved-"));
+  const oldDir = join(appDir, "old-location");
+  const newDir = join(appDir, "new-location");
+  const item = capture("moved");
+  const first = await savePayload(legacy("moved"), normalizeConfig({ save_paths: [oldDir] }), appDir, item);
+
+  const second = await savePayload(legacy("moved"), normalizeConfig({ save_paths: [newDir] }), appDir, item);
+
+  assert.equal(first.outcome, "saved");
+  assert.equal(second.outcome, "saved");
+  assert.equal(first.saved.length, 1);
+  assert.equal(second.saved.length, 1);
+  assert.equal(first.saved[0].startsWith(oldDir), true);
+  assert.equal(second.saved[0].startsWith(newDir), true);
+  assert.equal(existsSync(first.saved[0]), true);
+  assert.equal(existsSync(second.saved[0]), true);
+});
+
 test("20 different keys with the same title produce unique files", async () => {
   const { appDir, cfg } = setup();
   const results = await Promise.all(Array.from({ length: 20 }, (_, index) => savePayload(legacy(String(index + 10)), cfg, appDir, capture(String(index + 10)))));

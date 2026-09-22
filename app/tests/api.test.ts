@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -344,7 +344,7 @@ test("POST /save 开启后拒绝私网图片并回退远程链接", async () => 
 });
 
 
-test("POST /save 开启图片下载时 Twitter 仍保持远程原图链接", async () => {
+test("POST /save 开启图片下载时 Twitter 使用本地附件引用", async () => {
   const appDir = tempApp();
   const mdDir = join(appDir, "md");
   await handleApiRequest(new Request("http://127.0.0.1:9527/config", {
@@ -357,33 +357,25 @@ test("POST /save 开启图片下载时 Twitter 仍保持远程原图链接", asy
     }),
   }), { appDir, testBypassAuth: true });
 
-  let fetchCalled = false;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    fetchCalled = true;
-    return new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } });
-  }) as unknown as typeof fetch;
-  try {
-    const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "tweet",
-        platform: "Twitter/X",
-        text: "remote twitter image",
-        url: "https://x.com/a/status/192",
-        images: ["https://pbs.twimg.com/media/abc.jpg?format=jpg&name=small"],
-      }),
-    }), { appDir, testBypassAuth: true });
-    const body = await json(res);
-    const md = readFileSync(body.saved[0], "utf8");
-    assert.equal(res.status, 200);
-    assert.equal(fetchCalled, false);
-    assert.equal(existsSync(join(mdDir, "attachments", "192", "image_1.jpg")), false);
-    assert.match(md, /!\[\]\(https:\/\/pbs\.twimg\.com\/media\/abc\.jpg\?format=jpg&name=orig\)/);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const attachment = join(mdDir, "attachments", "192", "image_1.jpg");
+  mkdirSync(join(attachment, ".."), { recursive: true });
+  writeFileSync(attachment, "existing image");
+  const res = await handleApiRequest(new Request("http://127.0.0.1:9527/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "tweet",
+      platform: "Twitter/X",
+      text: "local twitter image",
+      url: "https://x.com/a/status/192",
+      images: ["https://pbs.twimg.com/media/abc.jpg?format=jpg&name=small"],
+    }),
+  }), { appDir, testBypassAuth: true });
+  const body = await json(res);
+  const md = readFileSync(body.saved[0], "utf8");
+  assert.equal(res.status, 200);
+  assert.equal(existsSync(attachment), true);
+  assert.match(md, /!\[\]\(attachments\/192\/image_1\.jpg\)/);
 });
 
 test("POST /save 图片下载失败时回退远程 URL 且不污染笔记正文", async () => {
